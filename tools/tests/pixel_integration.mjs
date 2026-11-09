@@ -340,4 +340,27 @@ for (const [name,brush,opacity] of [['dry',pen,1],['wet',{...pen,flow:0.5},0.6],
  ok(pixel(canvas,3,3)[0]>240 && pixel(canvas,12,12)[0]>240 && pixel(canvas,12,12)[1]>240, 'real GIF export includes masked pixels and canvas background outside base');
 }
 
+
+{
+ const d=setup(); d.addFrame(false); d.activeFrame=1; const oldCount=d.history.undoStack.length;
+ ok(App.addPaintLayer('solid','ff0000','','') && d.layers.length===2 && same(pixel(d.activeCel(false),4,4),[255,0,0,255]), 'solid colour creates a full-canvas layer and accepts hex without hash');
+ ok(!d.cel(0,1,false), 'new colour layer is blank on other frames');
+ d.history.undo(); ok(d.layers.length===1 && d.history.undoStack.length===oldCount, 'colour layer creation is one undo step');
+ d.history.redo(); ok(d.layers.length===2 && pixel(d.activeCel(false),4,4)[0]===255, 'redo restores solid layer pixels');
+ const before=d.layers.length; ok(!App.addPaintLayer('gradient','invalid','#fff','vertical') && d.layers.length===before, 'invalid gradient colour is rejected without edits');
+}
+for (const dir of ['horizontal','vertical','diagonal','radial']) {
+ const d=setup(); ok(App.addPaintLayer('gradient','#ff0000','#0000ff',dir), dir+' gradient layer can be created');
+ const cel=d.activeCel(false), start=dir==='radial' ? pixel(cel,8,8) : pixel(cel,0,0), end=dir==='horizontal' ? pixel(cel,15,0) : dir==='vertical' ? pixel(cel,0,15) : pixel(cel,15,15);
+ ok(start[0]>start[2] && end[2]>end[0] && start[3]===255 && end[3]===255, dir+' gradient has expected colours and opacity');
+ d.history.undo(); ok(d.layers.length===1, dir+' gradient is undoable'); d.history.redo(); ok(d.layers.length===2, dir+' gradient is redoable');
+}
+{
+ const normal=Q.effectPreviewCanvas('invert'), gray=Q.effectPreviewCanvas('grayscale');
+ ok(normal.width===64 && normal.height===48 && !same(pixel(normal,5,5),pixel(gray,5,5)), 'effect thumbnail samples use the actual pixel effect engine');
+ for (const effect of ['blur','motion','sharpen','bloom','glitch','pixelate','posterize','solarize','grayscale','invert','sepia','brightness','saturation','contrast','hue','noise','chromatic','halftone','threshold']) {
+   const cv=Q.effectPreviewCanvas(effect); ok(cv.width===64 && pixel(cv,5,5)[3]>0, effect+' thumbnail renders offline');
+ }
+}
+
 console.log(`all ${n} raster integration checks passed`);

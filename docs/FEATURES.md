@@ -5,6 +5,14 @@ The supplied feature inventory is a roadmap, not a list of completed work.
 
 ## Available now
 
+- The Layers Add menu offers blank and imported-image layers as well as solid
+  colour and two-colour horizontal, vertical, diagonal or radial gradient raster
+  layers. These fill only the active frame and can be undone; no editable stops,
+  transparency or vector fill is provided.
+- Categorized icon-based animation tools and expandable Actions groups reduce
+  clutter. Effect thumbnails are generated offline from illustrative sample art,
+  not a live preview. Real-device layout and touch testing remain necessary.
+
 - 20 preset brushes, brush size/opacity, pressure, per-preset basic Brush Studio
   sliders for spacing, flow, opacity, hardness, pressure and stabilization. Brush
   shapes/grains cannot be edited or imported; dual brushes and wet mixing are absent.

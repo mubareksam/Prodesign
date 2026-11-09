@@ -412,3 +412,31 @@ select, .select {
 .action-heading { color: var(--txt-2); font-size: 12px; font-weight: 700; margin: 0 0 8px; }
 
 .tl-audio { display: block; width: 100%; margin: 0 0 6px; padding: 7px 10px; border-radius: 9px; border: 1px solid #565661; background: #292932; color: #f4f4f8; text-align: left; overflow: hidden; white-space: nowrap; text-overflow: ellipsis; }
+
+/* Compact, non-scrolling headers with named SVG controls. */
+.topbar { gap: 2px; overflow: hidden; }
+.topbar .icon-btn { flex: 0 0 40px; width: 40px; height: 40px; margin: 0; }
+.title-wrap { flex: 1 1 40px; min-width: 0; overflow: hidden; }
+.title-wrap span { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+@media (max-width: 330px) { .topbar { padding-left: 4px; padding-right: 4px; gap: 1px; } .topbar .icon-btn { flex-basis: 36px; width: 36px; } }
+.icon-chip { width: 40px; min-width: 40px; height: 40px; padding: 0; justify-content: center; color: #f4f4f8; }
+.icon-chip svg { width: 20px; height: 20px; }
+.tray-head { gap: 8px; flex-wrap: wrap; }
+.tray-head h3 { flex: 1 1 90px; }
+.tray-head .row { flex: 0 0 auto; flex-wrap: wrap; }
+.tl-head { flex-wrap: nowrap; min-width: 0; }
+.tl-head .tl-title { min-width: 0; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.tl-categories, .tl-more { display: flex; flex-wrap: wrap; gap: 6px; padding-bottom: 6px; }
+.tl-categories { border-bottom: 1px solid #383842; margin-bottom: 6px; }
+.action-heading { display: flex; align-items: center; gap: 9px; cursor: pointer; list-style: none; padding: 10px; border: 1px solid #454550; border-radius: 10px; color: #eeeef3; background: #24242c; }
+.action-heading::-webkit-details-marker { display: none; }
+.action-heading::after { content: '+'; margin-left: auto; font-size: 16px; }
+.action-group[open] > .action-heading::after { content: '−'; }
+.action-heading svg { width: 18px; height: 18px; color: var(--accent); }
+.action-group .menu-grid { padding-top: 4px; }
+.effects-grid { display: grid; grid-template-columns: repeat(auto-fill,minmax(84px,1fr)); gap: 8px; max-height: 38vh; overflow-y: auto; padding: 2px; }
+.effect-card { min-width: 0; padding: 4px; border: 1px solid #494953; border-radius: 10px; background: #25252d; text-align: left; color: #e9e9ef; }
+.effect-card.on { border-color: #f0b46a; box-shadow: 0 0 0 1px #f0b46a inset; }
+.effect-card canvas, .effect-fallback { display: block; width: 100%; aspect-ratio: 4/3; border-radius: 6px; background: #393943; }
+.effect-card span { display: block; padding: 5px 2px 2px; font-size: 11px; line-height: 1.2; overflow-wrap: anywhere; }
+.effect-selected { color: var(--accent); font-size: 12px; font-weight: 600; margin-bottom: 8px; }

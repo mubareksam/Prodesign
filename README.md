@@ -4,10 +4,10 @@ Developed by **Qmer**. Qalam is an offline painting and frame-animation app for 
 
 ## Download and install
 
-- [Qalam 2.5 APK](artifacts/Qalam-2.5.apk) · Android 8.0 or later
-- [Download bundle](artifacts/Qalam-2.5-package.zip) · APK, README and documentation
+- [Qalam 2.6 APK](artifacts/Qalam-2.6.apk) · Android 8.0 or later
+- [Download bundle](artifacts/Qalam-2.6-package.zip) · APK, README and documentation
 
-Copy the APK to your device and open it with a file manager. You may need to allow installation from that source. Version 2.5 is signed with the same key as earlier versions and should install as an update, keeping your artwork; Android asks for confirmation and does not let the app silently uninstall or replace itself. Back up important artwork before updating. The app requests `VIBRATE` only and has no internet permission. See the [user guide](docs/qalam.md) for controls and export instructions.
+Copy the APK to your device and open it with a file manager. You may need to allow installation from that source. Version 2.6 is signed with the same key as earlier versions and should install as an update, keeping your artwork; Android asks for confirmation and does not let the app silently uninstall or replace itself. Back up important artwork before updating. The app requests `VIBRATE` only and has no internet permission. See the [user guide](docs/qalam.md) for controls and export instructions.
 
 **Signing:** The included APK and default build use the publicly available key in `tools/apksign/key.pem`. It is suitable only for testing, not a trusted production release: anyone can use it to sign an APK claiming to be this app. Use a private, securely stored signing key for a release; changing keys means Android will not accept it as an update to the included APK.
 
@@ -21,7 +21,7 @@ bash tools/fetch-toolchain.sh
 bash tools/build.sh
 ```
 
-The build writes `artifacts/Qalam-2.5.apk`, checks the Java reference sources, assembles and signs the APK, then verifies it. Builds need not be byte-for-byte identical. `QALAM_TOOLCHAIN` overrides the toolchain directory. The automated tests use a headless DOM/canvas harness; they do not replace testing on a real device.
+The build writes `artifacts/Qalam-2.6.apk`, checks the Java reference sources, assembles and signs the APK, then verifies it. Builds need not be byte-for-byte identical. `QALAM_TOOLCHAIN` overrides the toolchain directory. The automated tests use a headless DOM/canvas harness; they do not replace testing on a real device.
 
 ## Documentation
 

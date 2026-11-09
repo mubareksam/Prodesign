@@ -216,10 +216,32 @@
   };
 
   App.addLayer = function () {
+    App.stopPlay();
     App.doc.addLayer();
     App.view.dirty = true;
     Q.UI.syncDoc();
     App.markDirty();
+  };
+
+  // Fill a new raster layer on the current frame; prepare it before changing history.
+  App.addPaintLayer = function (kind,first,second,direction) {
+    App.stopPlay(); const d=App.doc;
+    if (!d || !Q.hexToRgb(first) || (kind==='gradient' && !Q.hexToRgb(second)) || !['solid','gradient'].includes(kind)) { Q.toast('Enter valid hex colours',4000); return false; }
+    if (kind==='gradient' && !['horizontal','vertical','diagonal','radial'].includes(direction)) { Q.toast('Choose a gradient direction',4000); return false; }
+    try {
+      const cv=Q.canvas(d.width,d.height), c=cv.getContext('2d');
+      first=Q.rgbToHex(Q.hexToRgb(first)); if (kind==='gradient') second=Q.rgbToHex(Q.hexToRgb(second));
+      if (kind==='solid') c.fillStyle=first;
+      else {
+        let g;
+        if (direction==='radial') g=c.createRadialGradient(d.width/2,d.height/2,0,d.width/2,d.height/2,Math.sqrt(d.width*d.width+d.height*d.height)/2);
+        else g=c.createLinearGradient(0,0,direction==='vertical' ? 0 : d.width,direction==='horizontal' ? 0 : d.height);
+        g.addColorStop(0,first); g.addColorStop(1,second); c.fillStyle=g;
+      }
+      c.fillRect(0,0,d.width,d.height);
+      d.insertImageLayer(cv,kind==='solid' ? 'Solid colour' : 'Gradient');
+      App.view.dirty=true; Q.UI.syncDoc(); Q.UI.refreshTimeline(); App.markDirty(); Q.toast('Layer added · Undo to remove'); return true;
+    } catch(e) { Q.toast('Could not create this layer on this device',4000); return false; }
   };
 
   // User-selected images only; imported pixels become a new layer in one frame.

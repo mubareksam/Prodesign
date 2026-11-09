@@ -14,6 +14,7 @@
 
   let tray = null;
   let timelineOpen = false;
+  let timelineCategory = 'frames';
   let wheelState = { hue: 210, sat: 0.1, val: 0.12, drag: null };
 
   function app() { return Q.App; }
@@ -43,7 +44,18 @@
     flip: '<path d="M12 3v18"/><path d="M8 7L3 12l5 5z"/><path d="M16 7l5 5-5 5z"/>',
     reset: '<path d="M4 12a8 8 0 1015-4"/><path d="M19 4v5h-5"/>',
     save: '<path d="M5 3h11l3 3v15H5z"/><path d="M8 3v6h7V3M8 14h8v7H8z"/>',
-    sparkle: '<path d="M12 3l1.8 5.2L19 10l-5.2 1.8L12 17l-1.8-5.2L5 10l5.2-1.8z"/>'
+    sparkle: '<path d="M12 3l1.8 5.2L19 10l-5.2 1.8L12 17l-1.8-5.2L5 10l5.2-1.8z"/>',
+    swatch: '<rect x="4" y="4" width="16" height="16" rx="3"/><path d="M4 16l8-8 8 8"/>',
+    gradient: '<rect x="4" y="4" width="16" height="16" rx="3"/><path d="M8 5v14M12 5v14M16 5v14"/>',
+    controls: '<path d="M4 7h16M4 17h16"/><circle cx="9" cy="7" r="2"/><circle cx="15" cy="17" r="2"/>',
+    motion: '<path d="M4 18C4 7 9 6 12 12s5 6 8-6"/><circle cx="4" cy="18" r="2"/><circle cx="20" cy="6" r="2"/>',
+    frameOptions: '<rect x="3" y="4" width="18" height="16" rx="2"/><path d="M7 9h10M7 13h7M7 17h4"/>',
+    batch: '<rect x="7" y="7" width="13" height="13" rx="2"/><path d="M4 16V5a1 1 0 011-1h11"/>',
+    blankFrame: '<rect x="3" y="4" width="18" height="16" rx="2"/><path d="M12 8v8M8 12h8"/>',
+    previous: '<path d="M6 5v14M18 6l-8 6 8 6z"/>',
+    next: '<path d="M18 5v14M6 6l8 6-8 6z"/>',
+    onion: '<circle cx="9" cy="12" r="6"/><circle cx="15" cy="12" r="6"/>',
+    audio: '<path d="M10 17V5l9-2v12"/><circle cx="7" cy="18" r="3"/><circle cx="16" cy="16" r="3"/>'
   };
 
   function fitCanvasToBox(cv, box) {
@@ -300,6 +312,11 @@
     return b;
   }
 
+  function iconButton(label,ico,fn,on) {
+    const b=Q.crel('button','chip icon-chip'+(on ? ' on' : '')); b.innerHTML=icon(ico);
+    b.setAttribute('aria-label',label); b.setAttribute('title',label); b.addEventListener('click',fn); return b;
+  }
+
   /* ── brushes ────────────────────────────────────────────── */
 
   function buildBrushes(root) {
@@ -395,17 +412,42 @@
     Q.el('#imageImport').value=''; Q.el('#imageImport').click();
   };
 
+  UI.addLayerDialog = function () {
+    app().stopPlay(); const card=Q.crel('div'); card.appendChild(Q.crel('h2',null,'Add to layers'));
+    card.appendChild(Q.crel('p','sub','New content is added on the current frame; other frames stay empty.'));
+    const grid=Q.crel('div','menu-grid');
+    function action(label,ico,fn) { const b=Q.crel('button','menu-item'); b.innerHTML=icon(ico); b.appendChild(document.createTextNode(label)); b.addEventListener('click',fn); grid.appendChild(b); }
+    action('Blank layer',ICON.plus,function () { UI.closeModal(); app().addLayer(); });
+    action('Import image',ICON.photo,function () { UI.closeModal(); UI.pickImage(); });
+    action('Solid colour',ICON.swatch,function () { UI.paintLayerDialog('solid'); });
+    action('Gradient',ICON.gradient,function () { UI.paintLayerDialog('gradient'); });
+    card.appendChild(grid); const close=Q.crel('button','btn ghost','Cancel'); close.addEventListener('click',function () { UI.closeModal(); }); card.appendChild(close); UI.openModal(card);
+  };
+  UI.paintLayerDialog = function (kind) {
+    const card=Q.crel('div'); card.appendChild(Q.crel('h2',null,kind==='solid' ? 'Solid colour layer' : 'Gradient layer'));
+    card.appendChild(Q.crel('p','sub','Creates a full-canvas raster layer on this frame. You can undo it; the fill is not editable as a live gradient.'));
+    function colorField(label,value) { const row=Q.crel('div','field'); row.appendChild(Q.crel('label',null,label)); const input=Q.crel('input','select'); input.type='text'; input.value=value; input.setAttribute('aria-label',label); row.appendChild(input); card.appendChild(row); return input; }
+    const first=colorField(kind==='solid' ? 'Colour' : 'Start colour',Q.rgbToHex(app().view.color));
+    const second=kind==='gradient' ? colorField('End colour','#ffffff') : null;
+    let dir=null;
+    if (kind==='gradient') { const row=Q.crel('div','field'); row.appendChild(Q.crel('label',null,'Direction')); dir=Q.crel('select'); dir.setAttribute('aria-label','Gradient direction'); [['horizontal','Horizontal'],['vertical','Vertical'],['diagonal','Diagonal'],['radial','Radial']].forEach(function (v) { const o=Q.crel('option'); o.value=v[0]; o.textContent=v[1]; dir.appendChild(o); }); row.appendChild(dir); card.appendChild(row); }
+    const err=Q.crel('p','canvas-error'); err.setAttribute('role','alert'); card.appendChild(err);
+    const actions=Q.crel('div','modal-actions'), cancel=Q.crel('button','btn ghost','Cancel'), create=Q.crel('button','btn primary','Create layer');
+    cancel.addEventListener('click',function () { UI.closeModal(); });
+    create.addEventListener('click',function () { if (!Q.hexToRgb(first.value) || (second && !Q.hexToRgb(second.value))) { err.textContent='Enter a 3- or 6-digit hex colour.'; return; } if (app().addPaintLayer(kind,first.value,second ? second.value : '',dir ? dir.value : '')) UI.closeModal(); });
+    actions.appendChild(cancel); actions.appendChild(create); card.appendChild(actions); UI.openModal(card);
+  };
+
   function buildLayers(root) {
     const d = app().doc;
     if (!d) return;
     root = root || Q.el('#trayBody');
     root.innerHTML = '';
 
-    const addBtn = chip('Add', false, function () { app().addLayer(); }, ICON.plus);
-    const dupBtn = chip('Copy', false, function () { app().duplicateLayer(); }, ICON.copy);
-    const imageBtn = chip('Import', false, function () { UI.pickImage(); }, ICON.photo);
-    const mergeBtn = chip('Merge', false, function () { app().mergeDownLayer(d.activeLayer); }, ICON.merge);
-    root.appendChild(trayHead('Layers · ' + d.layers.length, [addBtn, dupBtn, mergeBtn, imageBtn]));
+    const addBtn=iconButton('Add layer or image',ICON.plus,function () { UI.addLayerDialog(); });
+    const dupBtn=iconButton('Duplicate layer',ICON.copy,function () { app().duplicateLayer(); });
+    const mergeBtn=iconButton('Merge layer down',ICON.merge,function () { app().mergeDownLayer(d.activeLayer); });
+    root.appendChild(trayHead('Layers · ' + d.layers.length,[addBtn,dupBtn,mergeBtn]));
 
     const list = Q.crel('div', 'layer-list');
     for (let i = d.layers.length - 1; i >= 0; i--) {
@@ -733,7 +775,8 @@
       b.appendChild(document.createTextNode(label)); b.addEventListener('click',fn); return b;
     }
     function group(title, items) {
-      const section=Q.crel('section','action-group'); section.appendChild(Q.crel('h3','action-heading',title));
+      const section=Q.crel('details','action-group'); section.open=title==='Create & edit';
+      const heading=Q.crel('summary','action-heading'); heading.innerHTML=icon(items[0][1]); heading.appendChild(document.createTextNode(title)); section.appendChild(heading);
       const grid=Q.crel('div','menu-grid'); items.forEach(x=>grid.appendChild(item(x[0],x[1],x[2]))); section.appendChild(grid); root.appendChild(section);
     }
     group('Create & edit', [
@@ -855,18 +898,26 @@
   UI.effectsDialog = function () {
     const card = Q.crel('div'); card.appendChild(Q.crel('h2', null, 'Effects'));
     card.appendChild(Q.crel('p', 'sub', 'Applies to the selected layer and current frame. The change can be undone.'));
-    const row = Q.crel('div', 'field studio-field'); row.appendChild(Q.crel('label', null, 'Effect'));
-    const select = Q.crel('select'); select.setAttribute('aria-label', 'Effect');
-    [['blur','Soft blur'],['motion','Motion blur (horizontal)'],['sharpen','Sharpen'],['bloom','Bloom'],['glitch','Glitch'],['pixelate','Pixelate'],['posterize','Posterize'],['solarize','Solarize'],['grayscale','Grayscale'],['invert','Invert'],['sepia','Sepia'],['brightness','Brightness'],['saturation','Saturation'],['contrast','Contrast'],['hue','Hue shift'],['noise','Noise'],['chromatic','Chromatic shift'],['halftone','Halftone dither'],['threshold','Threshold']].forEach(function (option) {
-      const el = Q.crel('option'); el.value=option[0]; el.textContent=option[1]; select.appendChild(el);
-    }); row.appendChild(select); card.appendChild(row);
+    card.appendChild(Q.crel('p','sub','Thumbnails use an offline sample, not a live preview of your artwork.'));
+    const options=[['blur','Soft blur'],['motion','Motion blur'],['sharpen','Sharpen'],['bloom','Bloom'],['glitch','Glitch'],['pixelate','Pixelate'],['posterize','Posterize'],['solarize','Solarize'],['grayscale','Grayscale'],['invert','Invert'],['sepia','Sepia'],['brightness','Brightness'],['saturation','Saturation'],['contrast','Contrast'],['hue','Hue shift'],['noise','Noise'],['chromatic','Chromatic shift'],['halftone','Halftone'],['threshold','Threshold']];
+    let selected='blur';
+    const selectedName=Q.crel('div','effect-selected','Selected: Soft blur'); card.appendChild(selectedName);
+    const grid=Q.crel('div','effects-grid'); grid.setAttribute('role','group'); grid.setAttribute('aria-label','Choose effect');
+    options.forEach(function (option) {
+      const b=Q.crel('button','effect-card'+(option[0]===selected ? ' on' : '')); b.setAttribute('data-effect',option[0]); b.setAttribute('aria-label',option[1]); b.setAttribute('aria-pressed',option[0]===selected ? 'true' : 'false');
+      try { b.appendChild(Q.effectPreviewCanvas(option[0])); } catch(e) { b.appendChild(Q.crel('div','effect-fallback')); }
+      b.appendChild(Q.crel('span',null,option[1])); b.addEventListener('click',function () {
+        selected=option[0]; selectedName.textContent='Selected: '+option[1];
+        grid.querySelectorAll('.effect-card').forEach(function (item) { const active=item===b; item.classList.toggle('on',active); item.setAttribute('aria-pressed',active ? 'true' : 'false'); });
+      }); grid.appendChild(b);
+    }); card.appendChild(grid);
     const amountRow=Q.crel('div','field studio-field'); amountRow.appendChild(Q.crel('label',null,'Strength'));
     const amount=Q.crel('input'); amount.type='range'; amount.min=0; amount.max=100; amount.value=50; amount.setAttribute('aria-label','Effect strength');
     const value=Q.crel('div','val','50%'); amount.addEventListener('input',function () { value.textContent=amount.value+'%'; });
     amountRow.appendChild(amount); amountRow.appendChild(value); card.appendChild(amountRow);
     const actions=Q.crel('div','modal-actions'), cancel=Q.crel('button','btn ghost','Cancel'), apply=Q.crel('button','btn primary','Apply');
     cancel.addEventListener('click',function () { UI.closeModal(); });
-    apply.addEventListener('click',function () { UI.closeModal(); UI.closeTray(); app().applyEffect(select.value,Number(amount.value)/100); });
+    apply.addEventListener('click',function () { UI.closeModal(); UI.closeTray(); app().applyEffect(selected,Number(amount.value)/100); });
     actions.appendChild(cancel); actions.appendChild(apply); card.appendChild(actions); UI.openModal(card);
   };
 
@@ -962,33 +1013,31 @@
     el.classList.remove('hidden');
     el.innerHTML = '';
 
-    const head = Q.crel('div', 'tl-head');
-    const more = Q.crel('div', 'tl-more');
-    head.appendChild(Q.crel('div', 'tl-title', 'Animation · ' + d.frames.length + ' frames'));
-    head.appendChild(chip(d.fps + ' fps', false, function () {
-      const next = d.fps >= 30 ? 6 : d.fps + 2;
-      d.fps = next;
-      app().markDirty(true);
-      buildTimeline();
-    }, null));
-    more.appendChild(chip('Settings', false, function () { UI.animationSettings(); }, null));
-    more.appendChild(chip('Frame options', false, function () { UI.frameSheet(d.activeFrame); }, null));
-    more.appendChild(chip('Batch frames', false, function () { UI.batchFramesDialog(); }, null));
-    more.appendChild(chip('Copy cel', false, function () { UI.copyCelDialog(); }, null));
-    more.appendChild(chip('Motion guide', false, function () { UI.motionGuideDialog(); }, null));
-    more.appendChild(chip('Audio', false, function () { UI.audioDialog(); }, null));
-    more.appendChild(chip('Blank frame', false, function () { app().addFrame(false); }, null));
-    more.appendChild(chip('◀ Frame', false, function () { app().selectFrame(Math.max(0,d.activeFrame-1)); }, null));
-    more.appendChild(chip('Frame ▶', false, function () { app().selectFrame(Math.min(d.frames.length-1,d.activeFrame+1)); }, null));
-    more.appendChild(chip('Onion', d.onion, function () {
-      d.onion = !d.onion;
-      app().view.dirty = true;
-      app().markDirty(true);
-      buildTimeline();
-    }, ICON.sparkle));
-    const play=chip('', false, function () { app().togglePlay(); }, app().playing ? ICON.pause : ICON.play); play.setAttribute('aria-label',app().playing ? 'Stop playback' : 'Play animation'); head.appendChild(play);
-    const duplicate=chip('', false, function () { app().addFrame(true); }, ICON.plus); duplicate.setAttribute('aria-label','Duplicate frame'); head.appendChild(duplicate);
-    el.appendChild(head); el.appendChild(more);
+    const head=Q.crel('div','tl-head'), categories=Q.crel('div','tl-categories'), more=Q.crel('div','tl-more');
+    head.appendChild(Q.crel('div','tl-title','Animation · '+d.frames.length+' frames'));
+    const fps=chip(d.fps+' fps',false,function () { d.fps=d.fps>=30 ? 6 : d.fps+2; app().markDirty(true); buildTimeline(); },null); fps.setAttribute('aria-label','Cycle frames per second, current '+d.fps); fps.title='Cycle frames per second'; head.appendChild(fps);
+    head.appendChild(iconButton(app().playing ? 'Stop playback' : 'Play animation',app().playing ? ICON.pause : ICON.play,function () { app().togglePlay(); }));
+    head.appendChild(iconButton('Duplicate frame',ICON.plus,function () { app().addFrame(true); }));
+    [['frames','Frame tools',ICON.film],['settings','Animation settings tools',ICON.controls],['assist','Animation guides and audio',ICON.motion]].forEach(function (entry) {
+      const selected=timelineCategory===entry[0], button=iconButton(entry[1],entry[2],function () { timelineCategory=entry[0]; buildTimeline(); },selected);
+      button.setAttribute('aria-pressed',selected ? 'true' : 'false'); categories.appendChild(button);
+    });
+    function tool(label,ico,fn,on) { const button=iconButton(label,ico,fn,on); if (typeof on==='boolean') button.setAttribute('aria-pressed',on ? 'true' : 'false'); more.appendChild(button); }
+    if (timelineCategory==='frames') {
+      tool('Frame options',ICON.frameOptions,function () { UI.frameSheet(d.activeFrame); });
+      tool('Batch frames',ICON.batch,function () { UI.batchFramesDialog(); });
+      tool('Copy cel',ICON.copy,function () { UI.copyCelDialog(); });
+      tool('Blank frame',ICON.blankFrame,function () { app().addFrame(false); });
+      tool('Previous frame',ICON.previous,function () { app().selectFrame(Math.max(0,d.activeFrame-1)); });
+      tool('Next frame',ICON.next,function () { app().selectFrame(Math.min(d.frames.length-1,d.activeFrame+1)); });
+    } else if (timelineCategory==='settings') {
+      tool('Animation settings',ICON.controls,function () { UI.animationSettings(); });
+      tool('Toggle onion skin',ICON.onion,function () { d.onion=!d.onion; app().view.dirty=true; app().markDirty(true); buildTimeline(); },d.onion);
+    } else {
+      tool('Motion guide',ICON.motion,function () { UI.motionGuideDialog(); });
+      tool('Manage audio',ICON.audio,function () { UI.audioDialog(); });
+    }
+    el.appendChild(head); el.appendChild(categories); el.appendChild(more);
     const track=Q.crel('button','tl-audio',d.audioTrack ? ('Audio · '+d.audioTrack.name+(d.audioTrack.muted ? ' · muted' : '')) : 'Audio · Add track');
     track.setAttribute('aria-label','Manage animation audio'); track.addEventListener('click',function () { UI.audioDialog(); }); el.appendChild(track);
 

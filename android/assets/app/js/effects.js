@@ -162,4 +162,14 @@
     }
     return image;
   };
+  // Offline representative sample: previews use the same pixel effect engine,
+  // but deliberately do not claim to be a live preview of the artwork.
+  Q.effectPreviewCanvas = function (type) {
+    const cv=Q.canvas(64,48), c=cv.getContext('2d');
+    const g=c.createLinearGradient(0,0,64,48); g.addColorStop(0,'#45b9c7'); g.addColorStop(0.5,'#eac48c'); g.addColorStop(1,'#b43f72'); c.fillStyle=g; c.fillRect(0,0,64,48);
+    c.fillStyle='#fbe5b6'; c.beginPath(); c.arc(45,13,8,0,Math.PI*2); c.fill();
+    c.fillStyle='#28395d'; c.beginPath(); c.moveTo(0,41); c.lineTo(21,19); c.lineTo(38,40); c.lineTo(50,28); c.lineTo(64,42); c.lineTo(64,48); c.lineTo(0,48); c.closePath(); c.fill();
+    c.fillStyle='#f58542'; c.fillRect(4,36,11,5);
+    const image=c.getImageData(0,0,64,48); Q.applyPixelEffect(image,type,0.75); c.putImageData(image,0,0); return cv;
+  };
 })();

@@ -4,20 +4,20 @@ Developed by **Qmer**. An offline painting and frame-animation studio for Androi
 brushes, layers, a colour wheel, a frame timeline with onion skin, Procreate's gesture
 vocabulary, and PNG/GIF export. No account, no ads, no network permission.
 
-**Download:** [`Qalam-2.5.apk`](../artifacts/Qalam-2.5.apk) (~268 KB)
+**Download:** [`Qalam-2.6.apk`](../artifacts/Qalam-2.6.apk) (~270 KB)
 
 | | |
 |---|---|
 | Package | `com.qalam.studio` |
-| Version | 2.5 (versionCode 16) |
+| Version | 2.6 (versionCode 17) |
 | Requires | Android 8.0+ (minSdk 26), built for targetSdk 33 |
 | Permissions | `VIBRATE` only — no internet, no storage, no location |
 | Signing | APK Signature Scheme v1 + v2, self-signed with a public test key |
-| SHA-256 | `eb1ac460af1c1415a8bc3c5bb3d7d11faf7a70e7c607955f43515b2046d5f8cf` |
+| SHA-256 | `db44bb5880b2af9ad40974a73054a9cbb4ebde41d4a1c5f3076abfd53341f354` |
 
 ## Install
 
-1. Download `Qalam-2.5.apk` to the phone (or copy it over USB).
+1. Download `Qalam-2.6.apk` to the phone (or copy it over USB).
 2. Open it from the file manager. Android will ask you to allow installs from that
    app the first time ("Install unknown apps") — allow it, then install.
 3. Open **Qalam**.

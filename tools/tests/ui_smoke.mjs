@@ -210,7 +210,9 @@ async function run() {
   console.log('layers');
   click('#btnLayers');
   ok(doc.querySelectorAll('#trayBody .layer-row').length === 1, 'one layer row');
-  click('#trayBody .chip');
+  click('#trayBody [aria-label="Add layer or image"]');
+  ok(doc.querySelector('#modalBody').textContent.includes('Blank layer') && doc.querySelector('#modalBody').textContent.includes('Import image') && doc.querySelector('#modalBody').textContent.includes('Gradient'), 'add menu offers blank, image and gradient layers');
+  Array.from(doc.querySelectorAll('#modalBody button')).find(x=>x.textContent==='Blank layer').click();
   ok(App.doc.layers.length === 2, 'add layer from the tray');
   ok(doc.querySelectorAll('#trayBody .layer-row').length === 2, 'layer list refreshed');
   const more = doc.querySelectorAll('#trayBody .layer-row .mini-btn')[1];
@@ -219,7 +221,7 @@ async function run() {
   Q.UI.closeModal();
   const blendSel = doc.querySelectorAll('#trayBody .layer-row select');
   ok(blendSel.length >= 0, 'layer rows built without errors');
-  const mergeChip=Array.from(doc.querySelectorAll('#trayBody .chip')).find(x=>x.textContent.includes('Merge'));
+  const mergeChip=doc.querySelector('#trayBody [aria-label="Merge layer down"]');
   mergeChip.click(); ok(App.doc.layers.length===1, 'layer tray merge action works');
   App.undo(); ok(App.doc.layers.length===2, 'layer tray merge can be undone');
   Q.UI.closeTray();
@@ -255,7 +257,10 @@ async function run() {
   click('#btnTimeline');
   ok(!doc.querySelector('#timeline').classList.contains('hidden'), 'timeline opens');
   ok(doc.querySelectorAll('#timeline .tl-frame').length === 1, 'one frame thumbnail');
-  ok(!!doc.querySelector('#timeline .tl-head') && !!doc.querySelector('#timeline .tl-more') && doc.querySelector('#timeline .tl-more').textContent.includes('Batch frames'), 'timeline separates main and secondary controls');
+  ok(!!doc.querySelector('#timeline .tl-head') && !!doc.querySelector('#timeline .tl-more [aria-label="Batch frames"]'), 'timeline separates main and secondary controls');
+  ok(doc.querySelectorAll('#timeline .tl-categories .icon-chip').length===3 && !!doc.querySelector('#timeline .tl-more [aria-label="Frame options"] svg'), 'timeline uses accessible, distinct icon categories and tools');
+  click('#timeline [aria-label="Animation settings tools"]'); ok(!!doc.querySelector('#timeline .tl-more [aria-label="Animation settings"]'), 'timeline category reveals settings');
+  click('#timeline [aria-label="Frame tools"]');
   click('#timeline .tl-add');
   ok(App.doc.frames.length === 2, 'frame added');
   ok(App.doc.onion === true, 'onion skin switched on automatically');
@@ -424,9 +429,10 @@ async function run() {
 
   console.log('effects');
   Q.UI.effectsDialog();
-  ok(!!doc.querySelector('#modalBody select[aria-label="Effect"]'), 'effects dialog opens');
-  ok(!!doc.querySelector('#modalBody option[value="motion"]') && !!doc.querySelector('#modalBody option[value="bloom"]'), 'advanced effects appear in the effects list');
-  ok(!!doc.querySelector('#modalBody option[value="pixelate"]') && !!doc.querySelector('#modalBody option[value="posterize"]') && !!doc.querySelector('#modalBody option[value="solarize"]'), 'new effects appear in the effects list');
+  ok(doc.querySelectorAll('#modalBody .effect-card').length===19, 'effects dialog shows visual thumbnails');
+  ok(!!doc.querySelector('#modalBody .effect-card[data-effect="motion"] canvas') && !!doc.querySelector('#modalBody .effect-card[data-effect="bloom"] canvas'), 'advanced effects have rendered previews');
+  ok(!!doc.querySelector('#modalBody .effect-card[data-effect="pixelate"]') && !!doc.querySelector('#modalBody .effect-card[data-effect="posterize"]') && !!doc.querySelector('#modalBody .effect-card[data-effect="solarize"]'), 'new effects appear in the visual list');
+  click('#modalBody .effect-card[data-effect="invert"]'); ok(doc.querySelector('#modalBody .effect-card[data-effect="invert"]').getAttribute('aria-pressed')==='true' && doc.querySelector('.effect-selected').textContent.includes('Invert'), 'effect thumbnail can be selected accessibly');
   const effectHistory = App.doc.history.undoStack.length;
   App.doc.activeCel(true);
   click('#modalBody .btn.primary'); await wait(70);
@@ -683,7 +689,7 @@ async function run() {
   console.log('2.3 motion guide and image import');
   App.createDoc(64,64,'Motion guide'); App.addFrame(false);
   if (doc.querySelector('#timeline').classList.contains('hidden')) Q.UI.toggleTimeline();
-  ok(doc.querySelector('#timeline .tl-more').textContent.includes('Motion guide'), 'motion guide is accessible in timeline');
+  click('#timeline [aria-label="Animation guides and audio"]'); ok(!!doc.querySelector('#timeline .tl-more [aria-label="Motion guide"]'), 'motion guide is accessible in timeline');
   Q.UI.motionGuideDialog(); let guideAction=label=>Array.from(doc.querySelectorAll('#modalBody button')).find(x=>x.textContent===label).click();
   guideAction('Draw or replace guide'); const gp1=App.view.toScreen(10,10), gp2=App.view.toScreen(40,40);
   pointer(view,'pointerdown',gp1.x,gp1.y,{id:210}); pointer(view,'pointermove',gp2.x,gp2.y,{id:210}); pointer(view,'pointerup',gp2.x,gp2.y,{id:210});
@@ -695,7 +701,7 @@ async function run() {
   await App.saveNow(false); const guideReload=await Q.Store.load(App.doc.id); ok(guideReload.motionGuideVisible && guideReload.motionGuide.length===2, 'motion guide survives save and reopen');
   Q.UI.motionGuideDialog(); guideAction('Draw or replace guide'); pointer(view,'pointerdown',gp1.x,gp1.y,{id:212}); pointer(view,'pointermove',gp2.x,gp2.y,{id:212}); pointer(view,'pointercancel',gp2.x,gp2.y,{id:212});
   ok(App.doc.motionGuide.length===2 && !App.view.motionDraft, 'cancelled guide leaves previous guide unchanged');
-  click('#btnLayers'); ok(doc.querySelector('#trayBody').textContent.includes('Import'), 'image import is accessible from layers');
+  click('#btnLayers'); click('#trayBody [aria-label="Add layer or image"]'); ok(doc.querySelector('#modalBody').textContent.includes('Import image'), 'image import is accessible from layers'); Q.UI.closeModal();
   const input=doc.querySelector('#imageImport'), oldClick=input.click, oldReader=win.FileReader, oldImage=win.Image; let picked=0;
   input.click=()=>{picked++;}; Q.UI.pickImage(); ok(picked===1 && Q.UI.imageTarget.frame===App.doc.frames[App.doc.activeFrame], 'image import opens file picker for current frame');
   win.FileReader=class { readAsDataURL() { this.result='data:image/png;base64,AAAA'; setTimeout(()=>this.onload(),0); } };
@@ -763,6 +769,27 @@ async function run() {
   const migrated=JSON.parse(win.localStorage.getItem('qalam-projects')); delete migrated[originalDoc.id].audioTrack; win.localStorage.setItem('qalam-projects',JSON.stringify(migrated));
   const withoutAudio=await Q.Store.load(originalDoc.id); ok(withoutAudio && withoutAudio.audioTrack===null, 'older saved projects open without an audio track');
   audioInput.click=originalAudioClick; win.FileReader=oldReader2; win.Audio=oldAudio;
+
+
+  console.log('2.6 compact controls and fill layers');
+  App.createDoc(64,64,'Fill layers'); App.addFrame(false);
+  if (doc.querySelector('#timeline').classList.contains('hidden')) Q.UI.toggleTimeline();
+  click('#timeline [aria-label="Frame tools"]'); ok(!!doc.querySelector('#timeline [aria-label="Blank frame"] svg') && !!doc.querySelector('#timeline [aria-label="Next frame"] svg'), 'frame controls use labelled SVG icons');
+  click('#timeline [aria-label="Animation guides and audio"]'); ok(!!doc.querySelector('#timeline [aria-label="Motion guide"]') && !!doc.querySelector('#timeline [aria-label="Manage audio"]'), 'assist category reveals guide and audio tools');
+  click('#timeline [aria-label="Animation settings tools"]'); ok(!!doc.querySelector('#timeline [aria-label="Toggle onion skin"]'), 'settings category reveals onion tool');
+  if (!doc.querySelector('#tray').classList.contains('hidden')) Q.UI.closeTray(); click('#btnLayers');
+  click('#trayBody [aria-label="Add layer or image"]'); Array.from(doc.querySelectorAll('#modalBody button')).find(x=>x.textContent==='Gradient').click();
+  const start=doc.querySelector('input[aria-label="Start colour"]'), end=doc.querySelector('input[aria-label="End colour"]'); start.value='not-a-colour'; click('#modalBody .btn.primary');
+  ok(!!doc.querySelector('.canvas-error').textContent && App.doc.layers.length===1, 'gradient dialog rejects invalid hex without adding layer');
+  start.value='#f00'; end.value='#00f'; doc.querySelector('select[aria-label="Gradient direction"]').value='vertical'; click('#modalBody .btn.primary');
+  ok(App.doc.layers.length===2 && App.doc.layer().name==='Gradient' && App.doc.cel(1,1,false) && !App.doc.cel(0,1,false), 'gradient dialog creates a layer only in the current frame');
+  App.undo(); ok(App.doc.layers.length===1, 'gradient layer creation can be undone'); App.redo();
+  await App.saveNow(false); const gradReload=await Q.Store.load(App.doc.id); ok(gradReload.layers.length===2 && gradReload.layer().name==='Gradient' && !!gradReload.activeCel(false), 'gradient layer survives save and reopen');
+  click('#trayBody [aria-label="Add layer or image"]'); Array.from(doc.querySelectorAll('#modalBody button')).find(x=>x.textContent==='Solid colour').click();
+  doc.querySelector('input[aria-label="Colour"]').value='#336699'; click('#modalBody .btn.primary'); ok(App.doc.layer().name==='Solid colour' && App.doc.layers.length===3, 'solid colour option creates a layer');
+  Q.UI.closeTray(); click('#btnMenu'); const sections=[...doc.querySelectorAll('#trayBody details.action-group')];
+  ok(sections.length===5 && sections[0].open && !sections[3].open, 'actions use expandable categories'); sections[3].open=true;
+  ok(sections[3].open && sections[3].textContent.includes('Export GIF'), 'export category expands to reveal export actions'); Q.UI.closeTray();
 
   await App.saveNow(false);
   console.log(failures ? `\n${failures} check(s) FAILED` : '\nall UI checks passed');
