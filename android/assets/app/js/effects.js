@@ -102,6 +102,21 @@
     }
   }
 
+  function pixelate(data,width,height,size) {
+    // Each block averages premultiplied colour to avoid dark transparent fringes.
+    for (let y=0;y<height;y+=size) for (let x=0;x<width;x+=size) {
+      const right=Math.min(width,x+size), bottom=Math.min(height,y+size);
+      let alpha=0,r=0,g=0,b=0,count=0;
+      for (let yy=y;yy<bottom;yy++) for (let xx=x;xx<right;xx++) {
+        const i=(yy*width+xx)*4,a=data[i+3]; alpha+=a; r+=data[i]*a; g+=data[i+1]*a; b+=data[i+2]*a; count++;
+      }
+      const outA=alpha/count, outR=alpha ? r/alpha : 0, outG=alpha ? g/alpha : 0, outB=alpha ? b/alpha : 0;
+      for (let yy=y;yy<bottom;yy++) for (let xx=x;xx<right;xx++) {
+        const i=(yy*width+xx)*4; data[i]=outR; data[i+1]=outG; data[i+2]=outB; data[i+3]=outA;
+      }
+    }
+  }
+
   Q.applyPixelEffect = function (image, type, amount) {
     const data = image.data, w = image.width, h = image.height;
     const strength = Q.clamp(Number(amount) || 0, 0, 1);
@@ -114,7 +129,8 @@
     if (type === 'sharpen') { sharpen(data, w, h, strength); return image; }
     if (type === 'bloom') { bloom(data, w, h, strength); return image; }
     if (type === 'glitch') { glitch(data, w, h, strength); return image; }
-    const supported = ['grayscale', 'invert', 'sepia', 'brightness', 'saturation', 'contrast', 'hue', 'noise', 'threshold', 'halftone', 'chromatic'];
+    if (type === 'pixelate') { pixelate(data,w,h,Math.max(2,Math.round(2+strength*30))); return image; }
+    const supported = ['grayscale', 'invert', 'sepia', 'brightness', 'saturation', 'contrast', 'hue', 'noise', 'threshold', 'halftone', 'chromatic', 'posterize', 'solarize'];
     const original = type === 'chromatic' ? new Uint8ClampedArray(data) : null;
     if (supported.indexOf(type) < 0) throw new Error('Unknown effect');
     for (let i = 0; i < data.length; i += 4) {
@@ -136,6 +152,8 @@
         const pixel=i/4, x=pixel%w, y=Math.floor(pixel/w), matrix=[0,8,2,10,12,4,14,6,3,11,1,9,15,7,13,5];
         nr = ng = nb = gray >= (matrix[(y%4)*4+(x%4)]+0.5)*16 ? 255 : 0;
       }
+      else if (type === 'posterize') { nr=Math.round(r/85)*85; ng=Math.round(g/85)*85; nb=Math.round(b/85)*85; }
+      else if (type === 'solarize') { nr=r>=128 ? 255-r : r; ng=g>=128 ? 255-g : g; nb=b>=128 ? 255-b : b; }
       else if (type === 'threshold') { nr = ng = nb = gray >= 128 ? 255 : 0; }
       else if (type === 'noise') { const n = (Math.random() - .5) * 160; nr = r+n; ng = g+n; nb = b+n; }
       data[i] = r + (nr-r)*strength;

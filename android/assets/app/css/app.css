@@ -394,3 +394,9 @@ select, .select {
 /* Frames outside a custom playback range remain editable. */
 .tl-frame.out-range { opacity: .48; }
 .tl-frame.out-range.on { opacity: .8; }
+
+.frame-skipped { position: absolute; right: 2px; bottom: 2px; background: #24202bdf; color: #fff0ca; font-size: 8px; padding: 2px 3px; border-radius: 4px; }
+.tl-frame.skipped { filter: saturate(.35); }
+.tl-scrub { display: flex; align-items: center; gap: 8px; margin-top: 6px; }
+.tl-scrub input { flex: 1; min-width: 0; }
+.tl-position { color: #e2e2e9; font-size: 11px; white-space: nowrap; }

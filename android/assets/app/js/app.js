@@ -284,6 +284,7 @@
     App.view.dirty = true;
     Q.UI.syncDoc();
     Q.UI.refreshTimeline();
+    App.markDirty();
   };
 
   App.moveFrame = function (i, dir) {
@@ -310,6 +311,16 @@
     if (mode === 'pingpong') for (let i=end-1;i>start;i--) order.push(i);
     return order;
   };
+  Q.playableFrames = function (doc) {
+    const bounds=Q.playbackBounds(doc), frames=[];
+    for (let i=bounds.start;i<=bounds.end;i++) if (!doc.frames[i].skipped) frames.push(i);
+    return frames;
+  };
+  Q.playbackOrder = function (doc) {
+    const frames=Q.playableFrames(doc), result=frames.slice();
+    if (doc.playMode === 'pingpong') for (let i=frames.length-2;i>0;i--) result.push(frames[i]);
+    return result;
+  };
   Q.frameDelayMs = function (doc, index) {
     return 1000 * (doc.frames[index].duration || 1) / Q.clamp(doc.fps, 1, 30);
   };
@@ -319,28 +330,26 @@
     if (!d) return;
     if (App.playing) { App.stopPlay(); return; }
     if (d.frames.length < 2) { Q.toast('Add a frame first'); return; }
-    App.playing = true;
-    App.view.locked = true;
-    const bounds=Q.playbackBounds(d);
-    let frame = d.activeFrame < bounds.start || d.activeFrame > bounds.end ? bounds.start : d.activeFrame, direction = 1;
-    d.activeFrame=frame; App.view.dirty=true;
-    const step = function () {
+    const frames=Q.playableFrames(d);
+    if (!frames.length) { Q.toast('No included frames in the playback range',4000); return; }
+    App.playing = true; App.view.locked = true;
+    let position=frames.indexOf(d.activeFrame), direction=1;
+    if (position<0) position=0;
+    d.activeFrame=frames[position]; App.view.dirty=true;
+    const step=function () {
       if (!App.playing) return;
-      if (d.playMode === 'once' && frame >= bounds.end) { App.stopPlay(); return; }
+      if (d.playMode === 'once' && position === frames.length-1) { App.stopPlay(); return; }
       if (d.playMode === 'pingpong') {
-        if (bounds.start !== bounds.end) {
-          if (frame + direction > bounds.end || frame + direction < bounds.start) direction *= -1;
-          frame += direction;
+        if (frames.length>1) {
+          if (position+direction>=frames.length || position+direction<0) direction*=-1;
+          position+=direction;
         }
-      } else frame = frame >= bounds.end ? bounds.start : frame+1;
-      d.activeFrame = frame;
-      App.view.dirty = true;
-      Q.UI.highlightFrame(frame);
-      App.playTimer = setTimeout(step, Q.frameDelayMs(d, frame));
+      } else position=position>=frames.length-1 ? 0 : position+1;
+      d.activeFrame=frames[position]; App.view.dirty=true; Q.UI.highlightFrame(d.activeFrame);
+      App.playTimer=setTimeout(step,Q.frameDelayMs(d,d.activeFrame));
     };
-    App.playTimer = setTimeout(step, Q.frameDelayMs(d, frame));
-    Q.UI.refreshTimeline();
-    Q.toast('Playing ' + d.fps + ' fps');
+    App.playTimer=setTimeout(step,Q.frameDelayMs(d,d.activeFrame));
+    Q.UI.refreshTimeline(); Q.toast('Playing '+d.fps+' fps');
   };
 
   App.stopPlay = function () {
@@ -594,7 +603,8 @@
     const canvas = Q.canvas(w, h), ctx = canvas.getContext('2d');
     if (!canvas.captureStream) { Q.toast('Video capture is not supported on this device', 4000); return; }
     let stream, recorder, timer, finished = false;
-    const chunks = [], fps = Q.clamp(d.fps, 1, 30), bounds=Q.playbackBounds(d), order=Q.animationOrder(d.frames.length,d.playMode,bounds.start,bounds.end);
+    const chunks = [], fps = Q.clamp(d.fps, 1, 30), order=Q.playbackOrder(d);
+    if (!order.length) { Q.toast('No included frames in the playback range',4000); return; }
     function cleanup() { clearTimeout(timer); if (stream) stream.getTracks().forEach(function (track) { track.stop(); }); Q.UI.endProgress(); }
     function fail(message) { if (finished) return; finished = true; try { if (recorder && recorder.state !== 'inactive') recorder.stop(); } catch (e) {} cleanup(); Q.toast(message, 4000); }
     function paint(index) {
@@ -640,10 +650,11 @@
     const w = Math.max(2, Math.round(d.width * scale));
     const h = Math.max(2, Math.round(d.height * scale));
 
-    const bounds=Q.playbackBounds(d);
+    const included=Q.playableFrames(d), order=Q.playbackOrder(d);
+    if (!order.length) { Q.toast('No included frames in the playback range',4000); return; }
     Q.UI.progress('Rendering animation', 'Building selected playback range…', 0);
     const frames = [];
-    for (let i = bounds.start; i <= bounds.end; i++) {
+    for (const i of included) {
       const cv = Q.canvas(w, h);
       const c = cv.getContext('2d');
       c.fillStyle = d.bg;
@@ -655,7 +666,6 @@
       frames[i] = cv;
     }
 
-    const order = Q.animationOrder(d.frames.length, d.playMode,bounds.start,bounds.end);
     Q.encodeGif(order.map(function (i) { return frames[i]; }), {
       delayCs: Math.round(100 / d.fps),
       delaysCs: order.map(function (i) { return Math.max(2, Math.round(Q.frameDelayMs(d, i) / 10)); }),

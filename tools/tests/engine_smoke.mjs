@@ -322,4 +322,37 @@ const sheet=Q.spriteSheetLayout({width:64,height:32,frames:[1,2,3]},2,0.5);
 ok(sheet.width===64 && sheet.height===32 && sheet.rows===2, 'sprite sheet layout handles partial rows and scale');
 ok(Q.spriteSheetLayout({width:4096,height:4096,frames:[1,2,3,4]},2,1)===null, 'sprite sheet rejects oversized output');
 
+
+console.log('animation assist');
+const old=new Q.Doc({width:8,height:8,onionFrames:3});
+ok(old.onionPrevFrames===3 && old.onionNextFrames===3, 'legacy onion count migrates to both directions');
+const anim=new Q.Doc({width:8,height:8}); for(let i=0;i<4;i++) anim.addFrame(false);
+anim.activeFrame=2; anim.onionPrevFrames=2; anim.onionNextFrames=1; anim.setFrameSkipped(1,true);
+let neighbors=Q.onionNeighbors(anim);
+ok(neighbors.previous.join(',')==='0' && neighbors.next.join(',')==='3', 'onion neighbours skip excluded frames by default');
+anim.onionIncludeSkipped=true; neighbors=Q.onionNeighbors(anim);
+ok(neighbors.previous.join(',')==='1,0' && neighbors.next.join(',')==='3', 'onion assist can include skipped frames');
+anim.onionPrevFrames=0; ok(Q.onionNeighbors(anim).previous.length===0, 'previous onion count can be set to zero');
+anim.history.undo(); ok(!anim.frames[1].skipped, 'frame skip is undoable'); anim.history.redo();
+anim.activeFrame=1; anim.addFrame(true);
+ok(anim.frames[2].skipped, 'duplicating a skipped frame keeps its skip setting'); anim.history.undo();
+anim.batchFrames(0,2,'skip'); ok(anim.frames.slice(0,3).every(f=>f.skipped), 'batch skip excludes chosen frames');
+anim.history.undo(); ok(!anim.frames[0].skipped && anim.frames[1].skipped, 'batch skip undo restores individual frame flags');
+anim.batchFrames(0,2,'include'); ok(anim.frames.slice(0,3).every(f=>!f.skipped), 'batch include re-enables frames');
+anim.setFrameSkipped(0,true); anim.batchFrames(0,2,'reverse');
+ok(anim.frames[2].skipped && !anim.frames[0].skipped, 'batch reverse moves frame skip flags with their frames');
+anim.batchFrames(0,2,'duplicate'); ok(anim.frames[5].skipped && !anim.frames[3].skipped, 'batch duplicate preserves each skip flag');
+anim.history.undo(); anim.history.undo(); ok(anim.frames[0].skipped && !anim.frames[2].skipped && anim.frames.length===5, 'undo restores original skipped frames after batch edits');
+anim.setFrameDuration(0,60); ok(anim.frames[0].duration===60, 'frame holds support up to sixty ticks');
+anim.setFrameDuration(0,200); ok(anim.frames[0].duration===60, 'frame hold is capped at sixty ticks');
+
+
+console.log('additional effects');
+const poster={width:1,height:1,data:new Uint8ClampedArray([10,100,220,127])}; Q.applyPixelEffect(poster,'posterize',1);
+ok(poster.data.join(',')==='0,85,255,127', 'posterize quantizes colour while preserving alpha');
+const solar={width:1,height:1,data:new Uint8ClampedArray([64,128,240,255])}; Q.applyPixelEffect(solar,'solarize',1);
+ok(solar.data.join(',')==='64,127,15,255', 'solarize inverts bright channels');
+const block={width:3,height:1,data:new Uint8ClampedArray([255,0,0,255,0,0,0,0,0,255,0,255])}; Q.applyPixelEffect(block,'pixelate',0.01);
+ok(block.data[0]===255 && block.data[3]===128 && block.data[4]===255 && block.data[7]===128 && block.data[9]===255, 'pixelate averages premultiplied colour and handles partial blocks');
+
 console.log(`\nall ${checks} engine checks passed`);

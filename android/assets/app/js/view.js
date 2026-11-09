@@ -153,20 +153,10 @@
     c.fillRect(0, 0, doc.width, doc.height);
     c.restore();
 
-    // onion skin
-    if (doc.onion && doc.frames.length > 1 && !(Q.App && Q.App.playing)) {
-      const count = Math.min(doc.onionFrames || 1, 4);
-      // Draw distant cels first and fade them to reduce visual clutter.
-      for (let n = count; n >= 1; n--) {
-        const prev = doc.activeFrame - n, next = doc.activeFrame + n;
-        const alpha = doc.onionAlpha * 0.85 / n;
-        if (prev >= 0) this._drawOnion(c, prev, doc.onionPrevColor, alpha);
-        if (next < doc.frames.length) this._drawOnion(c, next, doc.onionNextColor, alpha);
-      }
-    }
-
-    // artwork
+    // Onion skins can appear beneath or above the current artwork.
+    if (!doc.onionAbove) this._drawOnionSkins(c,doc);
     doc.composite(c, doc.activeFrame);
+    if (doc.onionAbove) this._drawOnionSkins(c,doc);
 
     this._drawGuide(c, doc);
 
@@ -183,6 +173,17 @@
     c.lineWidth = 1 / this.scale;
     c.strokeStyle = 'rgba(255,255,255,0.12)';
     c.strokeRect(0, 0, doc.width, doc.height);
+  };
+
+  View.prototype._drawOnionSkins = function (c,doc) {
+    if (!doc.onion || doc.frames.length<2 || (Q.App && Q.App.playing)) return;
+    const neighbors=Q.onionNeighbors(doc);
+    // Draw distant eligible cels first; the nearest has the strongest tint.
+    for (let n=Math.max(neighbors.previous.length,neighbors.next.length)-1;n>=0;n--) {
+      const alpha=doc.onionAlpha*0.85/(n+1);
+      if (neighbors.previous[n] != null) this._drawOnion(c,neighbors.previous[n],doc.onionPrevColor,alpha);
+      if (neighbors.next[n] != null) this._drawOnion(c,neighbors.next[n],doc.onionNextColor,alpha);
+    }
   };
 
   View.prototype._drawGuide = function (c, doc) {
@@ -227,11 +228,12 @@
     g.globalAlpha = 1;
     g.globalCompositeOperation = 'source-over';
     g.clearRect(0, 0, cv.width, cv.height);
-    doc.composite(g, frameIdx);
-    g.globalCompositeOperation = 'source-in';
-    g.fillStyle = tint;
-    g.fillRect(0, 0, cv.width, cv.height);
-    g.globalCompositeOperation = 'source-over';
+    doc.composite(g, frameIdx, doc.onionLayerOnly ? {onlyLayer:doc.activeLayer} : {});
+    if (!doc.onionOriginalColor) {
+      g.globalCompositeOperation = 'source-in';
+      g.fillStyle = tint; g.fillRect(0, 0, cv.width, cv.height);
+      g.globalCompositeOperation = 'source-over';
+    }
 
     c.save();
     c.globalAlpha = alpha;

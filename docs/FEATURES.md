@@ -34,19 +34,20 @@ The supplied feature inventory is a roadmap, not a list of completed work.
   reordering, undo/redo or frame deletion.
 - Hold-to-snap QuickShape for lines and ellipses. Rectangles, arcs and shape editing
   are not implemented.
-- Frame timeline, add/duplicate/delete, preview, 1–30 fps, loop, ping-pong and
-  one-shot playback, per-frame holds, and 1–4 previous/next onion frames with
-  adjustable opacity and colours. A saved, undoable playback range applies to preview,
-  GIF and MP4. Batch operations can label, hold, reverse or duplicate a contiguous
-  range in a single undo step. Labels are tags, not nested frame/layer groups. Range
-  boundaries are positions, so reordering changes which drawings fall inside them.
+- Frame timeline and scrubber, 1–30 fps, loop, ping-pong and one-shot playback,
+  holds of 1–60 ticks and independent 0–4 previous/next onions. Onion settings cover
+  tint/original colours, active/all visible layers, above/below artwork and whether
+  skipped frames appear. Undoable, saved frame skips and playback ranges apply to
+  preview, GIF and MP4. Batch label, hold, reverse, duplicate, skip or include a
+  range in one undo step. Labels are tags, not nested groups; range boundaries are
+  positions, so reordering changes which drawings fall inside them.
 - Undoable per-frame layer effects: soft box blur, horizontal motion blur, sharpen,
-  bloom, glitch, grayscale, invert, sepia,
+  bloom, glitch, pixelate, posterize, solarize, grayscale, invert, sepia,
   brightness, saturation, contrast, hue shift, noise, chromatic shift, halftone
-  dither and threshold. These are basic destructive pixel effects, not a full
-  Procreate adjustment or live preview system.
+  dither and threshold. These are destructive pixel effects, not a full Procreate
+  adjustment or live preview system.
 - Opaque or transparent PNG, numbered PNG sequence, PNG sprite sheet and GIF export.
-  Sprite sheets and PNG sequences export all source frames once, without hold timing
+  Sprite sheets and PNG sequences export all source frames once, including skipped frames, without hold timing
   or ping-pong repeats; sprite sheets are limited to 8192 px per side and 16,777,216
   pixels. PNG sequences contain one image per
   frame and do not include hold timing metadata. MP4 export records one loop in real time only when the Android
@@ -63,4 +64,4 @@ DPI settings, timelapse, gallery stacks, PSD/Procreate/PDF/TIFF compatibility, b
 import/export, and most advanced colour-management and accessibility features.
 Apple Pencil-specific controls are not applicable on Android. See the original
 [Procreate analysis](procreate-analysis.md) for background; its feature matrix
-predates version 1.9.
+predates version 2.0.

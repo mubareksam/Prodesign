@@ -15,11 +15,11 @@
     notify() { if (this.onchange) this.onchange(); }
     structSnapshot() {
       const d = this.doc;
-      return { layers: d.layers.map(l => ({ ...l })), frames: d.frames.map(f => ({cels: f.cels.slice(), duration: f.duration || 1, group: f.group || ''})), activeLayer: d.activeLayer, activeFrame: d.activeFrame, bg: d.bg, playRange: d.playRange ? {...d.playRange} : null };
+      return { layers: d.layers.map(l => ({ ...l })), frames: d.frames.map(f => ({cels: f.cels.slice(), duration: f.duration || 1, group: f.group || '', skipped: !!f.skipped})), activeLayer: d.activeLayer, activeFrame: d.activeFrame, bg: d.bg, playRange: d.playRange ? {...d.playRange} : null };
     }
     applyStruct(s) {
       const d = this.doc;
-      d.layers = s.layers.map(l => ({ ...l })); d.frames = s.frames.map(f => ({ cels: f.cels.slice(), duration: f.duration || 1, group: f.group || '' }));
+      d.layers = s.layers.map(l => ({ ...l })); d.frames = s.frames.map(f => ({ cels: f.cels.slice(), duration: f.duration || 1, group: f.group || '', skipped: !!f.skipped }));
       d.bg = s.bg || '#ffffff'; d.playRange = s.playRange ? {...s.playRange} : null;
       d.activeLayer = Q.clamp(s.activeLayer, 0, d.layers.length - 1); d.activeFrame = Q.clamp(s.activeFrame, 0, d.frames.length - 1);
     }
@@ -60,6 +60,10 @@
       this.fps = opts.fps || 12; this.bg = opts.bg || '#ffffff'; this.onion = !!opts.onion; this.onionAlpha = opts.onionAlpha == null ? 0.32 : opts.onionAlpha;
       this.playRange = opts.playRange && Number.isInteger(opts.playRange.start) && Number.isInteger(opts.playRange.end) ? {start:opts.playRange.start,end:opts.playRange.end} : null;
       this.playMode = opts.playMode || 'loop'; this.onionFrames = Q.clamp(opts.onionFrames || 1, 1, 4);
+      this.onionPrevFrames = Q.clamp(opts.onionPrevFrames == null ? this.onionFrames : Math.round(opts.onionPrevFrames),0,4);
+      this.onionNextFrames = Q.clamp(opts.onionNextFrames == null ? this.onionFrames : Math.round(opts.onionNextFrames),0,4);
+      this.onionIncludeSkipped = !!opts.onionIncludeSkipped; this.onionLayerOnly = !!opts.onionLayerOnly;
+      this.onionOriginalColor = !!opts.onionOriginalColor; this.onionAbove = !!opts.onionAbove;
       this.onionPrevColor = opts.onionPrevColor || '#ff5a7a'; this.onionNextColor = opts.onionNextColor || '#4fd1c5'; this.guide = Object.assign({type:'off', symmetry:'off', spacing:100, horizon:0.5, spread:0.5}, opts.guide || {});
       this.layers = [makeLayer('Layer 1')]; this.frames = [{ cels:[null], duration:1, group:'' }]; this.activeFrame = 0; this.activeLayer = 0;
       this.history = new History(this); this.dirty = true;
@@ -118,8 +122,9 @@
       });
     }
     clearLayer(i) { if (i < 0 || i >= this.layers.length) return; if (this.layers[i].locked || this.layers[i].alphaLocked) { Q.toast('Unlock the layer and alpha first'); return; } return this.history.struct(function () { for (const f of this.frames) f.cels[i] = null; }); }
-    addFrame(duplicate) { return this.history.struct(function () { const at = this.activeFrame+1; this.frames.splice(at,0,{ cels:duplicate ? this.cloneCels(this.frames[this.activeFrame].cels) : this.blankCels(), duration: duplicate ? (this.frames[this.activeFrame].duration || 1) : 1, group: duplicate ? (this.frames[this.activeFrame].group || '') : '' }); this.activeFrame=at; }); }
-    setFrameDuration(i, duration) { if (!this.frames[i]) return; return this.history.struct(function () { this.frames[i].duration = Q.clamp(Math.round(duration) || 1,1,12); }); }
+    addFrame(duplicate) { return this.history.struct(function () { const at = this.activeFrame+1; this.frames.splice(at,0,{ cels:duplicate ? this.cloneCels(this.frames[this.activeFrame].cels) : this.blankCels(), duration: duplicate ? (this.frames[this.activeFrame].duration || 1) : 1, group: duplicate ? (this.frames[this.activeFrame].group || '') : '', skipped: duplicate ? !!this.frames[this.activeFrame].skipped : false }); this.activeFrame=at; }); }
+    setFrameDuration(i, duration) { if (!this.frames[i]) return; return this.history.struct(function () { this.frames[i].duration = Q.clamp(Math.round(duration) || 1,1,60); }); }
+    setFrameSkipped(i,skipped) { if (!this.frames[i] || !!this.frames[i].skipped === !!skipped) return; return this.history.struct(function () { this.frames[i].skipped=!!skipped; }); }
     setFrameGroup(i, group) { if (!this.frames[i]) return; const name = String(group || '').trim().slice(0, 32); if (this.frames[i].group === name) return; return this.history.struct(function () { this.frames[i].group = name; }); }
     deleteFrame(i) {
       if (this.frames.length < 2) { Q.toast('A canvas needs at least one frame'); return; }
@@ -141,14 +146,16 @@
     batchFrames(start,end,operation,value) {
       if (!Number.isInteger(start) || !Number.isInteger(end) || start<0 || end<start || end>=this.frames.length) return false;
       if (operation === 'duplicate' && this.frames.length + end-start+1 > 60) return false;
-      if (!['label','hold','reverse','duplicate'].includes(operation)) return false;
+      if (!['label','hold','reverse','duplicate','skip','include'].includes(operation)) return false;
       let copies;
-      if (operation === 'duplicate') copies=this.frames.slice(start,end+1).map(f=>({cels:this.cloneCels(f.cels),duration:f.duration || 1,group:f.group || ''}));
+      if (operation === 'duplicate') copies=this.frames.slice(start,end+1).map(f=>({cels:this.cloneCels(f.cels),duration:f.duration || 1,group:f.group || '',skipped:!!f.skipped}));
       this.history.struct(function () {
         if (operation === 'label') {
           const name=String(value || '').trim().slice(0,32); for (let i=start;i<=end;i++) this.frames[i].group=name;
         } else if (operation === 'hold') {
-          const hold=Q.clamp(Math.round(value) || 1,1,12); for (let i=start;i<=end;i++) this.frames[i].duration=hold;
+          const hold=Q.clamp(Math.round(value) || 1,1,60); for (let i=start;i<=end;i++) this.frames[i].duration=hold;
+        } else if (operation === 'skip' || operation === 'include') {
+          for (let i=start;i<=end;i++) this.frames[i].skipped=operation === 'skip';
         } else if (operation === 'reverse') {
           const reversed=this.frames.slice(start,end+1).reverse(); this.frames.splice(start,reversed.length,...reversed);
           if (this.activeFrame>=start && this.activeFrame<=end) this.activeFrame=start+end-this.activeFrame;
@@ -163,7 +170,7 @@
     setLayerPropLive(i,key,value) { if (this.layers[i]) this.layers[i][key]=value; }
     composite(ctx,frameIdx,opts = {}) {
       const f = this.frames[frameIdx]; if (!f) return;
-      this.layers.forEach((l,i) => { if ((!l.visible && !opts.includeHidden) || !f.cels[i]) return; ctx.save(); ctx.globalAlpha=(opts.alpha == null ? 1 : opts.alpha)*(opts.ignoreOpacity ? 1 : l.opacity); ctx.globalCompositeOperation=l.blend || 'source-over'; ctx.drawImage(f.cels[i],0,0); ctx.restore(); });
+      this.layers.forEach((l,i) => { if ((opts.onlyLayer != null && i !== opts.onlyLayer) || (!l.visible && !opts.includeHidden) || !f.cels[i]) return; ctx.save(); ctx.globalAlpha=(opts.alpha == null ? 1 : opts.alpha)*(opts.ignoreOpacity ? 1 : l.opacity); ctx.globalCompositeOperation=l.blend || 'source-over'; ctx.drawImage(f.cels[i],0,0); ctx.restore(); });
     }
     renderFrame(canvas,frameIdx,opts = {}) {
       const c = canvas.getContext('2d'); c.setTransform(1,0,0,1,0,0); c.globalAlpha=1; c.globalCompositeOperation='source-over'; c.clearRect(0,0,canvas.width,canvas.height);
@@ -178,5 +185,16 @@
     layerThumbnail(i,size = 46) { const scale=size/Math.max(this.width,this.height), cv=Q.canvas(this.width*scale,this.height*scale), cel=this.cel(this.activeFrame,i,false); if (cel) cv.getContext('2d').drawImage(cel,0,0,cv.width,cv.height); return cv; }
     memoryMB() { return Math.round(this.frames.reduce((n,f) => n+f.cels.filter(Boolean).length,0)*this.width*this.height*4/(1024*1024)); }
   }
+  Q.onionNeighbors = function (doc) {
+    function collect(direction,limit) {
+      const out=[]; let i=doc.activeFrame+direction;
+      while (i>=0 && i<doc.frames.length && out.length<limit) {
+        if (doc.onionIncludeSkipped || !doc.frames[i].skipped) out.push(i);
+        i+=direction;
+      }
+      return out;
+    }
+    return {previous:collect(-1,doc.onionPrevFrames),next:collect(1,doc.onionNextFrames)};
+  };
   Q.Doc=Doc; Q.History=History; Q.makeLayer=makeLayer;
 })();

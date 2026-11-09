@@ -8,11 +8,11 @@ brushes, layers with blend modes, a colour wheel, a frame timeline with onion sk
 Procreate's gesture vocabulary, PNG/GIF export and device-dependent MP4 export — all offline, with no account and
 no network permissions at all.
 
-- Package: `com.qalam.studio` · version 1.9 (versionCode 10)
+- Package: `com.qalam.studio` · version 2.0 (versionCode 11)
 - minSdk 26 (Android 8.0) · targetSdk 33 · armeabi-v7a/arm64/x86/x86_64 independent
   (everything is HTML/JS running inside the app's own `WebView`, so the APK has no
   native code)
-- APK: **`artifacts/Qalam-1.9.apk`** (~258 KB), signed with a v1+v2 scheme
+- APK: **`artifacts/Qalam-2.0.apk`** (~260 KB), signed with a v1+v2 scheme
 - The written analysis of Procreate that this app was specified from:
   [`docs/procreate-analysis.md`](procreate-analysis.md)
 
@@ -20,7 +20,7 @@ no network permissions at all.
 
 ## 1. Install
 
-1. Copy `artifacts/Qalam-1.9.apk` to the phone (USB, Drive, chat to yourself — anything).
+1. Copy `artifacts/Qalam-2.0.apk` to the phone (USB, Drive, chat to yourself — anything).
 2. Open it with the phone's file manager. Android will ask to allow installs from
    that app the first time ("Install unknown apps").
 3. Install and open **Qalam**. If an earlier Qalam version is already installed, Android should offer an update that preserves its data. Back up important artwork first. Android does not allow this app to silently uninstall itself; do not uninstall it unless you have backed up its local artwork.
@@ -78,20 +78,19 @@ Bottom bar: **Gallery · Layer · Brush · Colour · Timeline · Menu** (plus **
   their transparency. Turn it off to use erasers, clear, flip, transform or merge.
   Alpha lock does not prevent layer/frame deletion or undo/redo. It persists and
   is copied when duplicating a layer.
-- **Timeline** — add blank or duplicate frames, select frames with thumbnails or
-  the previous/next controls, play/stop and toggle onion skin. **Settings** provides
-  1–30 fps, onion opacity, 1–4 neighbouring frames, previous/next colours, loop,
-  ping-pong and one-shot playback. You can set an inclusive playback range; preview,
-  GIF and MP4 use it and preserve per-frame holds. When starting outside the range,
-  preview begins at its first frame. Frames outside the range appear dimmed but can
-  still be edited. The range uses **frame positions**, not identities, so inserting,
-  reversing or reordering frames changes which drawings occupy the range. Deletion
-  clamps it to the remaining timeline. Range changes can be undone and are saved.
-  Select a frame and tap **Frame options** to set its hold (1–12 ticks), optional
-  group label, duplicate, move or delete it. **Batch frames** applies a label or hold,
-  reverses a range, or duplicates a range after itself in one undoable operation;
-  the 60-frame limit still applies. Group labels are tags, not nested groups.
-  Onion skin switches on with a second frame and is hidden during playback.
+- **Timeline** — add blank or duplicate frames, use thumbnails, previous/next or the
+  scrub slider to select a frame, play/stop and toggle onion skin. **Settings** offers
+  1–30 fps, loop, ping-pong or one-shot, opacity, separate 0–4 previous and 0–4 next
+  onions and their colours. Choose tinted or original colours, all visible layers or
+  the active layer, above or below artwork, and whether to show skipped frames.
+  Ghosts are hidden during playback. A saved, undoable playback range limits preview,
+  GIF and MP4. It uses positions, not identities: reordering changes its contents;
+  deletion clamps it to the timeline. Outside-range frames remain editable.
+  In **Frame options**, set a 1–60 tick hold, optional group label, skip/include,
+  duplicate, move or delete. Skipped frames remain editable but are omitted from
+  playback, GIF and MP4; a range with no included frames cannot play or export.
+  **Batch frames** labels, holds, reverses, duplicates, skips or includes a range
+  in one undo step. The 60-frame limit still applies; labels are tags, not groups.
 - **Fill tool** — tap the bucket on the right rail, then tap an area. It fills the
   connected pixels on the current layer with the selected colour at full opacity;
   undo reverses the fill. **Menu → Fill settings** adjusts colour tolerance. It
@@ -125,7 +124,7 @@ Bottom bar: **Gallery · Layer · Brush · Colour · Timeline · Menu** (plus **
   symmetry and switch **Layer assist** on to mirror strokes on the selected layer.
   The grid is visual only; it does not snap strokes. Guides are not exported.
 - **Menu → Effects** — soft box blur, horizontal motion blur, sharpen, bloom,
-  glitch, grayscale, invert, sepia, brightness,
+  glitch, pixelate, posterize, solarize, grayscale, invert, sepia, brightness,
   saturation, contrast, hue shift, noise, chromatic shift, halftone dither and
   threshold. Effects permanently modify the selected layer of the current frame;
   use Undo to revert. Large canvases can take time and memory.
@@ -158,7 +157,7 @@ Bottom bar: **Gallery · Layer · Brush · Colour · Timeline · Menu** (plus **
 
 - **Export PNG frames** — saves one numbered PNG per animation frame. Frame-hold
   timing is not encoded in the filenames; set timing in your video editor. This
-  exports every source frame once, regardless of the playback range.
+  exports every source frame once, including skipped frames and those outside the playback range.
 - **Transparent PNG** / **Transparent PNG frames** — omit the canvas background
   and preserve layer transparency in the current frame or a numbered sequence.
   Blend-mode results can differ without a solid background. GIF and MP4 exports
@@ -166,7 +165,7 @@ Bottom bar: **Gallery · Layer · Brush · Colour · Timeline · Menu** (plus **
 - **Export sprite sheet** — saves all source frames once in a left-to-right,
   top-to-bottom PNG grid, at 25%, 50% or 100% scale and a chosen column count.
   Choose a transparent or canvas-colour tile background; unused cells are transparent.
-  Playback range, ping-pong repetitions and frame holds are not included as pixels
+  Playback range, skips, ping-pong repetitions and frame holds are not included as pixels
   or timing metadata. The output is limited to 8192 pixels per side and 16,777,216
   total pixels; lower the scale or adjust columns if it is too large.
 - **Export MP4** — records one animation loop in real time, up to 1280 pixels on
@@ -212,11 +211,11 @@ tools/
   verify_apk.py              re-parses the APK: zip, arsc, dex, v2 signature
   make_icons.py              icon source -> all mipmap densities + adaptive icon
   apksign/sign.mjs           v1+v2 signer
-  tests/engine_smoke.mjs     108 engine checks (history, brushes, doc, GIF, …)
+  tests/engine_smoke.mjs     125 engine checks (history, brushes, doc, GIF, …)
   tests/pixel_integration.mjs real raster and animation export checks
   tests/gif_roundtrip.mjs    encodes a GIF and decodes it with an independent decoder
   tests/ui_smoke.mjs         jsdom boot + full UI drive (gallery -> export)
-artifacts/Qalam-1.9.apk           the signed, installable artefact
+artifacts/Qalam-2.0.apk           the signed, installable artefact
 docs/procreate-analysis.md   the Procreate study this app was built from
 docs/qalam.md                this file
 ```
@@ -236,7 +235,7 @@ Design notes worth knowing before changing code:
   a second history entry type.
 - **Frames are layers.** `Doc.frames[i].cels[layerIndex]` is lazily allocated, so a
   10-frame canvas costs nothing until you draw on it. Onion skin renders the
-  neighbouring frames with alpha under the current one.
+  neighbouring frames with adjustable colour, opacity, scope and stacking order.
 - **Rendering is demand-driven.** `View` keeps `dirty` and redraws inside
   `requestAnimationFrame` only when something changed.
 - **Palm rejection is scoped.** Extra pointers are ignored only while the *active*
@@ -246,7 +245,7 @@ Design notes worth knowing before changing code:
 
 ```bash
 bash tools/fetch-toolchain.sh     # once per machine: JVM, apktool, aapt2, jars, npm
-bash tools/build.sh               # -> artifacts/Qalam-1.9.apk (signed + verified)
+bash tools/build.sh               # -> artifacts/Qalam-2.0.apk (signed + verified)
 bash tools/check_reference.sh     # optional: javac-check the Java mirrors
 ```
 
@@ -262,7 +261,7 @@ bash tools/check_reference.sh     # optional: javac-check the Java mirrors
 
 ```bash
 cd tools/tests && npm install
-npm test        # engine_smoke (108 checks) + pixel_integration + gif_roundtrip + ui_smoke
+npm test        # engine_smoke (125 checks) + pixel_integration + gif_roundtrip + ui_smoke
 ```
 
 `pixel_integration.mjs` uses a native desktop canvas implementation to verify

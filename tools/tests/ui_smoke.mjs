@@ -264,11 +264,11 @@ async function run() {
   const opacity = doc.querySelector('#modalBody input[aria-label="Onion opacity"]');
   opacity.value = '40'; opacity.dispatchEvent(new win.Event('input', {bubbles:true}));
   ok(App.doc.playMode === 'pingpong' && App.doc.onionAlpha === 0.4, 'animation settings control mode and onion opacity');
-  const onionCount = doc.querySelector('#modalBody input[aria-label="Onion frames"]');
+  const onionCount = doc.querySelector('#modalBody input[aria-label="Previous frames"]');
   onionCount.value = '3'; onionCount.dispatchEvent(new win.Event('input', {bubbles:true}));
   const prevColor = doc.querySelector('#modalBody input[aria-label="Previous colour"]');
   prevColor.value = '#bb4488'; prevColor.dispatchEvent(new win.Event('input', {bubbles:true}));
-  ok(App.doc.onionFrames === 3 && App.doc.onionPrevColor === '#bb4488', 'onion count and tint are configurable');
+  ok(App.doc.onionPrevFrames === 3 && App.doc.onionPrevColor === '#bb4488', 'onion count and tint are configurable');
   click('#modalBody .btn.primary');
 
   await tick();
@@ -334,7 +334,7 @@ async function run() {
   ok(App.doc.frames[0].group === 'Scene A', 'frame group label survives the round trip');
   ok(App.doc.layers.length === 2, 'layers survived the round trip');
   ok(App.doc.guide.symmetry === 'quadrant' && App.doc.layer().assisted && App.doc.playMode === 'pingpong' && App.doc.onionAlpha === 0.4, 'guide, assist and animation settings survive the round trip');
-  ok(App.doc.onionFrames === 3 && App.doc.onionPrevColor === '#bb4488', 'onion frame count and colours survive the round trip');
+  ok(App.doc.onionPrevFrames === 3 && App.doc.onionPrevColor === '#bb4488', 'onion frame count and colours survive the round trip');
   ok(App.doc.guide.type === 'perspective2' && App.doc.guide.horizon === 0.65, 'perspective guide survives the round trip');
 
   console.log('gestures');
@@ -416,6 +416,7 @@ async function run() {
   Q.UI.effectsDialog();
   ok(!!doc.querySelector('#modalBody select[aria-label="Effect"]'), 'effects dialog opens');
   ok(!!doc.querySelector('#modalBody option[value="motion"]') && !!doc.querySelector('#modalBody option[value="bloom"]'), 'advanced effects appear in the effects list');
+  ok(!!doc.querySelector('#modalBody option[value="pixelate"]') && !!doc.querySelector('#modalBody option[value="posterize"]') && !!doc.querySelector('#modalBody option[value="solarize"]'), 'new effects appear in the effects list');
   const effectHistory = App.doc.history.undoStack.length;
   App.doc.activeCel(true);
   click('#modalBody .btn.primary'); await wait(70);
@@ -595,6 +596,49 @@ async function run() {
   const painted=[], composite=App.doc.composite; App.doc.composite=function(ctx,index,opts) { painted.push(index); return composite.call(this,ctx,index,opts); };
   Q.saveBytes=()=>true; App.exportMp4(); await wait(140); App.doc.composite=composite;
   ok(painted.join(',')==='1,2', 'MP4 recorder paints only playback-range frames');
+
+
+  console.log('2.0 animation assist');
+  App.createDoc(64,64,'Animation assist'); for(let i=1;i<5;i++) App.addFrame(false);
+  if (doc.querySelector('#timeline').classList.contains('hidden')) Q.UI.toggleTimeline();
+  App.selectFrame(1); Q.UI.frameSheet(1);
+  const skipButton=Array.from(doc.querySelectorAll('#modalBody button')).find(x=>x.textContent==='Skip in playback');
+  ok(!!skipButton, 'frame options expose skip control'); skipButton.click();
+  ok(App.doc.frames[1].skipped && doc.querySelectorAll('#timeline .frame-skipped').length===1, 'skipped frame is marked on timeline');
+  App.undo(); ok(!App.doc.frames[1].skipped, 'skip can be undone'); App.redo(); ok(App.doc.frames[1].skipped, 'skip can be redone');
+  Q.UI.frameSheet(2); const longHold=doc.querySelector('input[aria-label="Frame hold"]');
+  longHold.value='60'; longHold.dispatchEvent(new win.Event('change',{bubbles:true})); Q.UI.closeModal();
+  ok(App.doc.frames[2].duration===60, 'UI accepts 60-tick frame hold');
+  Q.UI.animationSettings();
+  const prev=doc.querySelector('input[aria-label="Previous frames"]'), next=doc.querySelector('input[aria-label="Next frames"]');
+  prev.value='0'; prev.dispatchEvent(new win.Event('input',{bubbles:true})); next.value='2'; next.dispatchEvent(new win.Event('input',{bubbles:true}));
+  for (const label of ['Skipped onions','Onion layers','Onion colours','Onion position']) { const sel=doc.querySelector('select[aria-label="'+label+'"]'); sel.value='yes'; sel.dispatchEvent(new win.Event('change',{bubbles:true})); }
+  click('#modalBody .btn.primary');
+  ok(App.doc.onionPrevFrames===0 && App.doc.onionNextFrames===2 && App.doc.onionIncludeSkipped && App.doc.onionLayerOnly && App.doc.onionOriginalColor && App.doc.onionAbove, 'independent onion controls update document');
+  await App.saveNow(false); const assistReload=await Q.Store.load(App.doc.id);
+  ok(assistReload.frames[1].skipped && assistReload.frames[2].duration===60 && assistReload.onionPrevFrames===0 && assistReload.onionNextFrames===2 && assistReload.onionIncludeSkipped && assistReload.onionLayerOnly && assistReload.onionOriginalColor && assistReload.onionAbove, 'animation assist settings and long holds survive saving');
+  const raw=JSON.parse(win.localStorage.getItem('qalam-projects')), legacy=raw[App.doc.id];
+  legacy.onionFrames=3; delete legacy.onionPrevFrames; delete legacy.onionNextFrames; delete legacy.onionIncludeSkipped; delete legacy.onionLayerOnly; delete legacy.onionOriginalColor; delete legacy.onionAbove; delete legacy.frameSkipped;
+  win.localStorage.setItem('qalam-projects',JSON.stringify(raw)); const legacyReload=await Q.Store.load(App.doc.id);
+  ok(legacyReload.onionPrevFrames===3 && legacyReload.onionNextFrames===3 && legacyReload.frames.every(f=>!f.skipped), 'older saved projects migrate to both onion directions and included frames');
+  const scrub=doc.querySelector('input[aria-label="Scrub frames"]'); scrub.value='4'; scrub.dispatchEvent(new win.Event('input',{bubbles:true}));
+  ok(App.doc.activeFrame===3 && doc.querySelector('input[aria-label="Scrub frames"]')===scrub && doc.querySelector('#timeline .tl-position').textContent==='4 / 5', 'timeline scrub updates frame without replacing the active slider');
+  scrub.dispatchEvent(new win.Event('change',{bubbles:true})); ok(App.doc.activeFrame===3, 'scrub release commits frame selection');
+  Q.UI.batchFramesDialog();
+  const firstSkip=doc.querySelector('input[aria-label="First frame"]'), lastSkip=doc.querySelector('input[aria-label="Last frame"]'); firstSkip.value='4'; lastSkip.value='4';
+  Array.from(doc.querySelectorAll('#modalBody button')).find(x=>x.textContent==='Skip range').click();
+  ok(App.doc.frames[3].skipped, 'batch skip excludes a frame');
+  App.doc.frames[2].duration=1; App.doc.fps=30; App.doc.playMode='once'; App.selectFrame(1); App.togglePlay();
+  ok(App.doc.activeFrame===0, 'playback starts at first included frame when selected frame is skipped');
+  await wait(140); ok(!App.playing && App.doc.activeFrame===4, 'one-shot playback skips excluded frames');
+  if (!doc.querySelector('#timeline').classList.contains('hidden')) Q.UI.toggleTimeline();
+  const seen=[], orig=App.doc.composite; App.doc.composite=function(ctx,index,opts) { seen.push(index); return orig.call(this,ctx,index,opts); };
+  App.doc.playMode='pingpong'; Q.saveBytes=()=>true; App.exportMp4(); await wait(180); App.doc.composite=orig;
+  ok(seen.join(',')==='0,2,4,2', 'MP4 mock skips excluded frames and follows ping-pong order');
+  App.batchFrames(0,4,'skip'); App.togglePlay(); ok(!App.playing && doc.querySelector('#toast').textContent.includes('No included frames'), 'playback rejects an all-skipped range');
+  App.exportGif({}); ok(doc.querySelector('#toast').textContent.includes('No included frames'), 'GIF export rejects an all-skipped range');
+  App.exportMp4(); ok(doc.querySelector('#toast').textContent.includes('No included frames'), 'MP4 export rejects an all-skipped range');
+  App.batchFrames(1,2,'include'); ok(!App.doc.frames[1].skipped && !App.doc.frames[2].skipped && App.doc.frames[0].skipped, 'batch include re-enables selected frames only');
 
   await App.saveNow(false);
   console.log(failures ? `\n${failures} check(s) FAILED` : '\nall UI checks passed');

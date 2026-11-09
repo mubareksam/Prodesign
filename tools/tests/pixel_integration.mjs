@@ -10,7 +10,7 @@ globalThis.window=globalThis;
 globalThis.addEventListener=()=>{};
 globalThis.document={readyState:'loading',addEventListener(){},createElement(tag){ if (tag!=='canvas') throw Error(tag); return createCanvas(1,1); }};
 Object.defineProperty(globalThis,'navigator',{value:{vibrate(){}},configurable:true});
-for (const f of ['core.js','doc.js','brushes.js','effects.js','fill.js','selection.js','spritesheet.js','app.js']) new Function(readFileSync(path.join(js,f),'utf8'))();
+for (const f of ['core.js','doc.js','brushes.js','effects.js','fill.js','selection.js','spritesheet.js','view.js','app.js']) new Function(readFileSync(path.join(js,f),'utf8'))();
 const Q=globalThis.Q, App=Q.App;
 Q.toast=()=>{}; Q.UI={progress(){},endProgress(){},syncHistory(){},refreshReference(){},syncDoc(){},refreshTimeline(){},highlightFrame(){}};
 App.markDirty=()=>{};
@@ -120,9 +120,10 @@ for (const [name,brush,opacity] of [['dry',pen,1],['wet',{...pen,flow:0.5},0.6]]
 {
  const d=setup(), colors=['#ff0000','#00ff00','#0000ff'];
  colors.forEach((color,i)=>{ if(i) d.addFrame(false); const c=d.activeCel(true).getContext('2d'); c.fillStyle=color; c.fillRect(0,0,8,8); });
+ d.frames[1].skipped=true;
  const sheet=Q.renderSpriteSheet(d,2,1,true);
  ok(sheet.width===32 && sheet.height===32, 'sprite sheet has expected grid dimensions');
- ok(same(pixel(sheet,1,1),[255,0,0,255]) && same(pixel(sheet,17,1),[0,255,0,255]) && same(pixel(sheet,1,17),[0,0,255,255]), 'sprite sheet lays out source frames in row-major order');
+ ok(same(pixel(sheet,1,1),[255,0,0,255]) && same(pixel(sheet,17,1),[0,255,0,255]) && same(pixel(sheet,1,17),[0,0,255,255]), 'sprite sheet includes skipped source frames in row-major order');
  ok(pixel(sheet,12,1)[3]===0 && pixel(sheet,17,17)[3]===0, 'transparent sprite sheet preserves clear areas and unused cells');
  d.bg='#334455'; const opaque=Q.renderSpriteSheet(d,2,1,false);
  ok(same(pixel(opaque,12,1),[51,68,85,255]) && pixel(opaque,17,17)[3]===0, 'sprite sheet background fills tiles but not unused cells');
@@ -174,6 +175,51 @@ for (const [name,brush,opacity] of [['dry',pen,1],['wet',{...pen,flow:0.5},0.6]]
  d.batchFrames(0,0,'duplicate'); const copy=d.cel(1,0,false); copy.getContext('2d').clearRect(0,0,4,4);
  ok(pixel(cel,1,1)[0]===255 && pixel(copy,1,1)[3]===0, 'batch frame duplicates are independent pixel canvases');
  d.history.undo(); ok(d.frames.length===2 && pixel(cel,1,1)[0]===255, 'undo batch duplication preserves original pixels');
+}
+
+
+{
+ const d=setup(); d.onion=true; d.onionAlpha=1; d.onionPrevFrames=1; d.onionNextFrames=0; d.onionOriginalColor=true;
+ let c=d.activeCel(true).getContext('2d'); c.fillStyle='#ff0000'; c.fillRect(0,0,16,16); d.addFrame(false);
+ c=d.activeCel(true).getContext('2d'); c.fillStyle='#0000ff'; c.fillRect(0,0,16,16);
+ const canvas=createCanvas(16,16), view=Object.create(Q.View.prototype);
+ Object.assign(view,{doc:d,canvas,ctx:canvas.getContext('2d'),dpr:1,scale:1,rot:0,tx:0,ty:0,stroke:null});
+ App.playing=false; d.onionAbove=false; view.render();
+ ok(same(pixel(canvas,5,5),[0,0,255,255]), 'onion below opaque artwork is correctly covered');
+ d.onionAbove=true; view.render(); const above=pixel(canvas,5,5);
+ ok(above[0]>150 && above[2]>0, 'onion above artwork renders original-colour ghost');
+ d.onionOriginalColor=false; d.onionPrevColor='#00ff00'; view.render();
+ ok(pixel(canvas,5,5)[1]>150, 'onion tint is applied when tint mode is selected');
+ d.setFrameSkipped(0,true); d.onionIncludeSkipped=false; view.render();
+ ok(same(pixel(canvas,5,5),[0,0,255,255]), 'skipped frame is excluded from onion preview');
+ d.onionIncludeSkipped=true; view.render(); ok(pixel(canvas,5,5)[1]>150, 'skipped frame can be shown as an onion');
+}
+{
+ const d=setup(); let c=d.activeCel(true).getContext('2d'); c.fillStyle='#ff0000'; c.fillRect(0,0,16,16); d.addLayer();
+ c=d.activeCel(true).getContext('2d'); c.fillStyle='#00ff00'; c.fillRect(0,0,16,16);
+ const only=createCanvas(16,16); d.composite(only.getContext('2d'),0,{onlyLayer:0});
+ ok(same(pixel(only,5,5),[255,0,0,255]), 'active-layer onion compositing excludes other layers');
+}
+{
+ const d=setup(); for(let i=1;i<5;i++) d.addFrame(false);
+ d.frames.forEach((f,i)=>{d.activeFrame=i; const c=d.activeCel(true).getContext('2d'); c.fillStyle=['#ff0000','#00ff00','#0000ff','#ffffff','#ffff00'][i]; c.fillRect(0,0,16,16);});
+ d.fps=10; d.playMode='pingpong'; d.frames[1].skipped=true; d.frames[3].skipped=true; d.frames[4].duration=60;
+ ok(Q.playbackOrder(d).join(',')==='0,2,4,2', 'ping-pong playback skips excluded frames');
+ let data=null; Q.saveBytes=(url,mime)=>{if(mime==='image/gif') data=url;return true;}; App.exportGif({}); await new Promise(r=>setTimeout(r,80));
+ const root=path.resolve(js,'../../../..'), output=path.join(root,'build','skipped-range.gif'); writeFileSync(output,Buffer.from(data.split(',')[1],'base64'));
+ const info=JSON.parse(execFileSync('python3',[path.join(root,'tools/tests/gif_decode.py'),output,'--json'],{encoding:'utf8'}));
+ ok(info.frames.length===4 && info.delays.join(',')==='10,10,600,10', 'GIF excludes skipped frames and preserves a 60-tick hold');
+ d.setPlayRange(1,3); ok(Q.playbackOrder(d).join(',')==='2', 'playback range filters skipped frames before ping-pong');
+ d.frames[2].skipped=true; data=null; App.exportGif({}); await new Promise(r=>setTimeout(r,30));
+ ok(!data && Q.playbackOrder(d).length===0, 'GIF export rejects a range with no included frames');
+}
+
+
+{
+ const d=setup(), cel=d.activeCel(true), c=cel.getContext('2d'); c.fillStyle='#ff0000'; c.fillRect(0,0,1,1); c.fillStyle='#0000ff'; c.fillRect(1,0,1,1); c.fillStyle='#00ff00'; c.fillRect(3,0,1,1);
+ App.view.selection={x:0,y:0,w:2,h:1}; App.applyEffect('pixelate',0.01); await new Promise(r=>setTimeout(r,75));
+ const mixed=pixel(cel,0,0); ok(mixed[0]===128 && mixed[2]===128 && same(pixel(cel,3,0),[0,255,0,255]), 'pixelate affects only selected pixels');
+ d.history.undo(); ok(same(pixel(cel,0,0),[255,0,0,255]) && same(pixel(cel,1,0),[0,0,255,255]), 'pixelate is undoable');
 }
 
 console.log(`all ${n} raster integration checks passed`);

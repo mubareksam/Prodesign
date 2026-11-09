@@ -851,7 +851,7 @@
     card.appendChild(Q.crel('p', 'sub', 'Applies to the selected layer and current frame. The change can be undone.'));
     const row = Q.crel('div', 'field studio-field'); row.appendChild(Q.crel('label', null, 'Effect'));
     const select = Q.crel('select'); select.setAttribute('aria-label', 'Effect');
-    [['blur','Soft blur'],['motion','Motion blur (horizontal)'],['sharpen','Sharpen'],['bloom','Bloom'],['glitch','Glitch'],['grayscale','Grayscale'],['invert','Invert'],['sepia','Sepia'],['brightness','Brightness'],['saturation','Saturation'],['contrast','Contrast'],['hue','Hue shift'],['noise','Noise'],['chromatic','Chromatic shift'],['halftone','Halftone dither'],['threshold','Threshold']].forEach(function (option) {
+    [['blur','Soft blur'],['motion','Motion blur (horizontal)'],['sharpen','Sharpen'],['bloom','Bloom'],['glitch','Glitch'],['pixelate','Pixelate'],['posterize','Posterize'],['solarize','Solarize'],['grayscale','Grayscale'],['invert','Invert'],['sepia','Sepia'],['brightness','Brightness'],['saturation','Saturation'],['contrast','Contrast'],['hue','Hue shift'],['noise','Noise'],['chromatic','Chromatic shift'],['halftone','Halftone dither'],['threshold','Threshold']].forEach(function (option) {
       const el = Q.crel('option'); el.value=option[0]; el.textContent=option[1]; select.appendChild(el);
     }); row.appendChild(select); card.appendChild(row);
     const amountRow=Q.crel('div','field studio-field'); amountRow.appendChild(Q.crel('label',null,'Strength'));
@@ -904,18 +904,27 @@
       const value=Q.crel('div','val',String(input.value)); input.addEventListener('input',function () { d[key]=Number(input.value)/mult; value.textContent=input.value; app().view.dirty=true; app().markDirty(); });
       row.appendChild(input); row.appendChild(value); card.appendChild(row);
     }
-    slider('FPS','fps',1,30,1); slider('Onion opacity','onionAlpha',0,100,100); slider('Onion frames','onionFrames',1,4,1);
+    slider('FPS','fps',1,30,1); slider('Onion opacity','onionAlpha',0,100,100); slider('Previous frames','onionPrevFrames',0,4,1); slider('Next frames','onionNextFrames',0,4,1);
     [['Previous colour','onionPrevColor'], ['Next colour','onionNextColor']].forEach(function (entry) {
       const row=Q.crel('div','field studio-field'); row.appendChild(Q.crel('label',null,entry[0]));
       const color=Q.crel('input'); color.type='color'; color.value=d[entry[1]]; color.setAttribute('aria-label',entry[0]);
       color.addEventListener('input',function () { d[entry[1]]=color.value; app().view.dirty=true; app().markDirty(); }); row.appendChild(color); card.appendChild(row);
     });
+    function onionOption(label,key,choices) {
+      const row=Q.crel('div','field studio-field'); row.appendChild(Q.crel('label',null,label)); const select=Q.crel('select'); select.setAttribute('aria-label',label);
+      choices.forEach(function (v) { const option=Q.crel('option'); option.value=v[0]; option.textContent=v[1]; select.appendChild(option); });
+      select.value=d[key] ? 'yes' : 'no'; select.addEventListener('change',function () { d[key]=select.value === 'yes'; app().view.dirty=true; app().markDirty(); }); row.appendChild(select); card.appendChild(row);
+    }
+    onionOption('Skipped onions','onionIncludeSkipped',[['no','Hide skipped frames'],['yes','Show skipped frames']]);
+    onionOption('Onion layers','onionLayerOnly',[['no','All visible layers'],['yes','Active layer only']]);
+    onionOption('Onion colours','onionOriginalColor',[['no','Tinted'],['yes','Original colours']]);
+    onionOption('Onion position','onionAbove',[['no','Below artwork'],['yes','Above artwork']]);
     const row=Q.crel('div','field studio-field'); row.appendChild(Q.crel('label',null,'Playback'));
     const select=Q.crel('select'); select.setAttribute('aria-label','Playback');
     [['loop','Loop'],['pingpong','Ping-pong'],['once','One-shot']].forEach(function (v) { const o=Q.crel('option'); o.value=v[0]; o.textContent=v[1]; select.appendChild(o); });
     select.value=d.playMode; select.addEventListener('change',function () { d.playMode=select.value; app().markDirty(); }); row.appendChild(select); card.appendChild(row);
     const bounds=Q.playbackBounds(d);
-    const rangeInfo=Q.crel('p','sub','Playback range uses frame numbers. GIF and MP4 follow it; PNG frames and sprite sheets export all frames.'); card.appendChild(rangeInfo);
+    const rangeInfo=Q.crel('p','sub','Preview, GIF and MP4 use this range and omit skipped frames. PNG frames and sprite sheets export all source frames.'); card.appendChild(rangeInfo);
     const rangeFields=Q.crel('div','canvas-dimensions');
     function rangeField(label,initial) { const wrap=Q.crel('label'); wrap.textContent=label; const input=Q.crel('input','select'); input.type='number'; input.min=1; input.max=d.frames.length; input.value=initial; input.setAttribute('aria-label',label); wrap.appendChild(input); rangeFields.appendChild(wrap); return input; }
     const start=rangeField('Playback start',bounds.start+1), end=rangeField('Playback end',bounds.end+1); card.appendChild(rangeFields);
@@ -974,14 +983,15 @@
     const strip = Q.crel('div', 'tl-frames'), bounds=Q.playbackBounds(d);
     d.frames.forEach(function (fr, i) {
       const outside=i<bounds.start || i>bounds.end;
-      const b = Q.crel('button', 'tl-frame' + (i === d.activeFrame ? ' on' : '') + (outside ? ' out-range' : ''));
+      const b = Q.crel('button', 'tl-frame' + (i === d.activeFrame ? ' on' : '') + (outside ? ' out-range' : '') + (fr.skipped ? ' skipped' : ''));
       const cv = d.thumbnail(i, 112);
       const small = Q.canvas(72, 72 * (d.height / d.width));
       small.getContext('2d').drawImage(cv, 0, 0, small.width, small.height);
       b.appendChild(small);
       b.appendChild(Q.crel('span', 'n', String(i + 1) + ((fr.duration || 1) > 1 ? ' · ' + fr.duration + '×' : '')));
+      if (fr.skipped) { const badge=Q.crel('span','frame-skipped','Skipped'); b.appendChild(badge); }
       if (fr.group) { const tag = Q.crel('span', 'frame-group'); tag.textContent = fr.group; b.appendChild(tag); }
-      b.setAttribute('aria-label', 'Frame ' + (i + 1) + (fr.group ? ', group ' + fr.group : '') + (outside ? ', outside playback range' : ''));
+      b.setAttribute('aria-label', 'Frame ' + (i + 1) + (fr.group ? ', group ' + fr.group : '') + (outside ? ', outside playback range' : '') + (fr.skipped ? ', skipped in playback' : ''));
       b.addEventListener('click', function () { app().selectFrame(i); });
       b.addEventListener('dblclick', function () { UI.frameSheet(i); });
       b.addEventListener('contextmenu', function (e) { e.preventDefault(); UI.frameSheet(i); });
@@ -992,9 +1002,18 @@
     add.addEventListener('click', function () { app().addFrame(true); });
     strip.appendChild(add);
     el.appendChild(strip);
+    const scrubRow=Q.crel('div','tl-scrub'), readout=Q.crel('span','tl-position',String(d.activeFrame+1)+' / '+d.frames.length);
+    const scrub=Q.crel('input'); scrub.type='range'; scrub.min=1; scrub.max=d.frames.length; scrub.step=1; scrub.value=d.activeFrame+1; scrub.disabled=app().playing; scrub.setAttribute('aria-label','Scrub frames');
+    scrub.addEventListener('input',function () { d.activeFrame=Q.clamp(Number(scrub.value)-1,0,d.frames.length-1); app().view.dirty=true; UI.highlightFrame(d.activeFrame); UI.refreshReference(); });
+    scrub.addEventListener('change',function () { app().selectFrame(Number(scrub.value)-1); });
+    scrubRow.appendChild(scrub); scrubRow.appendChild(readout); el.appendChild(scrubRow);
   }
 
-  UI.highlightFrame = function (i) { Q.els('#timeline .tl-frame').forEach(function (b, index) { b.classList.toggle('on', index === i); }); };
+  UI.highlightFrame = function (i) {
+    Q.els('#timeline .tl-frame').forEach(function (b, index) { b.classList.toggle('on', index === i); });
+    const input=Q.el('#timeline input[aria-label="Scrub frames"]'), readout=Q.el('#timeline .tl-position');
+    if (input) input.value=i+1; if (readout && app().doc) readout.textContent=(i+1)+' / '+app().doc.frames.length;
+  };
 
   UI.frameSheet = function (i) {
     app().stopPlay();
@@ -1002,7 +1021,7 @@
     card.appendChild(Q.crel('h2', null, 'Frame ' + (i + 1)));
     card.appendChild(Q.crel('p', 'sub', 'Frames are duplicated when added so you can build on the previous drawing.'));
     const row = Q.crel('div', 'field studio-field'); row.appendChild(Q.crel('label', null, 'Frame hold'));
-    const duration = Q.crel('input'); duration.type='range'; duration.min=1; duration.max=12; duration.value=app().doc.frames[i].duration || 1; duration.setAttribute('aria-label','Frame hold');
+    const duration = Q.crel('input'); duration.type='range'; duration.min=1; duration.max=60; duration.value=app().doc.frames[i].duration || 1; duration.setAttribute('aria-label','Frame hold');
     const val = Q.crel('div','val',duration.value + '×');
     duration.addEventListener('input', function () { val.textContent=duration.value + '×'; });
     duration.addEventListener('change', function () { app().doc.setFrameDuration(i,Number(duration.value)); app().markDirty(); UI.refreshTimeline(); });
@@ -1021,6 +1040,7 @@
       b.addEventListener('click', function () { UI.closeModal(); fn(); });
       return b;
     };
+    grid.appendChild(mk(app().doc.frames[i].skipped ? 'Include in playback' : 'Skip in playback', ICON.sparkle, function () { const d=app().doc; d.setFrameSkipped(i,!d.frames[i].skipped); app().view.dirty=true; app().markDirty(); UI.syncDoc(); }));
     grid.appendChild(mk('Duplicate', ICON.copy, function () { app().selectFrame(i); app().addFrame(true); }));
     grid.appendChild(mk('Blank frame', ICON.plus, function () { app().selectFrame(i); app().addFrame(false); }));
     grid.appendChild(mk('Move left', ICON.up, function () { app().moveFrame(i, -1); }));
@@ -1041,18 +1061,18 @@
     function action(text,op) { const b=Q.crel('button','menu-item',text); b.addEventListener('click',function () {
       const first=Number(start.value), last=Number(end.value), ticks=Number(hold.value);
       if (!start.value.trim() || !end.value.trim() || !Number.isInteger(first) || !Number.isInteger(last) || first<1 || last<first || last>d.frames.length) { error.textContent='Enter a valid inclusive frame range.'; return; }
-      if (op==='hold' && (!hold.value.trim() || !Number.isInteger(ticks) || ticks<1 || ticks>12)) { error.textContent='Hold must be a whole number from 1 to 12.'; return; }
+      if (op==='hold' && (!hold.value.trim() || !Number.isInteger(ticks) || ticks<1 || ticks>60)) { error.textContent='Hold must be a whole number from 1 to 60.'; return; }
       if (op==='duplicate' && d.frames.length+(last-first+1)>60) { error.textContent='Duplicating this range exceeds the 60-frame limit.'; return; }
       if (app().batchFrames(first-1,last-1,op,op==='label' ? label.value : ticks)) UI.closeModal();
     }); grid.appendChild(b); }
-    action('Apply label','label'); action('Apply hold','hold'); action('Reverse range','reverse'); action('Duplicate range','duplicate'); card.appendChild(grid);
+    action('Apply label','label'); action('Apply hold','hold'); action('Skip range','skip'); action('Include range','include'); action('Reverse range','reverse'); action('Duplicate range','duplicate'); card.appendChild(grid);
     const close=Q.crel('button','btn ghost','Close'); close.addEventListener('click',function () { UI.closeModal(); }); card.appendChild(close); UI.openModal(card);
   };
 
   UI.spriteSheetDialog = function () {
     app().stopPlay(); const d=app().doc; if (!d) return;
     const card=Q.crel('div'); card.appendChild(Q.crel('h2',null,'Export sprite sheet'));
-    card.appendChild(Q.crel('p','sub','One tile per source frame in timeline order; playback range, ping-pong and holds are not included. Empty grid cells are transparent. Maximum: 8192 pixels per side and 16 megapixels.'));
+    card.appendChild(Q.crel('p','sub','One tile per source frame in timeline order, including skipped frames; playback range, ping-pong and holds are not included. Empty grid cells are transparent. Maximum: 8192 pixels per side and 16 megapixels.'));
     const row=Q.crel('div','field'); row.appendChild(Q.crel('label',null,'Columns')); const cols=Q.crel('input','select'); cols.type='number'; cols.min=1; cols.max=d.frames.length; cols.value=Math.min(4,d.frames.length); cols.setAttribute('aria-label','Sprite columns'); row.appendChild(cols); card.appendChild(row);
     const srow=Q.crel('div','field'); srow.appendChild(Q.crel('label',null,'Scale')); const scale=Q.crel('select'); scale.setAttribute('aria-label','Sprite scale');
     [['0.25','25%'],['0.5','50%'],['1','100%']].forEach(function (a) { const option=Q.crel('option'); option.value=a[0]; option.textContent=a[1]; scale.appendChild(option); }); srow.appendChild(scale); card.appendChild(srow);
@@ -1104,7 +1124,7 @@
     card.appendChild(Q.crel('p', 'sub', 'A paint, sketch and frame-by-frame animation studio for Android. Artwork is stored on this device only — nothing is uploaded.'));
     card.appendChild(Q.crel('p', 'sub', 'Developed by Qmer'));
     card.appendChild(Q.crel('p', 'sub', 'ቀለም (qalam) means “pen” or “ink”.'));
-    card.appendChild(Q.crel('p', 'sub', 'Version 1.9'));
+    card.appendChild(Q.crel('p', 'sub', 'Version 2.0'));
     const actions = Q.crel('div', 'modal-actions');
     const close = Q.crel('button', 'btn primary', 'Close');
     close.addEventListener('click', function () { UI.closeModal(); });
