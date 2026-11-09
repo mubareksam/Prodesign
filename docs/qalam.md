@@ -8,11 +8,11 @@ brushes, layers with blend modes, a colour wheel, a frame timeline with onion sk
 Procreate's gesture vocabulary, PNG/GIF export and device-dependent MP4 export — all offline, with no account and
 no network permissions at all.
 
-- Package: `com.qalam.studio` · version 1.7 (versionCode 8)
+- Package: `com.qalam.studio` · version 1.8 (versionCode 9)
 - minSdk 26 (Android 8.0) · targetSdk 33 · armeabi-v7a/arm64/x86/x86_64 independent
   (everything is HTML/JS running inside the app's own `WebView`, so the APK has no
   native code)
-- APK: **`artifacts/Qalam-1.7.apk`** (~254 KB), signed with a v1+v2 scheme
+- APK: **`artifacts/Qalam-1.8.apk`** (~254 KB), signed with a v1+v2 scheme
 - The written analysis of Procreate that this app was specified from:
   [`docs/procreate-analysis.md`](procreate-analysis.md)
 
@@ -20,7 +20,7 @@ no network permissions at all.
 
 ## 1. Install
 
-1. Copy `artifacts/Qalam-1.7.apk` to the phone (USB, Drive, chat to yourself — anything).
+1. Copy `artifacts/Qalam-1.8.apk` to the phone (USB, Drive, chat to yourself — anything).
 2. Open it with the phone's file manager. Android will ask to allow installs from
    that app the first time ("Install unknown apps").
 3. Install and open **Qalam**. If an earlier Qalam version is already installed, Android should offer an update that preserves its data. Back up important artwork first. Android does not allow this app to silently uninstall itself; do not uninstall it unless you have backed up its local artwork.
@@ -73,7 +73,11 @@ Bottom bar: **Gallery · Layer · Brush · Colour · Timeline · Menu** (plus **
   three-dot menu to lock or unlock it. Lock prevents painting, fill, effects,
   transforms, clearing, deleting or merging that layer; it does not prevent
   visibility, reordering, renaming, opacity changes, undo/redo or deleting a frame.
-  Lock is saved per layer, across all its frames.
+  Lock is saved per layer, across all its frames. **Alpha lock** in the same menu
+  allows recolouring existing pixels with brushes, fill and effects while preserving
+  their transparency. Turn it off to use erasers, clear, flip, transform or merge.
+  Alpha lock does not prevent layer/frame deletion or undo/redo. It persists and
+  is copied when duplicating a layer.
 - **Timeline** — frames as rows of the layer stack: add/duplicate/delete frames,
   scrub or tap to select, ▶ play/stop and onion-skin toggle. **Settings** provides
   1–30 fps, onion opacity, 1–4 neighbouring frames, previous/next colours, loop,
@@ -86,6 +90,9 @@ Bottom bar: **Gallery · Layer · Brush · Colour · Timeline · Menu** (plus **
   connected pixels on the current layer with the selected colour at full opacity;
   undo reverses the fill. **Menu → Fill settings** adjusts colour tolerance. It
   does not sample outlines on other layers and may take time on large canvases.
+- **Menu → Canvas background** — choose the current brush colour or enter a 3- or
+  6-digit hex colour. The background applies to every frame, is saved and can be
+  undone. It appears in normal exports but not transparent PNGs.
 - **Menu → Canvas reference** — a movable, zoomable overview of the current frame.
   It refreshes after changes. It does not import external images.
 - **Menu → Selection & transform** — choose **Draw rectangle**, then drag on the
@@ -145,6 +152,10 @@ Bottom bar: **Gallery · Layer · Brush · Colour · Timeline · Menu** (plus **
 
 - **Export PNG frames** — saves one numbered PNG per animation frame. Frame-hold
   timing is not encoded in the filenames; set timing in your video editor.
+- **Transparent PNG** / **Transparent PNG frames** — omit the canvas background
+  and preserve layer transparency in the current frame or a numbered sequence.
+  Blend-mode results can differ without a solid background. GIF and MP4 exports
+  still include the background; transparent GIF/video is not offered.
 - **Export MP4** — records one animation loop in real time, up to 1280 pixels on
   the longest side, using the device WebView's MP4 encoder. On Android 10+ it writes
   to `Movies/Qalam`; Android 8–9 uses the app's external folder. Some WebViews do not
@@ -187,11 +198,11 @@ tools/
   verify_apk.py              re-parses the APK: zip, arsc, dex, v2 signature
   make_icons.py              icon source -> all mipmap densities + adaptive icon
   apksign/sign.mjs           v1+v2 signer
-  tests/engine_smoke.mjs     87 engine checks (history, brushes, doc, GIF, …)
-  tests/pixel_integration.mjs real raster selection, lock and transform checks
+  tests/engine_smoke.mjs     93 engine checks (history, brushes, doc, GIF, …)
+  tests/pixel_integration.mjs real raster selection, alpha and export checks
   tests/gif_roundtrip.mjs    encodes a GIF and decodes it with an independent decoder
   tests/ui_smoke.mjs         jsdom boot + full UI drive (gallery -> export)
-artifacts/Qalam-1.7.apk           the signed, installable artefact
+artifacts/Qalam-1.8.apk           the signed, installable artefact
 docs/procreate-analysis.md   the Procreate study this app was built from
 docs/qalam.md                this file
 ```
@@ -221,7 +232,7 @@ Design notes worth knowing before changing code:
 
 ```bash
 bash tools/fetch-toolchain.sh     # once per machine: JVM, apktool, aapt2, jars, npm
-bash tools/build.sh               # -> artifacts/Qalam-1.7.apk (signed + verified)
+bash tools/build.sh               # -> artifacts/Qalam-1.8.apk (signed + verified)
 bash tools/check_reference.sh     # optional: javac-check the Java mirrors
 ```
 
@@ -237,7 +248,7 @@ bash tools/check_reference.sh     # optional: javac-check the Java mirrors
 
 ```bash
 cd tools/tests && npm install
-npm test        # engine_smoke (87 checks) + pixel_integration + gif_roundtrip + ui_smoke
+npm test        # engine_smoke (93 checks) + pixel_integration + gif_roundtrip + ui_smoke
 ```
 
 `pixel_integration.mjs` uses a native desktop canvas implementation to verify

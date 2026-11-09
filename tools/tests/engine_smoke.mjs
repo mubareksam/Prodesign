@@ -283,4 +283,17 @@ const intersection=Q.intersectRect({x:0,y:0,w:5,h:5},{x:3,y:2,w:5,h:3});
 ok(intersection.x===3 && intersection.y===2 && intersection.w===2 && intersection.h===3, 'selection intersection bounds dirty regions');
 ok(Q.intersectRect({x:0,y:0,w:1,h:1},{x:1,y:1,w:2,h:2})===null, 'disjoint selection intersection is empty');
 
+
+console.log('background and alpha-lock history');
+const themed=new Q.Doc({width:16,height:16}); themed.setBackground('#123456');
+ok(themed.bg==='#123456', 'canvas background colour changes');
+themed.history.undo(); ok(themed.bg==='#ffffff', 'background change can be undone');
+themed.history.redo(); ok(themed.bg==='#123456', 'background change can be redone');
+themed.setLayerProp(0,'alphaLocked',true); themed.addLayer(0);
+ok(themed.layer().alphaLocked, 'duplicating a layer preserves its alpha-lock setting');
+const alphaCount=themed.history.undoStack.length; themed.mergeDown(1); themed.clearLayer(1);
+ok(themed.layers.length===2 && themed.history.undoStack.length===alphaCount, 'alpha-locked layers cannot be cleared or merged');
+themed.setLayerProp(1,'alphaLocked',false); themed.mergeDown(1);
+ok(themed.layers.length===2, 'merge also protects an alpha-locked lower layer');
+
 console.log(`\nall ${checks} engine checks passed`);

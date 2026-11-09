@@ -429,6 +429,7 @@
       return;
     }
     if (layer.locked) { Q.toast('This layer is locked'); return; }
+    if (layer.alphaLocked && this.brush.eraser) { Q.toast('Turn off alpha lock to erase'); return; }
     const p = this.toDoc(pos.x, pos.y);
     this.strokePointerId = e.pointerId;
     this.strokePointerType = e.pointerType || 'touch';

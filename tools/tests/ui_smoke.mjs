@@ -302,6 +302,8 @@ async function run() {
   console.log('menu + save');
   click('#btnMenu');
   ok(doc.querySelectorAll('#trayBody .menu-item').length >= 6, 'action menu populated');
+  ok(Array.from(doc.querySelectorAll('#trayBody .menu-item')).some(x=>x.textContent.includes('Transparent PNG')), 'transparent export is available in actions');
+  ok(Array.from(doc.querySelectorAll('#trayBody .menu-item')).some(x=>x.textContent.includes('Canvas background')), 'background settings are available in actions');
   const selectionMenu=Array.from(doc.querySelectorAll('#trayBody .menu-item')).find(el=>el.textContent.includes('Selection & transform'));
   ok(!!selectionMenu, 'selection and transform is accessible from the menu');
   if (selectionMenu) selectionMenu.click();
@@ -425,10 +427,13 @@ async function run() {
   Q.saveBytes = (dataUrl, mime, name) => { saved = { mime, name }; return true; };
   App.exportPng();
   ok(saved && saved.mime === 'image/png', 'PNG export routed to the native bridge');
+  App.exportPng(true); ok(saved.name.endsWith('-transparent.png'), 'transparent PNG export is routed and labelled');
   const sequence = [];
   Q.saveBytes = (dataUrl, mime, name) => { sequence.push({mime,name}); return true; };
   App.exportPngSequence(); await wait(100);
   ok(sequence.length === App.doc.frames.length && sequence[0].name.includes('frame-001'), 'PNG sequence exports numbered frames');
+  sequence.length=0; App.exportPngSequence(true); await wait(100);
+  ok(sequence.length === App.doc.frames.length && sequence[0].name.endsWith('-transparent.png'), 'transparent PNG sequence exports numbered frames');
   Q.saveBytes = (dataUrl, mime, name) => { saved = { mime, name }; return true; };
   // Simulate both unsupported devices and a recorder that produces MP4 data.
   delete win.MediaRecorder;
@@ -527,6 +532,29 @@ async function run() {
   ok(App.doc.layers.length===2 && App.doc.layer().name==='Selection copy', 'copy selection adds a new layer');
   App.undo(); ok(App.doc.layers.length===1, 'copy to layer can be undone');
   App.redo(); ok(App.doc.layers.length===2, 'copy to layer can be redone');
+
+  console.log('alpha lock and backgrounds');
+  Q.UI.layerSheet(App.doc.activeLayer);
+  const alphaBtn=Array.from(doc.querySelectorAll('#modalBody button')).find(x=>x.textContent==='Alpha lock');
+  ok(!!alphaBtn, 'layer sheet offers alpha lock'); alphaBtn.click();
+  ok(App.doc.layer().alphaLocked, 'alpha lock enabled');
+  await App.saveNow(false); const alphaLoaded=await Q.Store.load(App.doc.id);
+  ok(alphaLoaded.layer().alphaLocked, 'alpha lock persists across save and reopen');
+  App.setBrush('eraser'); const alphaHistory=App.doc.history.undoStack.length, pt=App.view.toScreen(20,20);
+  pointer(view,'pointerdown',pt.x,pt.y,{id:99}); pointer(view,'pointerup',pt.x,pt.y,{id:99});
+  ok(App.doc.history.undoStack.length===alphaHistory && doc.querySelector('#toast').textContent.includes('alpha lock'), 'eraser is blocked while alpha lock is enabled');
+  Q.UI.layerSheet(App.doc.activeLayer); Array.from(doc.querySelectorAll('#modalBody button')).find(x=>x.textContent==='Unlock alpha').click();
+  ok(!App.doc.layer().alphaLocked, 'alpha lock can be turned off');
+  Q.UI.backgroundDialog(); const bg=doc.querySelector('input[aria-label="Background hex colour"]');
+  bg.value='wrong'; click('#modalBody .btn.primary');
+  ok(visible(doc.querySelector('#modal')) && doc.querySelector('.canvas-error').textContent, 'invalid background colour is rejected');
+  bg.value='#369'; click('#modalBody .btn.primary');
+  ok(App.doc.bg==='#336699', 'background accepts and expands hex colour');
+  App.undo(); ok(App.doc.bg==='#ffffff', 'background colour undo restores previous colour');
+  App.redo(); ok(App.doc.bg==='#336699', 'background colour redo reapplies colour');
+  await App.saveNow(false); const bgLoaded=await Q.Store.load(App.doc.id);
+  ok(bgLoaded.bg==='#336699', 'background colour persists');
+
 
 
 

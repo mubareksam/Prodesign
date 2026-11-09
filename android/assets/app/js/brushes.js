@@ -182,6 +182,7 @@
     this.size = Math.max(0.7, size);
     this.opacity = Q.clamp(opacity, 0.01, 1);
     this.eraser = !!brush.eraser;
+    this.alphaLocked = !!(doc.layer && doc.layer() && doc.layer().alphaLocked);
     this.selection = selection ? {x:selection.x,y:selection.y,w:selection.w,h:selection.h} : null;
     this.ctx = null;
     this.cel = null;
@@ -347,7 +348,7 @@
       target.globalCompositeOperation = 'destination-out';
       target.globalAlpha = Q.clamp(alpha, 0.01, 1);
     } else {
-      target.globalCompositeOperation = 'source-over';
+      target.globalCompositeOperation = this.alphaLocked && !this.wet ? 'source-atop' : 'source-over';
       target.globalAlpha = this.wet ? Q.clamp(alpha, 0.01, 1) : alpha;
     }
 
@@ -409,6 +410,7 @@
     ctx.clearRect(x, y, w, h);
     if (snap) ctx.drawImage(snap, x, y, w, h, x, y, w, h);
     ctx.globalAlpha = this.opacity;
+    if (this.alphaLocked) ctx.globalCompositeOperation = 'source-atop';
     ctx.drawImage(this.buf, x, y, w, h, x, y, w, h);
     ctx.restore();
   };

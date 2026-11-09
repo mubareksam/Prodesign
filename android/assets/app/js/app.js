@@ -393,6 +393,7 @@
     const layer=d.layer();
     if (!layer || !layer.visible) { Q.toast('This layer is hidden'); return; }
     if (layer.locked) { Q.toast('This layer is locked'); return; }
+    if (layer.alphaLocked && operation !== 'fill') { Q.toast('Turn off alpha lock for this edit'); return; }
     const sel=v.selection;
     if (!sel && (operation === 'clear' || operation === 'fill')) { Q.toast('Draw a rectangle or select all first'); return; }
     const r=sel || {x:0,y:0,w:d.width,h:d.height};
@@ -408,7 +409,7 @@
       d.history.beginPixels(cel);
       if (image) ctx.putImageData(image,r.x,r.y);
       else {
-        ctx.save(); ctx.setTransform(1,0,0,1,0,0); ctx.globalAlpha=1; ctx.globalCompositeOperation='source-over';
+        ctx.save(); ctx.setTransform(1,0,0,1,0,0); ctx.globalAlpha=1; ctx.globalCompositeOperation=layer.alphaLocked ? 'source-atop' : 'source-over';
         if (operation === 'clear') ctx.clearRect(r.x,r.y,r.w,r.h);
         else { ctx.fillStyle=Q.rgbToHex(v.color); ctx.fillRect(r.x,r.y,r.w,r.h); }
         ctx.restore();
@@ -432,6 +433,7 @@
     const layer=d.layer(), cel=d.activeCel(false);
     if (!layer || !layer.visible) { Q.toast('This layer is hidden'); return; }
     if (layer.locked) { Q.toast('This layer is locked'); return; }
+    if (layer.alphaLocked) { Q.toast('Turn off alpha lock to transform'); return; }
     if (!cel) { Q.toast('Draw on this layer first'); return; }
     if (!Number.isInteger(dx) || !Number.isInteger(dy) || Math.abs(dx)>d.width*2 || Math.abs(dy)>d.height*2 || !Number.isFinite(scale) || scale<0.25 || scale>4) { Q.toast('Invalid transform'); return; }
     const src=v.selection || {x:0,y:0,w:d.width,h:d.height};
@@ -461,14 +463,14 @@
     if (layer.locked) { Q.toast('This layer is locked'); return; }
     const bounds=App.view.selection ? {...App.view.selection} : {x:0,y:0,w:d.width,h:d.height};
     if (x < bounds.x || y < bounds.y || x >= bounds.x+bounds.w || y >= bounds.y+bounds.h) { Q.toast('Tap inside the selection'); return; }
-    const cel = d.activeCel(true), color = App.view.color.slice(), tolerance = App.fillThreshold;
+    const cel = d.activeCel(true), color = App.view.color.slice(), tolerance = App.fillThreshold, alphaLocked=!!layer.alphaLocked;
     App.view.locked = true;
     Q.UI.progress('Filling', 'Processing the current layer…', 0);
     setTimeout(function () {
       try {
         if (App.doc !== d || d.activeCel(false) !== cel) { Q.UI.endProgress(); return; }
         const ctx=cel.getContext('2d'), image=ctx.getImageData(bounds.x,bounds.y,bounds.w,bounds.h);
-        const rect=Q.floodFill(image,x-bounds.x,y-bounds.y,color,tolerance);
+        const rect=Q.floodFill(image,x-bounds.x,y-bounds.y,color,tolerance,alphaLocked);
         if (rect) {
           d.history.beginPixels(cel); ctx.putImageData(image,bounds.x,bounds.y); d.history.endPixels({x:rect.x+bounds.x,y:rect.y+bounds.y,w:rect.w,h:rect.h});
           App.view.dirty=true; App.markDirty();
@@ -483,7 +485,7 @@
     const d = App.doc, cel = d && d.activeCel(false);
     if (!cel) { Q.toast('Draw on this layer first'); return; }
     if (d.layer().locked) { Q.toast('This layer is locked'); return; }
-    const bounds=App.view.selection ? {...App.view.selection} : {x:0,y:0,w:d.width,h:d.height};
+    const bounds=App.view.selection ? {...App.view.selection} : {x:0,y:0,w:d.width,h:d.height}, alphaLocked=!!d.layer().alphaLocked;
     if (amount <= 0) { Q.toast('Choose an effect strength'); return; }
     Q.UI.progress('Applying effect', 'Processing the current layer…', 0);
     setTimeout(function () {
@@ -491,7 +493,10 @@
         if (App.doc !== d || d.activeCel(false) !== cel) { Q.UI.endProgress(); Q.toast('Effect cancelled'); return; }
         const ctx = cel.getContext('2d');
         const image = ctx.getImageData(bounds.x, bounds.y, bounds.w, bounds.h);
+        const alpha=alphaLocked ? new Uint8Array(image.width*image.height) : null;
+        if (alpha) for (let i=0; i<alpha.length; i++) alpha[i]=image.data[i*4+3];
         Q.applyPixelEffect(image, kind, amount);
+        if (alpha) for (let i=0; i<alpha.length; i++) image.data[i*4+3]=alpha[i];
         d.history.beginPixels(cel);
         ctx.putImageData(image, bounds.x, bounds.y);
         d.history.endPixels(bounds);
@@ -503,24 +508,29 @@
     }, 30);
   };
 
-  App.exportPng = function () {
+  App.setBackground = function (color) {
+    const d=App.doc; if (!d || !/^#[0-9a-f]{6}$/i.test(color)) return;
+    d.setBackground(color); App.view.dirty=true; Q.UI.syncDoc(); App.markDirty();
+  };
+
+  App.exportPng = function (transparent) {
     const d = App.doc;
     if (!d) return;
-    const cv = d.flatten(d.activeFrame);
-    const ok = Q.saveBytes(cv.toDataURL('image/png'), 'image/png', 'Qalam-' + Q.stamp() + '.png');
+    const cv = d.flatten(d.activeFrame, {background: transparent ? false : d.bg});
+    const ok = Q.saveBytes(cv.toDataURL('image/png'), 'image/png', 'Qalam-' + Q.stamp() + (transparent ? '-transparent' : '') + '.png');
     Q.toast(ok ? 'PNG saved' : 'Could not save PNG');
   };
 
-  App.exportPngSequence = function () {
+  App.exportPngSequence = function (transparent) {
     const d = App.doc; if (!d) return;
     const stamp = Q.stamp(), total = d.frames.length;
     let index = 0, saved = 0;
     Q.UI.progress('Exporting PNG sequence', 'Preparing frames…', 0);
     function step() {
       try {
-        const png = d.flatten(index).toDataURL('image/png');
+        const png = d.flatten(index, {background: transparent ? false : d.bg}).toDataURL('image/png');
         const number = String(index + 1).padStart(3, '0');
-        if (Q.saveBytes(png, 'image/png', 'Qalam-' + stamp + '-frame-' + number + '.png')) saved++;
+        if (Q.saveBytes(png, 'image/png', 'Qalam-' + stamp + '-frame-' + number + (transparent ? '-transparent' : '') + '.png')) saved++;
         index++;
         if (index < total) { Q.UI.progress('Exporting PNG sequence', index + ' / ' + total, index / total); setTimeout(step, 0); }
         else { Q.UI.endProgress(); Q.toast('Saved ' + saved + ' of ' + total + ' PNG frames', 4000); }

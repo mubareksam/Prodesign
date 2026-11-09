@@ -401,7 +401,7 @@
 
       const meta = Q.crel('div', 'layer-meta');
       meta.appendChild(Q.crel('div', 'layer-name', escapeHtml(layer.name)));
-      const sub = Q.crel('div', 'layer-sub', Math.round(layer.opacity * 100) + '% · ' + blendLabel(layer.blend) + (layer.locked ? ' · Locked' : ''));
+      const sub = Q.crel('div', 'layer-sub', Math.round(layer.opacity * 100) + '% · ' + blendLabel(layer.blend) + (layer.locked ? ' · Locked' : '') + (layer.alphaLocked ? ' · Alpha locked' : ''));
       meta.appendChild(sub);
       row.appendChild(meta);
 
@@ -475,7 +475,7 @@
     if (!layer) return;
     const card = Q.crel('div');
     card.appendChild(Q.crel('h2', null, 'Layer'));
-    card.appendChild(Q.crel('p', 'sub', 'Row ' + (i + 1) + ' of ' + d.layers.length));
+    card.appendChild(Q.crel('p', 'sub', 'Row ' + (i + 1) + ' of ' + d.layers.length + '. Alpha lock keeps existing transparency; turn it off to erase, transform, clear or merge.'));
 
     const nameField = Q.crel('div', 'field');
     nameField.innerHTML = '<label>Name</label>';
@@ -508,6 +508,7 @@
       return b;
     };
     actions.appendChild(mk(layer.locked ? 'Unlock layer' : 'Lock layer', ICON.sparkle, function () { app().setLayerProp(i, 'locked', !layer.locked); }));
+    actions.appendChild(mk(layer.alphaLocked ? 'Unlock alpha' : 'Alpha lock', ICON.sparkle, function () { app().setLayerProp(i, 'alphaLocked', !layer.alphaLocked); }));
     actions.appendChild(mk('Move up', ICON.up, function () { app().moveLayer(i, 1); }));
     actions.appendChild(mk('Move down', ICON.down, function () { app().moveLayer(i, -1); }));
     actions.appendChild(mk('Duplicate', ICON.copy, function () { app().duplicateLayer(i); }));
@@ -716,10 +717,13 @@
     };
 
     grid.appendChild(item('Export PNG', ICON.photo, function () { app().exportPng(); }));
+    grid.appendChild(item('Transparent PNG', ICON.photo, function () { app().exportPng(true); }));
     grid.appendChild(item('Export GIF', ICON.film, function () { UI.exportDialog(); }));
     grid.appendChild(item('Export PNG frames', ICON.photo, function () { UI.closeTray(); app().exportPngSequence(); }));
+    grid.appendChild(item('Transparent PNG frames', ICON.photo, function () { UI.closeTray(); app().exportPngSequence(true); }));
     grid.appendChild(item('Export MP4', ICON.film, function () { UI.closeTray(); app().exportMp4(); }));
     grid.appendChild(item('New canvas', ICON.plus, function () { UI.newCanvasDialog(); }));
+    grid.appendChild(item('Canvas background', ICON.sparkle, function () { UI.backgroundDialog(); }));
     grid.appendChild(item('Drawing guides', ICON.sparkle, function () { UI.guideDialog(); }));
     grid.appendChild(item('Canvas reference', ICON.photo, function () { UI.closeTray(); UI.openReference(); }));
     grid.appendChild(item('Effects', ICON.sparkle, function () { UI.effectsDialog(); }));
@@ -772,6 +776,19 @@
     }, 120);
   };
 
+
+  UI.backgroundDialog = function () {
+    const d=app().doc; if (!d) return;
+    const card=Q.crel('div'); card.appendChild(Q.crel('h2',null,'Canvas background'));
+    card.appendChild(Q.crel('p','sub','Changes the background for every frame. Normal PNG, GIF and MP4 include it; transparent PNG exports omit it. Undo restores the previous colour.'));
+    const row=Q.crel('div','field'); row.appendChild(Q.crel('label',null,'Hex colour'));
+    const input=Q.crel('input','select'); input.type='text'; input.value=d.bg; input.setAttribute('aria-label','Background hex colour'); row.appendChild(input); card.appendChild(row);
+    const error=Q.crel('p','canvas-error'); error.setAttribute('role','alert'); card.appendChild(error);
+    const actions=Q.crel('div','modal-actions'), current=Q.crel('button','btn ghost','Use brush colour'), apply=Q.crel('button','btn primary','Apply');
+    current.addEventListener('click',function () { input.value=Q.rgbToHex(app().view.color); });
+    apply.addEventListener('click',function () { const rgb=Q.hexToRgb(input.value); if (!rgb) { error.textContent='Enter a valid 3- or 6-digit hex colour.'; return; } app().setBackground(Q.rgbToHex(rgb)); UI.closeModal(); UI.closeTray(); });
+    actions.appendChild(current); actions.appendChild(apply); card.appendChild(actions); UI.openModal(card);
+  };
 
   UI.selectionDialog = function () {
     const v=app().view, d=app().doc; if (!d) return;
@@ -1030,7 +1047,7 @@
     card.appendChild(Q.crel('p', 'sub', 'A paint, sketch and frame-by-frame animation studio for Android. Artwork is stored on this device only — nothing is uploaded.'));
     card.appendChild(Q.crel('p', 'sub', 'Developed by Qmer'));
     card.appendChild(Q.crel('p', 'sub', 'ቀለም (qalam) means “pen” or “ink”.'));
-    card.appendChild(Q.crel('p', 'sub', 'Version 1.7'));
+    card.appendChild(Q.crel('p', 'sub', 'Version 1.8'));
     const actions = Q.crel('div', 'modal-actions');
     const close = Q.crel('button', 'btn primary', 'Close');
     close.addEventListener('click', function () { UI.closeModal(); });

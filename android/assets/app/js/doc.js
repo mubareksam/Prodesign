@@ -15,11 +15,12 @@
     notify() { if (this.onchange) this.onchange(); }
     structSnapshot() {
       const d = this.doc;
-      return { layers: d.layers.map(l => ({ ...l })), frames: d.frames.map(f => ({cels: f.cels.slice(), duration: f.duration || 1, group: f.group || ''})), activeLayer: d.activeLayer, activeFrame: d.activeFrame };
+      return { layers: d.layers.map(l => ({ ...l })), frames: d.frames.map(f => ({cels: f.cels.slice(), duration: f.duration || 1, group: f.group || ''})), activeLayer: d.activeLayer, activeFrame: d.activeFrame, bg: d.bg };
     }
     applyStruct(s) {
       const d = this.doc;
       d.layers = s.layers.map(l => ({ ...l })); d.frames = s.frames.map(f => ({ cels: f.cels.slice(), duration: f.duration || 1, group: f.group || '' }));
+      d.bg = s.bg || '#ffffff';
       d.activeLayer = Q.clamp(s.activeLayer, 0, d.layers.length - 1); d.activeFrame = Q.clamp(s.activeFrame, 0, d.frames.length - 1);
     }
     struct(fn) { const before = this.structSnapshot(), result = fn.call(this.doc); this.push({ type:'struct', before, after:this.structSnapshot() }); return result; }
@@ -71,7 +72,7 @@
     addLayer(copyFrom) {
       return this.history.struct(function () {
         const at = this.activeLayer + 1, src = this.layers[copyFrom], layer = makeLayer(src ? src.name + ' copy' : null);
-        if (src) { layer.opacity = src.opacity; layer.blend = src.blend; }
+        if (src) { layer.opacity = src.opacity; layer.blend = src.blend; layer.alphaLocked = !!src.alphaLocked; }
         this.layers.splice(at,0,layer);
         for (const f of this.frames) { const c = src && f.cels[copyFrom]; f.cels.splice(at,0,c ? Q.copyCanvas(c) : null); }
         this.activeLayer = at; return at;
@@ -101,7 +102,7 @@
     }
     mergeDown(i) {
       if (i <= 0 || i >= this.layers.length) { Q.toast('Nothing below to merge into'); return; }
-      if (this.layers[i].locked || this.layers[i-1].locked) { Q.toast('Unlock both layers first'); return; }
+      if (this.layers[i].locked || this.layers[i-1].locked || this.layers[i].alphaLocked || this.layers[i-1].alphaLocked) { Q.toast('Unlock both layers and alpha first'); return; }
       return this.history.struct(function () {
         const lower = this.layers[i-1], upper = this.layers[i];
         for (const f of this.frames) {
@@ -115,7 +116,7 @@
         lower.opacity = 1; lower.blend = 'source-over'; lower.visible = true; this.layers.splice(i,1); this.activeLayer = i-1;
       });
     }
-    clearLayer(i) { if (i < 0 || i >= this.layers.length) return; if (this.layers[i].locked) { Q.toast('Unlock the layer first'); return; } return this.history.struct(function () { for (const f of this.frames) f.cels[i] = null; }); }
+    clearLayer(i) { if (i < 0 || i >= this.layers.length) return; if (this.layers[i].locked || this.layers[i].alphaLocked) { Q.toast('Unlock the layer and alpha first'); return; } return this.history.struct(function () { for (const f of this.frames) f.cels[i] = null; }); }
     addFrame(duplicate) { return this.history.struct(function () { const at = this.activeFrame+1; this.frames.splice(at,0,{ cels:duplicate ? this.cloneCels(this.frames[this.activeFrame].cels) : this.blankCels(), duration: duplicate ? (this.frames[this.activeFrame].duration || 1) : 1, group: duplicate ? (this.frames[this.activeFrame].group || '') : '' }); this.activeFrame=at; }); }
     setFrameDuration(i, duration) { if (!this.frames[i]) return; return this.history.struct(function () { this.frames[i].duration = Q.clamp(Math.round(duration) || 1,1,12); }); }
     setFrameGroup(i, group) { if (!this.frames[i]) return; const name = String(group || '').trim().slice(0, 32); if (this.frames[i].group === name) return; return this.history.struct(function () { this.frames[i].group = name; }); }
@@ -125,6 +126,7 @@
       return this.history.struct(function () { this.frames.splice(i,1); this.activeFrame = Q.clamp(this.activeFrame,0,this.frames.length-1); });
     }
     moveFrame(i,dir) { const j = i+dir; if (i < 0 || i >= this.frames.length || j < 0 || j >= this.frames.length) return; return this.history.struct(function () { this.frames.splice(j,0,this.frames.splice(i,1)[0]); this.activeFrame=j; }); }
+    setBackground(color) { if (this.bg === color) return; return this.history.struct(function () { this.bg=color; }); }
     setLayerProp(i,key,value) { if (this.layers[i]) return this.history.struct(function () { this.layers[i][key]=value; }); }
     setLayerPropLive(i,key,value) { if (this.layers[i]) this.layers[i][key]=value; }
     composite(ctx,frameIdx,opts = {}) {
@@ -136,7 +138,7 @@
       if (opts.background !== false) { c.fillStyle=opts.background || this.bg; c.fillRect(0,0,canvas.width,canvas.height); }
       this.composite(c,frameIdx,opts); return canvas;
     }
-    flatten(frameIdx) { return this.renderFrame(Q.canvas(this.width,this.height),frameIdx); }
+    flatten(frameIdx,opts = {}) { return this.renderFrame(Q.canvas(this.width,this.height),frameIdx,opts); }
     thumbnail(frameIdx,size = 160) {
       const scale = size/Math.max(this.width,this.height), cv = Q.canvas(this.width*scale,this.height*scale), c=cv.getContext('2d');
       c.fillStyle=this.bg; c.fillRect(0,0,cv.width,cv.height); c.save(); c.scale(cv.width/this.width,cv.height/this.height); this.composite(c,frameIdx == null ? this.activeFrame : frameIdx); c.restore(); return cv;

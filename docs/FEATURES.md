@@ -23,6 +23,12 @@ The supplied feature inventory is a roadmap, not a list of completed work.
   undoable for the current layer/frame; selected pixels can be copied to a new layer
   in the current frame. No live transform preview. Pixel undo does not restore the
   selection outline. Selections are not saved and cannot be feathered or freehand.
+- Alpha lock lets brush painting, fill and effects recolour existing layer pixels
+  without changing their alpha. It is saved per layer and copied on duplication.
+  Erasing, clear, flip, move/scale and merge require unlocking alpha first; it does
+  not prevent deletion, frame deletion or undo/redo.
+- A saved, undoable canvas background colour applies across frames. Transparent PNG
+  and transparent PNG-sequence exports omit it; ordinary PNG, GIF and MP4 include it.
 - Per-layer lock prevents painting, fill, effects, selection edits, clearing, deleting
   and merging the layer, and persists with the artwork. It does not block visibility,
   reordering, undo/redo or frame deletion.
@@ -38,7 +44,7 @@ The supplied feature inventory is a roadmap, not a list of completed work.
   brightness, saturation, contrast, hue shift, noise, chromatic shift, halftone
   dither and threshold. These are basic destructive pixel effects, not a full
   Procreate adjustment or live preview system.
-- PNG, numbered PNG sequence and GIF export. PNG sequences contain one image per
+- Opaque or transparent PNG, numbered PNG sequence and GIF export. PNG sequences contain one image per
   frame and do not include hold timing metadata. MP4 export records one loop in real time only when the Android
   WebView supports MP4 `MediaRecorder` and canvas capture; it is not available on all
   devices. MP4 and Android MediaStore exports still need physical-device testing.
@@ -47,10 +53,10 @@ The supplied feature inventory is a roadmap, not a list of completed work.
 
 ## Not yet implemented
 
-Snapping/drawing assist for grids and perspective, image import, camera references, layer masks/groups/clipping/alpha lock, freehand/automatic selection,
+Snapping/drawing assist for grids and perspective, image import, camera references, layer masks/groups/clipping, freehand/automatic selection,
 feathered selection, interactive transforms and free rotation, cross-layer ColorDrop/reference fill, smudge, advanced filters and liquify, typography,
 DPI settings, timelapse, gallery stacks, PSD/Procreate/PDF/TIFF compatibility, brush
 import/export, and most advanced colour-management and accessibility features.
 Apple Pencil-specific controls are not applicable on Android. See the original
 [Procreate analysis](procreate-analysis.md) for background; its feature matrix
-predates version 1.7.
+predates version 1.8.

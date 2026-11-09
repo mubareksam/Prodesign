@@ -4,20 +4,20 @@ Developed by **Qmer**. An offline painting and frame-animation studio for Androi
 brushes, layers, a colour wheel, a frame timeline with onion skin, Procreate's gesture
 vocabulary, and PNG/GIF export. No account, no ads, no network permission.
 
-**Download:** [`Qalam-1.7.apk`](../artifacts/Qalam-1.7.apk) (~254 KB)
+**Download:** [`Qalam-1.8.apk`](../artifacts/Qalam-1.8.apk) (~254 KB)
 
 | | |
 |---|---|
 | Package | `com.qalam.studio` |
-| Version | 1.7 (versionCode 8) |
+| Version | 1.8 (versionCode 9) |
 | Requires | Android 8.0+ (minSdk 26), built for targetSdk 33 |
 | Permissions | `VIBRATE` only — no internet, no storage, no location |
 | Signing | APK Signature Scheme v1 + v2, self-signed with a public test key |
-| SHA-256 | `f00465e93b7bab02134845a145a937101c27e66ffc6fe50ce2543ac4943d0b22` |
+| SHA-256 | `ae2ed25b551064f8576560f5df086b3cae3f41b45f6e32ef4dd83ffea00edcf4` |
 
 ## Install
 
-1. Download `Qalam-1.7.apk` to the phone (or copy it over USB).
+1. Download `Qalam-1.8.apk` to the phone (or copy it over USB).
 2. Open it from the file manager. Android will ask you to allow installs from that
    app the first time ("Install unknown apps") — allow it, then install.
 3. Open **Qalam**.
@@ -43,7 +43,7 @@ stroke never darkens where it crosses itself.
 **Layers** — add, duplicate, reorder, merge down, clear, delete, rename; per-layer
 opacity and 16 blend modes (Normal, Multiply, Screen, Overlay, Darken, Lighten, Color
 dodge/burn, Hard/Soft light, Difference, Exclusion, Hue, Saturation, Color, Luminosity);
-live thumbnails, visibility toggles and per-layer edit locking.
+live thumbnails, visibility toggles, per-layer edit locking and alpha lock.
 
 **Colour** — HSB wheel with value/saturation square, HEX entry, 24 swatches and the
 12 most recent colours.
@@ -65,7 +65,8 @@ timeline, play at 1–30 fps with frame holds, and configurable onion skins.
 | Pen down, then a finger | Finger is ignored — palm rejection |
 
 **Saving & export** — everything autosaves on the device (≈2.5 s after a change, and
-when the app goes to the background). PNG export and GIF animation export (50/100/150 %
+when the app goes to the background). Background colour is configurable; PNG and PNG
+sequence exports can omit it and preserve transparency. GIF animation export (50/100/150 %
 scale, loop count) are written to `Pictures/Qalam`; MP4 export is available only on WebViews that support it. Undo history holds 36 steps.
 
 ## Documentation
