@@ -1,13 +1,13 @@
 # Prodesign · Qalam
 
-Developed by **Qmer**. Qalam is an offline painting and frame-animation app for Android, inspired by Procreate. It includes pressure-sensitive brushes, layers and blend modes, a colour picker, a timeline with onion skin, gesture shortcuts, guides, a fill tool, rectangular selection masking, layer and alpha locking, basic transforms and transparent PNG export, canvas reference, brush customization and layer effects, autosave, PNG/GIF export, and capability-dependent MP4 export.
+Developed by **Qmer**. Qalam is an offline painting and frame-animation app for Android, inspired by Procreate. It includes pressure-sensitive brushes, layers and blend modes, a colour picker, a timeline with onion skin, playback ranges and batch frame tools, gesture shortcuts, guides, a fill tool, rectangular selection masking, layer and alpha locking, basic transforms and transparent PNG and sprite-sheet export, canvas reference, brush customization and layer effects, autosave, PNG/GIF export, and capability-dependent MP4 export.
 
 ## Download and install
 
-- [Qalam 1.8 APK](artifacts/Qalam-1.8.apk) · Android 8.0 or later
-- [Download bundle](artifacts/Qalam-1.8-package.zip) · APK, README and documentation
+- [Qalam 1.9 APK](artifacts/Qalam-1.9.apk) · Android 8.0 or later
+- [Download bundle](artifacts/Qalam-1.9-package.zip) · APK, README and documentation
 
-Copy the APK to your device and open it with a file manager. You may need to allow installation from that source. Version 1.8 is signed with the same key as earlier versions and should install as an update, keeping your artwork; Android asks for confirmation and does not let the app silently uninstall or replace itself. Back up important artwork before updating. The app requests `VIBRATE` only and has no internet permission. See the [user guide](docs/qalam.md) for controls and export instructions.
+Copy the APK to your device and open it with a file manager. You may need to allow installation from that source. Version 1.9 is signed with the same key as earlier versions and should install as an update, keeping your artwork; Android asks for confirmation and does not let the app silently uninstall or replace itself. Back up important artwork before updating. The app requests `VIBRATE` only and has no internet permission. See the [user guide](docs/qalam.md) for controls and export instructions.
 
 **Signing:** The included APK and default build use the publicly available key in `tools/apksign/key.pem`. It is suitable only for testing, not a trusted production release: anyone can use it to sign an APK claiming to be this app. Use a private, securely stored signing key for a release; changing keys means Android will not accept it as an update to the included APK.
 
@@ -21,7 +21,7 @@ bash tools/fetch-toolchain.sh
 bash tools/build.sh
 ```
 
-The build writes `artifacts/Qalam-1.8.apk`, checks the Java reference sources, assembles and signs the APK, then verifies it. Builds need not be byte-for-byte identical. `QALAM_TOOLCHAIN` overrides the toolchain directory. The automated tests use a headless DOM/canvas harness; they do not replace testing on a real device.
+The build writes `artifacts/Qalam-1.9.apk`, checks the Java reference sources, assembles and signs the APK, then verifies it. Builds need not be byte-for-byte identical. `QALAM_TOOLCHAIN` overrides the toolchain directory. The automated tests use a headless DOM/canvas harness; they do not replace testing on a real device.
 
 ## Documentation
 

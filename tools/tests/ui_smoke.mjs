@@ -100,7 +100,7 @@ win.navigator.vibrate = () => true;
 
 /* ── load the app scripts in page order ─────────────────── */
 
-const files = ['core.js', 'doc.js', 'brushes.js', 'gif.js', 'effects.js', 'fill.js', 'selection.js', 'view.js', 'storage.js', 'ui.js', 'app.js'];
+const files = ['core.js', 'doc.js', 'brushes.js', 'gif.js', 'effects.js', 'fill.js', 'selection.js', 'spritesheet.js', 'view.js', 'storage.js', 'ui.js', 'app.js'];
 for (const f of files) {
   const code = readFileSync(path.join(APP, 'js', f), 'utf8');
   win.eval(code);
@@ -557,6 +557,44 @@ async function run() {
 
 
 
+
+
+  console.log('animation range, batches and sprite export');
+  App.createDoc(64,64,'Animation test'); App.addFrame(false); App.addFrame(false); App.addFrame(false); App.selectFrame(0);
+  Q.UI.animationSettings();
+  const startRange=doc.querySelector('input[aria-label="Playback start"]'), endRange=doc.querySelector('input[aria-label="Playback end"]');
+  const setRange=Array.from(doc.querySelectorAll('#modalBody button')).find(x=>x.textContent==='Set range');
+  startRange.value='4'; endRange.value='2'; setRange.click();
+  ok(doc.querySelector('.canvas-error').textContent && App.doc.playRange===null, 'invalid playback range is rejected');
+  startRange.value='2'; endRange.value='3'; setRange.click();
+  ok(App.doc.playRange.start===1 && App.doc.playRange.end===2, 'custom playback range is saved');
+  click('#modalBody .btn.primary'); await App.saveNow(false); const rangeLoaded=await Q.Store.load(App.doc.id);
+  ok(rangeLoaded.playRange.start===1 && rangeLoaded.playRange.end===2, 'playback range survives save and reopen');
+  App.doc.playMode='once'; App.doc.fps=30; App.selectFrame(0); App.togglePlay();
+  ok(App.doc.activeFrame===1, 'playback starts at range beginning when current frame is outside range');
+  await wait(120); ok(!App.playing && App.doc.activeFrame===2, 'one-shot playback ends at range end');
+  App.selectFrame(0); App.togglePlay(); App.selectFrame(3);
+  ok(!App.playing && App.doc.activeFrame===3, 'selecting a frame stops playback safely');
+  Q.UI.batchFramesDialog();
+  let first=doc.querySelector('input[aria-label="First frame"]'), last=doc.querySelector('input[aria-label="Last frame"]'), batchHold=doc.querySelector('input[aria-label="Batch hold"]');
+  let action=label=>Array.from(doc.querySelectorAll('#modalBody button')).find(x=>x.textContent===label).click();
+  first.value='3'; last.value='2'; action('Apply hold'); ok(doc.querySelector('.canvas-error').textContent, 'batch operation rejects invalid range');
+  first.value='2'; last.value='3'; batchHold.value='4'; action('Apply hold');
+  ok(App.doc.frames[1].duration===4 && App.doc.frames[2].duration===4 && App.doc.frames[0].duration===1, 'batch hold changes only chosen frames');
+  App.undo(); ok(App.doc.frames[1].duration===1, 'batch hold undoes in one step');
+  Q.UI.batchFramesDialog(); first=doc.querySelector('input[aria-label="First frame"]'); last=doc.querySelector('input[aria-label="Last frame"]'); first.value='2'; last.value='3'; action('Duplicate range');
+  ok(App.doc.frames.length===6 && App.doc.activeFrame===3, 'batch duplication inserts frames after range');
+  App.undo(); ok(App.doc.frames.length===4, 'batch duplicate is undoable');
+  Q.UI.spriteSheetDialog();
+  const columns=doc.querySelector('input[aria-label="Sprite columns"]'); columns.value='9'; click('#modalBody .btn.primary');
+  ok(doc.querySelector('.canvas-error').textContent, 'sprite sheet rejects invalid columns');
+  columns.value='2'; let spriteSaved=null; Q.saveBytes=(url,mime,name)=>{spriteSaved={mime,name};return true;}; click('#modalBody .btn.primary'); await wait(100);
+  ok(spriteSaved && spriteSaved.mime==='image/png' && spriteSaved.name.endsWith('-spritesheet.png'), 'sprite sheet exports through native bridge');
+  if (!doc.querySelector('#timeline').classList.contains('hidden')) Q.UI.toggleTimeline();
+  App.doc.playMode='loop'; App.doc.fps=30; App.doc.frames.forEach(f=>{f.duration=1;});
+  const painted=[], composite=App.doc.composite; App.doc.composite=function(ctx,index,opts) { painted.push(index); return composite.call(this,ctx,index,opts); };
+  Q.saveBytes=()=>true; App.exportMp4(); await wait(140); App.doc.composite=composite;
+  ok(painted.join(',')==='1,2', 'MP4 recorder paints only playback-range frames');
 
   await App.saveNow(false);
   console.log(failures ? `\n${failures} check(s) FAILED` : '\nall UI checks passed');

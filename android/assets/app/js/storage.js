@@ -170,6 +170,7 @@
       frameDurations: doc.frames.map(function (f) { return f.duration || 1; }),
       frameGroups: doc.frames.map(function (f) { return f.group || ''; }),
       playMode: doc.playMode,
+      playRange: doc.playRange ? {...doc.playRange} : null,
       guide: doc.guide,
       frameCount: doc.frames.length,
       layers: doc.layers.map(function (l) {
@@ -209,7 +210,7 @@
   }
 
   function deserialize(rec) {
-    const doc = new Q.Doc({ id: rec.id, name: rec.name, width: rec.w, height: rec.h, fps: rec.fps, bg: rec.bg, onion: rec.onion, onionAlpha: rec.onionAlpha, onionFrames: rec.onionFrames, onionPrevColor: rec.onionPrevColor, onionNextColor: rec.onionNextColor, playMode: rec.playMode, guide: rec.guide });
+    const doc = new Q.Doc({ id: rec.id, name: rec.name, width: rec.w, height: rec.h, fps: rec.fps, bg: rec.bg, onion: rec.onion, onionAlpha: rec.onionAlpha, onionFrames: rec.onionFrames, onionPrevColor: rec.onionPrevColor, onionNextColor: rec.onionNextColor, playMode: rec.playMode, playRange: rec.playRange, guide: rec.guide });
     doc.layers = (rec.layers || []).map(function (l) {
       return { id: l.id || Q.uid(), name: l.name || 'Layer', visible: l.visible !== false, opacity: l.opacity == null ? 1 : l.opacity, blend: l.blend || 'source-over', assisted: !!l.assisted, locked: !!l.locked, alphaLocked: !!l.alphaLocked };
     });
@@ -222,6 +223,7 @@
       frames.push({ cels: cels, duration: Q.clamp(Math.round((rec.frameDurations || [])[i]) || 1, 1, 12), group: String((rec.frameGroups || [])[i] || '').slice(0,32) });
     }
     doc.frames = frames;
+    doc.normalizePlayRange();
     doc.activeFrame = Q.clamp(rec.activeFrame || 0, 0, frames.length - 1);
     doc.activeLayer = Q.clamp(rec.activeLayer || 0, 0, doc.layers.length - 1);
     doc.history = new Q.History(doc);

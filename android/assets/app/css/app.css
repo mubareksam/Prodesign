@@ -390,3 +390,7 @@ select, .select {
 .reference-zoom { display: flex; align-items: center; gap: 6px; padding: 7px 9px; font-size: 11px; color: #dddde6; }
 .reference-zoom input { flex: 1; min-width: 0; }
 .tray, .timeline { z-index: 20; }
+
+/* Frames outside a custom playback range remain editable. */
+.tl-frame.out-range { opacity: .48; }
+.tl-frame.out-range.on { opacity: .8; }

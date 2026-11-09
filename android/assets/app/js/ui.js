@@ -721,6 +721,7 @@
     grid.appendChild(item('Export GIF', ICON.film, function () { UI.exportDialog(); }));
     grid.appendChild(item('Export PNG frames', ICON.photo, function () { UI.closeTray(); app().exportPngSequence(); }));
     grid.appendChild(item('Transparent PNG frames', ICON.photo, function () { UI.closeTray(); app().exportPngSequence(true); }));
+    grid.appendChild(item('Export sprite sheet', ICON.photo, function () { UI.spriteSheetDialog(); }));
     grid.appendChild(item('Export MP4', ICON.film, function () { UI.closeTray(); app().exportMp4(); }));
     grid.appendChild(item('New canvas', ICON.plus, function () { UI.newCanvasDialog(); }));
     grid.appendChild(item('Canvas background', ICON.sparkle, function () { UI.backgroundDialog(); }));
@@ -893,6 +894,7 @@
   };
 
   UI.animationSettings = function () {
+    app().stopPlay();
     const d = app().doc, card = Q.crel('div'); if (!d) return;
     card.appendChild(Q.crel('h2', null, 'Animation settings'));
     card.appendChild(Q.crel('p', 'sub', 'Playback and onion skin settings for this artwork.'));
@@ -912,6 +914,19 @@
     const select=Q.crel('select'); select.setAttribute('aria-label','Playback');
     [['loop','Loop'],['pingpong','Ping-pong'],['once','One-shot']].forEach(function (v) { const o=Q.crel('option'); o.value=v[0]; o.textContent=v[1]; select.appendChild(o); });
     select.value=d.playMode; select.addEventListener('change',function () { d.playMode=select.value; app().markDirty(); }); row.appendChild(select); card.appendChild(row);
+    const bounds=Q.playbackBounds(d);
+    const rangeInfo=Q.crel('p','sub','Playback range uses frame numbers. GIF and MP4 follow it; PNG frames and sprite sheets export all frames.'); card.appendChild(rangeInfo);
+    const rangeFields=Q.crel('div','canvas-dimensions');
+    function rangeField(label,initial) { const wrap=Q.crel('label'); wrap.textContent=label; const input=Q.crel('input','select'); input.type='number'; input.min=1; input.max=d.frames.length; input.value=initial; input.setAttribute('aria-label',label); wrap.appendChild(input); rangeFields.appendChild(wrap); return input; }
+    const start=rangeField('Playback start',bounds.start+1), end=rangeField('Playback end',bounds.end+1); card.appendChild(rangeFields);
+    const rangeError=Q.crel('p','canvas-error'); rangeError.setAttribute('role','alert'); card.appendChild(rangeError);
+    const rangeActions=Q.crel('div','modal-actions'), setRange=Q.crel('button','btn ghost','Set range'), all=Q.crel('button','btn ghost','All frames');
+    setRange.addEventListener('click',function () {
+      if (!start.value.trim() || !end.value.trim() || !d.setPlayRange(Number(start.value)-1,Number(end.value)-1)) { rangeError.textContent='Enter a valid start and end within the timeline.'; return; }
+      rangeError.textContent=''; app().markDirty(); Q.toast('Playback range saved'); UI.refreshTimeline();
+    });
+    all.addEventListener('click',function () { d.setPlayRange(null,null); start.value=1; end.value=d.frames.length; rangeError.textContent=''; app().markDirty(); UI.refreshTimeline(); Q.toast('Using all frames'); });
+    rangeActions.appendChild(setRange); rangeActions.appendChild(all); card.appendChild(rangeActions);
     const actions=Q.crel('div','modal-actions'), done=Q.crel('button','btn primary','Done'); done.addEventListener('click',function () { UI.closeModal(); UI.refreshTimeline(); }); actions.appendChild(done); card.appendChild(actions); UI.openModal(card);
   };
 
@@ -942,6 +957,10 @@
     }, null));
     head.appendChild(chip('Settings', false, function () { UI.animationSettings(); }, null));
     head.appendChild(chip('Frame options', false, function () { UI.frameSheet(d.activeFrame); }, null));
+    head.appendChild(chip('Batch frames', false, function () { UI.batchFramesDialog(); }, null));
+    head.appendChild(chip('Blank frame', false, function () { app().addFrame(false); }, null));
+    head.appendChild(chip('◀ Frame', false, function () { app().selectFrame(Math.max(0,d.activeFrame-1)); }, null));
+    head.appendChild(chip('Frame ▶', false, function () { app().selectFrame(Math.min(d.frames.length-1,d.activeFrame+1)); }, null));
     head.appendChild(chip('Onion', d.onion, function () {
       d.onion = !d.onion;
       app().view.dirty = true;
@@ -952,16 +971,17 @@
     head.appendChild(chip('', false, function () { app().addFrame(true); }, ICON.plus));
     el.appendChild(head);
 
-    const strip = Q.crel('div', 'tl-frames');
+    const strip = Q.crel('div', 'tl-frames'), bounds=Q.playbackBounds(d);
     d.frames.forEach(function (fr, i) {
-      const b = Q.crel('button', 'tl-frame' + (i === d.activeFrame ? ' on' : ''));
+      const outside=i<bounds.start || i>bounds.end;
+      const b = Q.crel('button', 'tl-frame' + (i === d.activeFrame ? ' on' : '') + (outside ? ' out-range' : ''));
       const cv = d.thumbnail(i, 112);
       const small = Q.canvas(72, 72 * (d.height / d.width));
       small.getContext('2d').drawImage(cv, 0, 0, small.width, small.height);
       b.appendChild(small);
       b.appendChild(Q.crel('span', 'n', String(i + 1) + ((fr.duration || 1) > 1 ? ' · ' + fr.duration + '×' : '')));
       if (fr.group) { const tag = Q.crel('span', 'frame-group'); tag.textContent = fr.group; b.appendChild(tag); }
-      b.setAttribute('aria-label', 'Frame ' + (i + 1) + (fr.group ? ', group ' + fr.group : ''));
+      b.setAttribute('aria-label', 'Frame ' + (i + 1) + (fr.group ? ', group ' + fr.group : '') + (outside ? ', outside playback range' : ''));
       b.addEventListener('click', function () { app().selectFrame(i); });
       b.addEventListener('dblclick', function () { UI.frameSheet(i); });
       b.addEventListener('contextmenu', function (e) { e.preventDefault(); UI.frameSheet(i); });
@@ -977,6 +997,7 @@
   UI.highlightFrame = function (i) { Q.els('#timeline .tl-frame').forEach(function (b, index) { b.classList.toggle('on', index === i); }); };
 
   UI.frameSheet = function (i) {
+    app().stopPlay();
     const card = Q.crel('div');
     card.appendChild(Q.crel('h2', null, 'Frame ' + (i + 1)));
     card.appendChild(Q.crel('p', 'sub', 'Frames are duplicated when added so you can build on the previous drawing.'));
@@ -1007,6 +1028,42 @@
     grid.appendChild(mk('Delete', ICON.trash, function () { app().deleteFrame(i); }));
     card.appendChild(grid);
     UI.openModal(card);
+  };
+
+  UI.batchFramesDialog = function () {
+    app().stopPlay(); const d=app().doc; if (!d) return;
+    const card=Q.crel('div'); card.appendChild(Q.crel('h2',null,'Batch frames'));
+    card.appendChild(Q.crel('p','sub','Apply to an inclusive range of frame numbers. Each operation is one undo step. Labels are tags, not nested groups. Duplicates are inserted after the range.'));
+    function field(label,value,type) { const row=Q.crel('div','field'); row.appendChild(Q.crel('label',null,label)); const input=Q.crel('input','select'); input.type=type || 'number'; input.value=value; input.setAttribute('aria-label',label); row.appendChild(input); card.appendChild(row); return input; }
+    const start=field('First frame',1), end=field('Last frame',d.frames.length), hold=field('Batch hold',1), label=field('Batch label','','text'); label.maxLength=32;
+    const error=Q.crel('p','canvas-error'); error.setAttribute('role','alert'); card.appendChild(error);
+    const grid=Q.crel('div','menu-grid');
+    function action(text,op) { const b=Q.crel('button','menu-item',text); b.addEventListener('click',function () {
+      const first=Number(start.value), last=Number(end.value), ticks=Number(hold.value);
+      if (!start.value.trim() || !end.value.trim() || !Number.isInteger(first) || !Number.isInteger(last) || first<1 || last<first || last>d.frames.length) { error.textContent='Enter a valid inclusive frame range.'; return; }
+      if (op==='hold' && (!hold.value.trim() || !Number.isInteger(ticks) || ticks<1 || ticks>12)) { error.textContent='Hold must be a whole number from 1 to 12.'; return; }
+      if (op==='duplicate' && d.frames.length+(last-first+1)>60) { error.textContent='Duplicating this range exceeds the 60-frame limit.'; return; }
+      if (app().batchFrames(first-1,last-1,op,op==='label' ? label.value : ticks)) UI.closeModal();
+    }); grid.appendChild(b); }
+    action('Apply label','label'); action('Apply hold','hold'); action('Reverse range','reverse'); action('Duplicate range','duplicate'); card.appendChild(grid);
+    const close=Q.crel('button','btn ghost','Close'); close.addEventListener('click',function () { UI.closeModal(); }); card.appendChild(close); UI.openModal(card);
+  };
+
+  UI.spriteSheetDialog = function () {
+    app().stopPlay(); const d=app().doc; if (!d) return;
+    const card=Q.crel('div'); card.appendChild(Q.crel('h2',null,'Export sprite sheet'));
+    card.appendChild(Q.crel('p','sub','One tile per source frame in timeline order; playback range, ping-pong and holds are not included. Empty grid cells are transparent. Maximum: 8192 pixels per side and 16 megapixels.'));
+    const row=Q.crel('div','field'); row.appendChild(Q.crel('label',null,'Columns')); const cols=Q.crel('input','select'); cols.type='number'; cols.min=1; cols.max=d.frames.length; cols.value=Math.min(4,d.frames.length); cols.setAttribute('aria-label','Sprite columns'); row.appendChild(cols); card.appendChild(row);
+    const srow=Q.crel('div','field'); srow.appendChild(Q.crel('label',null,'Scale')); const scale=Q.crel('select'); scale.setAttribute('aria-label','Sprite scale');
+    [['0.25','25%'],['0.5','50%'],['1','100%']].forEach(function (a) { const option=Q.crel('option'); option.value=a[0]; option.textContent=a[1]; scale.appendChild(option); }); srow.appendChild(scale); card.appendChild(srow);
+    const brow=Q.crel('div','field'); brow.appendChild(Q.crel('label',null,'Background')); const background=Q.crel('select'); background.setAttribute('aria-label','Sprite background');
+    [['transparent','Transparent'],['canvas','Canvas colour']].forEach(function (a) { const option=Q.crel('option'); option.value=a[0]; option.textContent=a[1]; background.appendChild(option); }); brow.appendChild(background); card.appendChild(brow);
+    const info=Q.crel('p','sub'); const error=Q.crel('p','canvas-error'); error.setAttribute('role','alert'); card.appendChild(info); card.appendChild(error);
+    function update() { const l=Q.spriteSheetLayout(d,Number(cols.value),Number(scale.value)); info.textContent=l ? 'Output: '+l.width+' × '+l.height+' px · tiles '+l.tileW+' × '+l.tileH+' px' : 'Invalid size or too large for export.'; return l; }
+    cols.addEventListener('input',update); scale.addEventListener('change',update); update();
+    const actions=Q.crel('div','modal-actions'), cancel=Q.crel('button','btn ghost','Cancel'), save=Q.crel('button','btn primary','Export');
+    cancel.addEventListener('click',function () { UI.closeModal(); }); save.addEventListener('click',function () { if (!update()) { error.textContent='Choose valid columns and a smaller scale.'; return; } const n=Number(cols.value), factor=Number(scale.value), transparent=background.value==='transparent'; UI.closeModal(); UI.closeTray(); app().exportSpriteSheet(n,factor,transparent); });
+    actions.appendChild(cancel); actions.appendChild(save); card.appendChild(actions); UI.openModal(card);
   };
 
   UI.helpSheet = function () {
@@ -1047,7 +1104,7 @@
     card.appendChild(Q.crel('p', 'sub', 'A paint, sketch and frame-by-frame animation studio for Android. Artwork is stored on this device only — nothing is uploaded.'));
     card.appendChild(Q.crel('p', 'sub', 'Developed by Qmer'));
     card.appendChild(Q.crel('p', 'sub', 'ቀለም (qalam) means “pen” or “ink”.'));
-    card.appendChild(Q.crel('p', 'sub', 'Version 1.8'));
+    card.appendChild(Q.crel('p', 'sub', 'Version 1.9'));
     const actions = Q.crel('div', 'modal-actions');
     const close = Q.crel('button', 'btn primary', 'Close');
     close.addEventListener('click', function () { UI.closeModal(); });

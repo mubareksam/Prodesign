@@ -15,12 +15,12 @@
     notify() { if (this.onchange) this.onchange(); }
     structSnapshot() {
       const d = this.doc;
-      return { layers: d.layers.map(l => ({ ...l })), frames: d.frames.map(f => ({cels: f.cels.slice(), duration: f.duration || 1, group: f.group || ''})), activeLayer: d.activeLayer, activeFrame: d.activeFrame, bg: d.bg };
+      return { layers: d.layers.map(l => ({ ...l })), frames: d.frames.map(f => ({cels: f.cels.slice(), duration: f.duration || 1, group: f.group || ''})), activeLayer: d.activeLayer, activeFrame: d.activeFrame, bg: d.bg, playRange: d.playRange ? {...d.playRange} : null };
     }
     applyStruct(s) {
       const d = this.doc;
       d.layers = s.layers.map(l => ({ ...l })); d.frames = s.frames.map(f => ({ cels: f.cels.slice(), duration: f.duration || 1, group: f.group || '' }));
-      d.bg = s.bg || '#ffffff';
+      d.bg = s.bg || '#ffffff'; d.playRange = s.playRange ? {...s.playRange} : null;
       d.activeLayer = Q.clamp(s.activeLayer, 0, d.layers.length - 1); d.activeFrame = Q.clamp(s.activeFrame, 0, d.frames.length - 1);
     }
     struct(fn) { const before = this.structSnapshot(), result = fn.call(this.doc); this.push({ type:'struct', before, after:this.structSnapshot() }); return result; }
@@ -58,6 +58,7 @@
     constructor(opts = {}) {
       this.id = opts.id || Q.uid(); this.name = opts.name || 'Untitled'; this.width = opts.width || 2048; this.height = opts.height || 2048;
       this.fps = opts.fps || 12; this.bg = opts.bg || '#ffffff'; this.onion = !!opts.onion; this.onionAlpha = opts.onionAlpha == null ? 0.32 : opts.onionAlpha;
+      this.playRange = opts.playRange && Number.isInteger(opts.playRange.start) && Number.isInteger(opts.playRange.end) ? {start:opts.playRange.start,end:opts.playRange.end} : null;
       this.playMode = opts.playMode || 'loop'; this.onionFrames = Q.clamp(opts.onionFrames || 1, 1, 4);
       this.onionPrevColor = opts.onionPrevColor || '#ff5a7a'; this.onionNextColor = opts.onionNextColor || '#4fd1c5'; this.guide = Object.assign({type:'off', symmetry:'off', spacing:100, horizon:0.5, spread:0.5}, opts.guide || {});
       this.layers = [makeLayer('Layer 1')]; this.frames = [{ cels:[null], duration:1, group:'' }]; this.activeFrame = 0; this.activeLayer = 0;
@@ -123,9 +124,40 @@
     deleteFrame(i) {
       if (this.frames.length < 2) { Q.toast('A canvas needs at least one frame'); return; }
       if (i < 0 || i >= this.frames.length) return;
-      return this.history.struct(function () { this.frames.splice(i,1); this.activeFrame = Q.clamp(this.activeFrame,0,this.frames.length-1); });
+      return this.history.struct(function () { this.frames.splice(i,1); this.activeFrame = Q.clamp(this.activeFrame,0,this.frames.length-1); this.normalizePlayRange(); });
     }
     moveFrame(i,dir) { const j = i+dir; if (i < 0 || i >= this.frames.length || j < 0 || j >= this.frames.length) return; return this.history.struct(function () { this.frames.splice(j,0,this.frames.splice(i,1)[0]); this.activeFrame=j; }); }
+    normalizePlayRange() {
+      if (!this.playRange) return;
+      const last=this.frames.length-1, start=Q.clamp(this.playRange.start,0,last), end=Q.clamp(this.playRange.end,start,last);
+      this.playRange={start:start,end:end};
+    }
+    setPlayRange(start,end) {
+      if (start === null && end === null) { if (this.playRange) this.history.struct(function () { this.playRange=null; }); return true; }
+      if (!Number.isInteger(start) || !Number.isInteger(end) || start<0 || end<start || end>=this.frames.length) return false;
+      if (!this.playRange || this.playRange.start!==start || this.playRange.end!==end) this.history.struct(function () { this.playRange={start:start,end:end}; });
+      return true;
+    }
+    batchFrames(start,end,operation,value) {
+      if (!Number.isInteger(start) || !Number.isInteger(end) || start<0 || end<start || end>=this.frames.length) return false;
+      if (operation === 'duplicate' && this.frames.length + end-start+1 > 60) return false;
+      if (!['label','hold','reverse','duplicate'].includes(operation)) return false;
+      let copies;
+      if (operation === 'duplicate') copies=this.frames.slice(start,end+1).map(f=>({cels:this.cloneCels(f.cels),duration:f.duration || 1,group:f.group || ''}));
+      this.history.struct(function () {
+        if (operation === 'label') {
+          const name=String(value || '').trim().slice(0,32); for (let i=start;i<=end;i++) this.frames[i].group=name;
+        } else if (operation === 'hold') {
+          const hold=Q.clamp(Math.round(value) || 1,1,12); for (let i=start;i<=end;i++) this.frames[i].duration=hold;
+        } else if (operation === 'reverse') {
+          const reversed=this.frames.slice(start,end+1).reverse(); this.frames.splice(start,reversed.length,...reversed);
+          if (this.activeFrame>=start && this.activeFrame<=end) this.activeFrame=start+end-this.activeFrame;
+        } else {
+          this.frames.splice(end+1,0,...copies); this.activeFrame=end+1;
+        }
+      });
+      return true;
+    }
     setBackground(color) { if (this.bg === color) return; return this.history.struct(function () { this.bg=color; }); }
     setLayerProp(i,key,value) { if (this.layers[i]) return this.history.struct(function () { this.layers[i][key]=value; }); }
     setLayerPropLive(i,key,value) { if (this.layers[i]) this.layers[i][key]=value; }

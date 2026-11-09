@@ -4,20 +4,20 @@ Developed by **Qmer**. An offline painting and frame-animation studio for Androi
 brushes, layers, a colour wheel, a frame timeline with onion skin, Procreate's gesture
 vocabulary, and PNG/GIF export. No account, no ads, no network permission.
 
-**Download:** [`Qalam-1.8.apk`](../artifacts/Qalam-1.8.apk) (~254 KB)
+**Download:** [`Qalam-1.9.apk`](../artifacts/Qalam-1.9.apk) (~258 KB)
 
 | | |
 |---|---|
 | Package | `com.qalam.studio` |
-| Version | 1.8 (versionCode 9) |
+| Version | 1.9 (versionCode 10) |
 | Requires | Android 8.0+ (minSdk 26), built for targetSdk 33 |
 | Permissions | `VIBRATE` only — no internet, no storage, no location |
 | Signing | APK Signature Scheme v1 + v2, self-signed with a public test key |
-| SHA-256 | `ae2ed25b551064f8576560f5df086b3cae3f41b45f6e32ef4dd83ffea00edcf4` |
+| SHA-256 | `13fe163662552c5385f1963337bcd716cdf32e20277622e1fab359541c282184` |
 
 ## Install
 
-1. Download `Qalam-1.8.apk` to the phone (or copy it over USB).
+1. Download `Qalam-1.9.apk` to the phone (or copy it over USB).
 2. Open it from the file manager. Android will ask you to allow installs from that
    app the first time ("Install unknown apps") — allow it, then install.
 3. Open **Qalam**.
@@ -63,6 +63,10 @@ timeline, play at 1–30 fps with frame holds, and configurable onion skins.
 | Long-press the canvas | Eyedropper |
 | Hold still at the end of a stroke | QuickShape (snap to line or ellipse) |
 | Pen down, then a finger | Finger is ignored — palm rejection |
+
+**Animation workflow** — choose a playback range for preview, GIF and MP4; batch
+label, hold, reverse or duplicate a frame range with undo. Labels are not nested groups.
+PNG sprite sheets include every frame once, without timing metadata.
 
 **Saving & export** — everything autosaves on the device (≈2.5 s after a change, and
 when the app goes to the background). Background colour is configurable; PNG and PNG

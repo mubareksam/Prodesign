@@ -71,6 +71,7 @@ load('brushes.js');
 load('effects.js');
 load('fill.js');
 load('selection.js');
+load('spritesheet.js');
 
 const Q = globalThis.Q;
 let checks = 0;
@@ -295,5 +296,30 @@ const alphaCount=themed.history.undoStack.length; themed.mergeDown(1); themed.cl
 ok(themed.layers.length===2 && themed.history.undoStack.length===alphaCount, 'alpha-locked layers cannot be cleared or merged');
 themed.setLayerProp(1,'alphaLocked',false); themed.mergeDown(1);
 ok(themed.layers.length===2, 'merge also protects an alpha-locked lower layer');
+
+
+console.log('batch animation editing');
+const batch=new Q.Doc({width:16,height:16}); batch.addFrame(false); batch.addFrame(false); batch.addFrame(false); batch.activeFrame=1;
+ok(batch.setPlayRange(1,2) && batch.playRange.start===1, 'playback range can be set');
+batch.history.undo(); ok(batch.playRange===null, 'playback range change is undoable'); batch.history.redo();
+ok(!batch.setPlayRange(3,1) && batch.playRange.end===2, 'invalid playback range is rejected');
+batch.batchFrames(1,3,'label','Scene A'); batch.batchFrames(1,2,'hold',4);
+ok(batch.frames[1].group==='Scene A' && batch.frames[3].group==='Scene A' && batch.frames[1].duration===4, 'batch label and hold update only the requested frames');
+batch.history.undo(); ok(batch.frames[1].duration===1 && batch.frames[1].group==='Scene A', 'batch hold is undone in one step');
+batch.history.redo(); batch.batchFrames(1,3,'reverse');
+ok(batch.frames[1].duration===1 && batch.frames[3].duration===4 && batch.activeFrame===3, 'batch reverse preserves frame data and tracks active frame');
+batch.history.undo(); ok(batch.frames[1].duration===4 && batch.activeFrame===1, 'batch reverse is undoable');
+const source=batch.cel(1,0,true); batch.batchFrames(1,2,'duplicate');
+ok(batch.frames.length===6 && batch.cel(3,0,false)!==source && batch.frames[3].duration===4, 'batch duplicate copies cels and timing into new frames');
+batch.history.undo(); ok(batch.frames.length===4 && batch.playRange.start===1 && batch.playRange.end===2, 'batch duplication undo restores frames and range');
+batch.history.redo(); ok(batch.frames.length===6, 'batch duplication redo restores frames');
+const rangeDoc=new Q.Doc({width:2,height:2}); rangeDoc.addFrame(false); rangeDoc.addFrame(false); rangeDoc.setPlayRange(1,2);
+rangeDoc.deleteFrame(2); ok(rangeDoc.playRange.start===1 && rangeDoc.playRange.end===1, 'deleting a frame clamps playback range to the timeline');
+rangeDoc.history.undo(); ok(rangeDoc.playRange.end===2 && rangeDoc.frames.length===3, 'undo deletion restores original playback range');
+const full=new Q.Doc({width:2,height:2}); for (let i=0;i<59;i++) full.addFrame(false);
+const h=full.history.undoStack.length; ok(!full.batchFrames(0,0,'duplicate') && full.frames.length===60 && full.history.undoStack.length===h, 'batch duplicate respects frame limit');
+const sheet=Q.spriteSheetLayout({width:64,height:32,frames:[1,2,3]},2,0.5);
+ok(sheet.width===64 && sheet.height===32 && sheet.rows===2, 'sprite sheet layout handles partial rows and scale');
+ok(Q.spriteSheetLayout({width:4096,height:4096,frames:[1,2,3,4]},2,1)===null, 'sprite sheet rejects oversized output');
 
 console.log(`\nall ${checks} engine checks passed`);

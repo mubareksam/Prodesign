@@ -1,6 +1,7 @@
 /* Real raster tests: selection clipping, undo and transformations on RGBA pixels. */
 import { createCanvas, loadImage } from '@napi-rs/canvas';
-import { readFileSync } from 'node:fs';
+import { readFileSync, writeFileSync, mkdirSync } from 'node:fs';
+import { execFileSync } from 'node:child_process';
 import { fileURLToPath } from 'node:url';
 import path from 'node:path';
 
@@ -9,9 +10,9 @@ globalThis.window=globalThis;
 globalThis.addEventListener=()=>{};
 globalThis.document={readyState:'loading',addEventListener(){},createElement(tag){ if (tag!=='canvas') throw Error(tag); return createCanvas(1,1); }};
 Object.defineProperty(globalThis,'navigator',{value:{vibrate(){}},configurable:true});
-for (const f of ['core.js','doc.js','brushes.js','effects.js','fill.js','selection.js','app.js']) new Function(readFileSync(path.join(js,f),'utf8'))();
+for (const f of ['core.js','doc.js','brushes.js','effects.js','fill.js','selection.js','spritesheet.js','app.js']) new Function(readFileSync(path.join(js,f),'utf8'))();
 const Q=globalThis.Q, App=Q.App;
-Q.toast=()=>{}; Q.UI={progress(){},endProgress(){},syncHistory(){},refreshReference(){},syncDoc(){}};
+Q.toast=()=>{}; Q.UI={progress(){},endProgress(){},syncHistory(){},refreshReference(){},syncDoc(){},refreshTimeline(){},highlightFrame(){}};
 App.markDirty=()=>{};
 let n=0;
 function ok(v,msg) { if(!v) throw Error('FAILED: '+msg); n++; console.log('  ✓ '+msg); }
@@ -113,6 +114,66 @@ for (const [name,brush,opacity] of [['dry',pen,1],['wet',{...pen,flow:0.5},0.6]]
  ok(same(pixel(normal,5,5),[0,255,0,255]) && pixel(transparent,5,5)[3]===0, 'normal PNG includes background; transparent PNG omits it');
  ok(pixel(transparent,0,0)[3]===127 || pixel(transparent,0,0)[3]===128, 'transparent PNG preserves layer alpha');
  ok(saved[1].name.includes('-transparent.png'), 'transparent PNG has an identifiable filename');
+}
+
+
+{
+ const d=setup(), colors=['#ff0000','#00ff00','#0000ff'];
+ colors.forEach((color,i)=>{ if(i) d.addFrame(false); const c=d.activeCel(true).getContext('2d'); c.fillStyle=color; c.fillRect(0,0,8,8); });
+ const sheet=Q.renderSpriteSheet(d,2,1,true);
+ ok(sheet.width===32 && sheet.height===32, 'sprite sheet has expected grid dimensions');
+ ok(same(pixel(sheet,1,1),[255,0,0,255]) && same(pixel(sheet,17,1),[0,255,0,255]) && same(pixel(sheet,1,17),[0,0,255,255]), 'sprite sheet lays out source frames in row-major order');
+ ok(pixel(sheet,12,1)[3]===0 && pixel(sheet,17,17)[3]===0, 'transparent sprite sheet preserves clear areas and unused cells');
+ d.bg='#334455'; const opaque=Q.renderSpriteSheet(d,2,1,false);
+ ok(same(pixel(opaque,12,1),[51,68,85,255]) && pixel(opaque,17,17)[3]===0, 'sprite sheet background fills tiles but not unused cells');
+ let file=null; Q.saveBytes=(url,mime,name)=>{file={url,mime,name}; return true;};
+ App.exportSpriteSheet(2,1,true); await new Promise(r=>setTimeout(r,90));
+ const decoded=createCanvas(32,32); decoded.getContext('2d').drawImage(await loadImage(file.url),0,0);
+ ok(file.name.endsWith('-spritesheet.png') && same(pixel(decoded,17,1),[0,255,0,255]), 'sprite sheet export writes a valid correctly ordered PNG');
+}
+{
+ const d=setup(), colors=['#ff0000','#00ff00','#0000ff','#ffff00'];
+ colors.forEach((color,i)=>{if(i) d.addFrame(false); const c=d.activeCel(true).getContext('2d'); c.fillStyle=color; c.fillRect(0,0,16,16); });
+ d.playMode='pingpong'; d.fps=10; d.frames[1].duration=2; d.frames[2].duration=3; d.setPlayRange(1,3);
+ let captured=null; Q.encodeGif=(frames,opts)=>{captured={frames,opts}; return Promise.resolve({dataUrl:'data:image/gif;base64,AA=='});}; Q.saveBytes=()=>true;
+ App.exportGif({}); await new Promise(r=>setTimeout(r,10));
+ ok(captured.frames.length===4 && same(pixel(captured.frames[0],1,1),[0,255,0,255]) && same(pixel(captured.frames[3],1,1),[0,0,255,255]), 'GIF export uses selected range in ping-pong order');
+ ok(captured.opts.delaysCs.join(',')==='20,30,10,30', 'GIF export preserves holds in playback range');
+ ok(Q.animationOrder(4,'loop',1,1).join(',')==='1' && Q.animationOrder(4,'pingpong',1,3).join(',')==='1,2,3,2', 'range order handles single-frame and ping-pong cycles');
+}
+{
+ const d=setup(), cel=d.activeCel(true), c=cel.getContext('2d'); c.fillStyle='#ff0000'; c.fillRect(0,0,3,3); d.layer().locked=true;
+ App.flipCanvas(); ok(pixel(cel,0,0)[0]===255 && d.history.undoStack.length===0, 'canvas flip respects locked layers');
+ d.layer().locked=false; d.layer().alphaLocked=true; App.flipCanvas();
+ ok(pixel(cel,0,0)[0]===255 && d.history.undoStack.length===0, 'canvas flip respects alpha-locked layers');
+}
+
+
+{
+ new Function(readFileSync(path.join(js,'gif.js'),'utf8'))();
+ const d=setup(); for(let i=1;i<4;i++) d.addFrame(false);
+ d.frames.forEach((f,i)=>{d.activeFrame=i; const c=d.activeCel(true).getContext('2d'); c.fillStyle=['#ff0000','#00ff00','#0000ff','#ffff00'][i]; c.fillRect(0,0,16,16);});
+ d.playMode='pingpong'; d.fps=10; d.frames[1].duration=2; d.frames[2].duration=3; d.setPlayRange(1,3);
+ let gifData=null; Q.saveBytes=(url,mime)=>{ if(mime==='image/gif') gifData=url; return true;}; App.exportGif({});
+ await new Promise(r=>setTimeout(r,70)); if (!gifData) throw Error('GIF export did not finish');
+ const root=path.resolve(js,'../../../..'), folder=path.join(root,'build'); mkdirSync(folder,{recursive:true});
+ const output=path.join(folder,'range-integration.gif'); writeFileSync(output,Buffer.from(gifData.split(',')[1],'base64'));
+ const decoded=JSON.parse(execFileSync('python3',[path.join(root,'tools/tests/gif_decode.py'),output,'--json'],{encoding:'utf8'}));
+ ok(decoded.frames.length===4 && decoded.delays.join(',')==='20,30,10,30', 'real GIF encoder writes selected ping-pong range and holds');
+
+ d.playMode='once'; d.setPlayRange(2,2); gifData=null; App.exportGif({}); await new Promise(r=>setTimeout(r,50));
+ const one=path.join(folder,'range-one.gif'); writeFileSync(one,Buffer.from(gifData.split(',')[1],'base64'));
+ const oneInfo=JSON.parse(execFileSync('python3',[path.join(root,'tools/tests/gif_decode.py'),one,'--json'],{encoding:'utf8'}));
+ ok(oneInfo.frames.length===1 && oneInfo.delays[0]===30 && !Buffer.from(gifData.split(',')[1],'base64').includes(Buffer.from('NETSCAPE2.0')), 'single-frame one-shot range exports with hold and no loop');
+
+}
+
+
+{
+ const d=setup(), cel=d.activeCel(true), c=cel.getContext('2d'); c.fillStyle='#ff0000'; c.fillRect(0,0,4,4); d.addFrame(false);
+ d.batchFrames(0,0,'duplicate'); const copy=d.cel(1,0,false); copy.getContext('2d').clearRect(0,0,4,4);
+ ok(pixel(cel,1,1)[0]===255 && pixel(copy,1,1)[3]===0, 'batch frame duplicates are independent pixel canvases');
+ d.history.undo(); ok(d.frames.length===2 && pixel(cel,1,1)[0]===255, 'undo batch duplication preserves original pixels');
 }
 
 console.log(`all ${n} raster integration checks passed`);
