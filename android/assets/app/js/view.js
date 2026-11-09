@@ -155,7 +155,7 @@
     c.restore();
 
     // During playback show the non-destructive camera output without editing overlays.
-    if (Q.App && Q.App.playing && doc.cameraEnabled && doc.cameraKeys.length) {
+    if (Q.App && Q.App.playing && ((doc.cameraEnabled && doc.cameraKeys.length) || doc.hasLayerMotion())) {
       doc.compositeCamera(c,doc.activeFrame);
       c.lineWidth=1/this.scale; c.strokeStyle='rgba(255,255,255,0.12)'; c.strokeRect(0,0,doc.width,doc.height);
       return;

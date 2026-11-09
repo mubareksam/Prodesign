@@ -46,6 +46,15 @@ The supplied feature inventory is a roadmap, not a list of completed work.
   confirm audibility or sync; exports need to be checked by the user. PNG and GIF are
   silent. There is no waveform, trimming, offsets or multiple-track mixing. Actual
   device format support, picker, playback and audio export need physical-device testing.
+- Per-layer editable/undoable transform tracks support up to 60 frame-position keys
+  with X/Y offset, uniform scale, clockwise rotation around canvas center and easing.
+  They affect playback and GIF/MP4, then the global camera is applied; drawing,
+  onion skins, PNG and sprite-sheet exports use raw pixels. Each frame's own cel is
+  transformed; blank cels remain blank. Clipping masks, opacity and blend modes are
+  respected. Layer duplication copies keys independently; locked layers protect keys.
+  Merge down is blocked until both layers' keys are cleared. Tracks are frame-position
+  based and out-of-range keys are removed when shortening a timeline; undo restores
+  them. There is no graphical keyframe editor, custom pivot, IK or 3D rigging.
 - A seeded burst or staggered ballistic particle generator creates a new topmost
   raster layer in an existing frame range. It offers 1–200 circles or squares, life,
   position, direction/spread, speed, gravity, colour, fade and seed. Existing layers
@@ -60,7 +69,7 @@ The supplied feature inventory is a roadmap, not a list of completed work.
   dialog preview uses saved settings, not unsaved fields. Interpolation is by frame
   index, not time/holds; keys stay at positions when artwork is inserted or reordered,
   and keys outside a shortened timeline are removed (undo restores them). The camera
-  has no per-layer transforms, rigging or live graphical keyframe controls.
+  is a single global camera, without rigging or graphical keyframe controls.
 - One saved freehand motion guide can generate translated raster cels along its
   path in forward or reverse direction, with linear, ease-in, ease-out and in-out
   easing. A chosen source cel is copied into an existing range on the current layer,
@@ -131,4 +140,4 @@ Apple Pencil-specific controls are not applicable on Android. See the original
 [Procreate analysis](procreate-analysis.md) for background; its feature matrix
 predates version 2.5.
 
-Per-layer editable keyframe tracks, IK, morphing, live particle systems and multiple-track audio mixing are not implemented. Basic baked particle animation is available. One global editable camera track is available. Path-based translation and two-pose transforms are available as limited baked cel-generation tools. Onion skins are available as ghost frames. The canvas is finite raster, not infinite or resolution-independent.
+IK, morphing, live particle systems and multiple-track audio mixing are not implemented. Per-layer tracks support only position, uniform scale and rotation. Basic baked particle animation is available. One global editable camera track is available. Path-based translation and two-pose transforms are available as limited baked cel-generation tools. Onion skins are available as ghost frames. The canvas is finite raster, not infinite or resolution-independent.

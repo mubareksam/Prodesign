@@ -56,6 +56,7 @@
     next: '<path d="M18 5v14M6 6l8 6-8 6z"/>',
     onion: '<circle cx="9" cy="12" r="6"/><circle cx="15" cy="12" r="6"/>',
     audio: '<path d="M10 17V5l9-2v12"/><circle cx="7" cy="18" r="3"/><circle cx="16" cy="16" r="3"/>',
+    layerMotion: '<path d="M3 9l6-4 6 4-6 4zM3 13l6 4 5-3"/><path d="M16 17h5M19 15l2 2-2 2"/>',
     particles: '<circle cx="5" cy="17" r="1.5"/><circle cx="12" cy="12" r="2"/><circle cx="19" cy="5" r="2.5"/><path d="M8 15l2-2M15 10l2-3"/>',
     camera: '<rect x="3" y="6" width="18" height="13" rx="2"/><circle cx="12" cy="12.5" r="3.5"/><path d="M7 6l1.5-2h4L14 6"/>',
     tween: '<rect x="3" y="7" width="7" height="7" rx="1"/><path d="M12 12h4M14 10l2 2-2 2"/><rect x="17" y="5" width="4" height="4" rx="1" transform="rotate(25 19 7)"/>'
@@ -576,6 +577,7 @@
     actions.appendChild(mk(layer.locked ? 'Unlock layer' : 'Lock layer', ICON.sparkle, function () { app().setLayerProp(i, 'locked', !layer.locked); }));
     actions.appendChild(mk(layer.alphaLocked ? 'Unlock alpha' : 'Alpha lock', ICON.sparkle, function () { app().setLayerProp(i, 'alphaLocked', !layer.alphaLocked); }));
     actions.appendChild(mk(layer.clipped ? 'Release clipping mask' : 'Clipping mask', ICON.layers, function () { app().setLayerClipped(i,!layer.clipped); }));
+    actions.appendChild(mk('Layer keyframes', ICON.layerMotion, function () { d.activeLayer=i; UI.syncDoc(); UI.closeTray(); UI.layerMotionDialog(); }));
     actions.appendChild(mk('Move up', ICON.up, function () { app().moveLayer(i, 1); }));
     actions.appendChild(mk('Move down', ICON.down, function () { app().moveLayer(i, -1); }));
     actions.appendChild(mk('Duplicate', ICON.copy, function () { app().duplicateLayer(i); }));
@@ -1039,6 +1041,7 @@
     } else {
       tool('Motion guide',ICON.motion,function () { UI.motionGuideDialog(); });
       tool('Camera keyframes',ICON.camera,function () { UI.cameraDialog(); },d.cameraEnabled && d.cameraKeys.length>0);
+      tool('Layer keyframes',ICON.layerMotion,function () { UI.layerMotionDialog(); },!!d.layer().motionEnabled && (d.layer().motionKeys || []).length>0);
       tool('Generate particles',ICON.particles,function () { UI.particleDialog(); });
       tool('Generate transform frames',ICON.tween,function () { UI.transformBakeDialog(); });
       tool('Manage audio',ICON.audio,function () { UI.audioDialog(); });
@@ -1058,8 +1061,9 @@
       b.appendChild(Q.crel('span', 'n', String(i + 1) + ((fr.duration || 1) > 1 ? ' · ' + fr.duration + '×' : '')));
       if (fr.skipped) { const badge=Q.crel('span','frame-skipped','Skipped'); b.appendChild(badge); }
       const cameraKey=d.cameraKeys.some(k=>k.frame===i); if (cameraKey) { const badge=Q.crel('span','camera-badge','Camera key'); b.appendChild(badge); }
+      const layerKey=(d.layer().motionKeys || []).some(k=>k.frame===i); if (layerKey) b.appendChild(Q.crel('span','layer-motion-badge','Layer key'));
       if (fr.group) { const tag = Q.crel('span', 'frame-group'); tag.textContent = fr.group; b.appendChild(tag); }
-      b.setAttribute('aria-label', 'Frame ' + (i + 1) + (fr.group ? ', group ' + fr.group : '') + (outside ? ', outside playback range' : '') + (fr.skipped ? ', skipped in playback' : '') + (cameraKey ? ', camera keyframe' : ''));
+      b.setAttribute('aria-label', 'Frame ' + (i + 1) + (fr.group ? ', group ' + fr.group : '') + (outside ? ', outside playback range' : '') + (fr.skipped ? ', skipped in playback' : '') + (cameraKey ? ', camera keyframe' : '') + (layerKey ? ', selected layer keyframe' : ''));
       b.addEventListener('click', function () { app().selectFrame(i); });
       b.addEventListener('dblclick', function () { UI.frameSheet(i); });
       b.addEventListener('contextmenu', function (e) { e.preventDefault(); UI.frameSheet(i); });
@@ -1169,6 +1173,47 @@
       action('Remove audio',function () { UI.confirm('Remove audio?', 'The audio track can be restored with Undo.',function () { d.setAudioTrack(null); app().markDirty(); UI.refreshTimeline(); }); });
     }
     card.appendChild(actions); const close=Q.crel('button','btn ghost','Close'); close.addEventListener('click',function () { UI.closeModal(); }); card.appendChild(close); UI.openModal(card);
+  };
+
+  UI.layerMotionDialog = function () {
+    app().stopPlay(); const d=app().doc; if (!d) return;
+    const index=d.activeLayer, frame=d.activeFrame, layer=d.layer(), keys=layer.motionKeys || [];
+    const existing=keys.find(k=>k.frame===frame), pose=existing || Q.layerMotionPose(layer,frame);
+    const card=Q.crel('div'); card.appendChild(Q.crel('h2',null,'Layer keyframes · frame '+(frame+1)));
+    card.appendChild(Q.crel('p','sub','Layer: '+layer.name+'. Animate its position, scale and rotation without changing its cels. Playback, GIF and MP4 show the motion; editing, PNG and sprite sheets use original pixels. Keys belong to frame positions, not drawings.'));
+    card.appendChild(Q.crel('p','sub','Track '+(layer.motionEnabled && keys.length ? 'on' : 'off or empty')+' · '+keys.length+' key'+(keys.length===1?'':'s')+(existing ? ' · this frame has a key' : ' · showing interpolated pose')+(layer.locked ? ' · unlock layer to edit keys' : '')));
+    try {
+      const s=192/Math.max(d.width,d.height), preview=Q.canvas(Math.max(1,Math.round(d.width*s)),Math.max(1,Math.round(d.height*s))), c=preview.getContext('2d');
+      c.fillStyle=d.bg; c.fillRect(0,0,preview.width,preview.height); c.save(); c.scale(preview.width/d.width,preview.height/d.height); d.compositeCamera(c,frame); c.restore();
+      preview.className='camera-preview'; preview.setAttribute('aria-label','Saved layer animation preview'); card.appendChild(preview);
+      card.appendChild(Q.crel('p','sub','Preview includes all saved layer tracks and the camera, not unsaved field changes.'));
+    } catch(e) { card.appendChild(Q.crel('p','sub','Animation preview could not be drawn on this device.')); }
+    const grid=Q.crel('div','transform-grid');
+    function field(label,value) { const row=Q.crel('div','transform-field'), text=Q.crel('label',null,label), input=Q.crel('input','select'); input.type='number'; input.step='any'; input.value=String(Math.round(value*100)/100); input.setAttribute('aria-label',label); row.appendChild(text); row.appendChild(input); grid.appendChild(row); return input; }
+    const x=field('Layer X offset',pose.x), y=field('Layer Y offset',pose.y), scale=field('Layer scale (%)',pose.scale*100), angle=field('Layer rotation (°)',pose.angle); card.appendChild(grid);
+    const row=Q.crel('div','field studio-field'); row.appendChild(Q.crel('label',null,'Ease to next')); const easing=Q.crel('select'); easing.setAttribute('aria-label','Layer easing');
+    [['linear','Linear'],['in','Ease in'],['out','Ease out'],['inout','Ease in and out']].forEach(function (choice) { const option=Q.crel('option'); option.value=choice[0]; option.textContent=choice[1]; easing.appendChild(option); }); easing.value=pose.easing; row.appendChild(easing); card.appendChild(row);
+    card.appendChild(Q.crel('p','sub','Offsets are in canvas pixels; uniform scale 10–400%. Rotation is clockwise around the canvas center, from −1440° to 1440°. The earlier key controls easing. Spacing follows frame numbers, not holds. Pixels outside the canvas are cropped.'));
+    const error=Q.crel('p','canvas-error'); error.setAttribute('role','alert'); card.appendChild(error);
+    function updated() { app().view.dirty=true; app().markDirty(); UI.syncDoc(); UI.layerMotionDialog(); }
+    function editable() { if (d.layer()!==layer || d.activeLayer!==index || app().doc!==d) { error.textContent='Layer changed; reopen the controls.'; return false; } if (layer.locked) { error.textContent='Unlock the layer to edit its keys.'; return false; } return true; }
+    const actions=Q.crel('div','menu-grid');
+    function button(label,fn) { const b=Q.crel('button','menu-item',label); b.addEventListener('click',fn); actions.appendChild(b); }
+    button(existing ? 'Update layer key' : 'Add layer key',function () {
+      if (!editable()) return;
+      if ([x,y,scale,angle].some(v=>!v.value.trim() || !Number.isFinite(Number(v.value)))) { error.textContent='Enter a number in every layer field.'; return; }
+      const key={frame:frame,x:Number(x.value),y:Number(y.value),scale:Number(scale.value)/100,angle:Number(angle.value),easing:easing.value};
+      if (!d.setLayerMotionKey(index,key)) { error.textContent='Offsets must be within four canvas sizes, scale 10–400%, rotation −1440° to 1440°; maximum 60 keys.'; return; }
+      updated(); Q.toast('Layer key saved · Undo to revert');
+    });
+    if (existing) button('Remove this layer key',function () { if (editable() && d.removeLayerMotionKey(index,frame)) updated(); });
+    if (keys.length) {
+      button(layer.motionEnabled ? 'Disable layer motion' : 'Enable layer motion',function () { if (editable() && d.setLayerMotionEnabled(index,!layer.motionEnabled)) updated(); });
+      button('Clear all layer keys',function () { if (!editable()) return; UI.confirm('Clear layer keys?', 'All keys for this layer will be removed; undo can restore them.',function () { if (app().doc!==d || d.layer()!==layer || layer.locked) { Q.toast('Layer changed or is locked',4000); return; } if (d.clearLayerMotion(index)) updated(); },'Clear'); });
+    }
+    card.appendChild(actions);
+    if (keys.length) { card.appendChild(Q.crel('h3','transform-heading','Jump to layer key')); const list=Q.crel('div','camera-key-list'); keys.forEach(function (k) { const b=Q.crel('button','chip','Frame '+(k.frame+1)); b.setAttribute('aria-label','Go to layer key frame '+(k.frame+1)); b.addEventListener('click',function () { UI.closeModal(); app().selectFrame(k.frame); UI.layerMotionDialog(); }); list.appendChild(b); }); card.appendChild(list); }
+    const close=Q.crel('button','btn ghost','Done'); close.addEventListener('click',function () { UI.closeModal(); }); card.appendChild(close); UI.openModal(card);
   };
 
   UI.particleDialog = function () {

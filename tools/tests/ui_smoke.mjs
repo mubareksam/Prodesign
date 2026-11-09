@@ -889,10 +889,10 @@ async function run() {
   App.doc.setAudioMuted(true); App.exportMp4WithAudio(); ok(!savedAudio && doc.querySelector('#toast').textContent.includes('unmute'), 'muted audio must be unmuted before exporting'); App.doc.setAudioMuted(false);
   App.doc.playMode='pingpong'; App.exportMp4WithAudio(); ok(doc.querySelector('#toast').textContent.includes('ping-pong') && !App.cancelAudioExport, 'audio MP4 rejects ping-pong instead of silently dropping sound');
   App.doc.playMode='loop'; audioSupport=false; App.exportMp4WithAudio(); ok(doc.querySelector('#toast').textContent.includes('not supported') && !savedAudio, 'audio MP4 requires explicit AAC codec support'); audioSupport=true;
-  App.doc.setCameraKey({frame:0,x:32,y:32,zoom:1,angle:0,easing:'linear'}); let audioCameraCalls=[]; const originalAudioCamera=App.doc.compositeCamera;
+  App.doc.setCameraKey({frame:0,x:32,y:32,zoom:1,angle:0,easing:'linear'}); App.doc.setLayerMotionKey(0,{frame:0,x:3,y:0,scale:1,angle:0,easing:'linear'}); let audioCameraCalls=[]; const originalAudioCamera=App.doc.compositeCamera;
   App.doc.compositeCamera=function(ctx,index) { audioCameraCalls.push(index); return originalAudioCamera.call(this,ctx,index); };
   paintedAudio=[]; App.exportMp4WithAudio(); await wait(210);
-  ok(audioCameraCalls.join(',')==='2,3', 'MP4 with audio also renders frames through the camera'); App.doc.compositeCamera=originalAudioCamera;
+  ok(audioCameraCalls.join(',')==='2,3', 'MP4 with audio renders through camera and layer animation'); App.doc.compositeCamera=originalAudioCamera;
   ok(savedAudio && savedAudio.mime==='video/mp4' && savedAudio.name.endsWith('-audio.mp4') && recorderTracks.join(',')==='video,audio', 'audio MP4 connects video and audio tracks and saves MP4');
   ok(startedOffsets.length===1 && Math.abs(startedOffsets[0]-2/30)<0.00001 && paintedAudio.filter(p=>p.ctx===exportCtx).map(p=>p.index).join(',')==='2,3', 'audio MP4 follows playback range, skips, holds and absolute audio offset');
   ok(stoppedTracks>=2 && closedContexts===1 && !App.cancelAudioExport && !doc.querySelector('#progressCard'), 'completed audio MP4 releases streams and context');
@@ -963,6 +963,36 @@ async function run() {
   App.undo(); ok(App.doc.layers.length===1 && App.doc.cameraKeys.length===1, 'particle layer creation is undoable'); App.redo(); ok(App.doc.layers.length===2 && !!App.doc.cel(1,1,false), 'particle layer creation is redoable');
   await App.saveNow(false); const loaded=await Q.Store.load(App.doc.id); ok(loaded.layers.length===2 && loaded.layer().name==='Particles' && !loaded.cel(0,1,false) && !!loaded.cel(1,1,false) && loaded.cameraKeys.length===1, 'particle layer and camera survive save and reopen');
   Q.UI.particleDialog(); get('Particle first frame').value='3'; get('Particle last frame').value='2'; click('#modalBody .btn.primary'); ok(doc.querySelector('.canvas-error').textContent.includes('range'), 'reversed particle range is rejected'); Q.UI.closeModal();
+  }
+
+  {
+  console.log('3.2 editable layer animation');
+  App.createDoc(64,64,'Layer animation'); const original=App.doc.activeCel(true); App.addFrame(true); App.addFrame(true); App.selectFrame(0); App.doc.history.clear();
+  if (doc.querySelector('#timeline').classList.contains('hidden')) Q.UI.toggleTimeline(); click('#timeline [aria-label="Animation guides and audio"]');
+  ok(!!doc.querySelector('#timeline [aria-label="Layer keyframes"] svg'), 'layer keyframes are accessible from the animation panel'); click('#timeline [aria-label="Layer keyframes"]');
+  const get=label=>doc.querySelector('#modalBody [aria-label="'+label+'"]'), action=label=>Array.from(doc.querySelectorAll('#modalBody button')).find(x=>x.textContent===label).click();
+  ok(!!doc.querySelector('#modalBody canvas[aria-label="Saved layer animation preview"]') && doc.querySelector('#modalBody').textContent.includes('not unsaved field changes'), 'layer track shows saved animation preview');
+  get('Layer scale (%)').value='0'; action('Add layer key'); ok(doc.querySelector('.canvas-error').textContent.includes('scale') && !(App.doc.layer().motionKeys || []).length, 'invalid layer animation values are rejected');
+  get('Layer scale (%)').value='100'; get('Layer X offset').value=''; action('Add layer key'); ok(doc.querySelector('.canvas-error').textContent.includes('every layer field'), 'blank layer motion values are rejected');
+  get('Layer X offset').value='0'; get('Layer easing').value='in'; action('Add layer key');
+  ok(App.doc.layer().motionEnabled && App.doc.layer().motionKeys.length===1 && !!doc.querySelector('#timeline .layer-motion-badge'), 'layer key is saved and marked on timeline');
+  Q.UI.closeModal(); App.selectFrame(2); Q.UI.layerMotionDialog(); get('Layer X offset').value='16'; get('Layer Y offset').value='8'; get('Layer scale (%)').value='150'; get('Layer rotation (°)').value='90'; action('Add layer key');
+  ok(App.doc.layer().motionKeys.length===2 && Q.layerMotionPose(App.doc.layer(),1).x===4 && App.doc.cel(0,0,false)===original, 'layer keys interpolate while source cels stay intact');
+  action('Disable layer motion'); ok(!App.doc.layer().motionEnabled && App.doc.layer().motionKeys.length===2, 'layer motion can be disabled without removing keys'); action('Enable layer motion');
+  get('Layer X offset').value='20'; action('Update layer key'); ok(App.doc.layer().motionKeys[1].x===20, 'layer key is editable'); Q.UI.closeModal();
+  App.undo(); ok(App.doc.layer().motionKeys[1].x===16, 'layer key edit can be undone'); App.redo(); ok(App.doc.layer().motionKeys[1].x===20, 'layer key edit can be redone');
+  Q.UI.layerMotionDialog(); click('#modalBody [aria-label="Go to layer key frame 1"]'); ok(App.doc.activeFrame===0, 'layer key list navigates to its frame'); Q.UI.closeModal();
+  await App.saveNow(false); const loaded=await Q.Store.load(App.doc.id); ok(loaded.layer().motionEnabled && loaded.layer().motionKeys.length===2 && loaded.layer().motionKeys[1].x===20, 'layer keys survive save and reopen');
+  const all=JSON.parse(win.localStorage.getItem('qalam-projects')); delete all[App.doc.id].layers[0].motionKeys; delete all[App.doc.id].layers[0].motionEnabled; win.localStorage.setItem('qalam-projects',JSON.stringify(all));
+  const legacy=await Q.Store.load(App.doc.id); ok(!legacy.layer().motionEnabled && legacy.layer().motionKeys.length===0, 'older projects open without layer animation');
+  await App.saveNow(false); const corrupt=JSON.parse(win.localStorage.getItem('qalam-projects')); corrupt[App.doc.id].layers[0].motionKeys.push({frame:999,x:0,y:0,scale:1,angle:0,easing:'linear'},{frame:1,x:0,y:0,scale:0,angle:0,easing:'linear'}); win.localStorage.setItem('qalam-projects',JSON.stringify(corrupt));
+  const clean=await Q.Store.load(App.doc.id); ok(clean.layer().motionKeys.length===2 && clean.layer().motionKeys.every(k=>k.frame<clean.frames.length), 'invalid and out-of-range layer keys are filtered when loading');
+  App.doc.addLayer(0); ok(App.doc.layers.length===2 && App.doc.layer().motionKeys.length===2, 'duplicating a layer copies its track');
+  App.mergeDownLayer(1); ok(App.doc.layers.length===2 && doc.querySelector('#toast').textContent.includes('motion keys'), 'merging animated layers is blocked instead of discarding keys');
+  App.doc.setLayerProp(1,'locked',true); Q.UI.layerMotionDialog(); action('Disable layer motion'); ok(doc.querySelector('.canvas-error').textContent.includes('Unlock') && App.doc.layer().motionEnabled, 'locked layer blocks track changes'); Q.UI.closeModal();
+  App.doc.setLayerProp(1,'locked',false); Q.UI.layerMotionDialog(); action('Clear all layer keys'); ok(doc.querySelector('#modalBody h2').textContent.includes('Clear layer keys'), 'clearing a layer track requires confirmation'); click('#modalBody .btn.danger'); ok(App.doc.layer().motionKeys.length===0, 'confirmed clear removes selected layer keys only'); Q.UI.closeModal();
+  App.undo(); ok(App.doc.layer().motionKeys.length===2 && App.doc.layers[0].motionKeys.length===2, 'undo restores cleared keys without altering the original layer track');
+  Q.UI.layerSheet(0); ok(doc.querySelector('#modalBody').textContent.includes('Layer keyframes'), 'layer options link directly to keyframe controls'); Q.UI.closeModal();
   }
 
   await App.saveNow(false);

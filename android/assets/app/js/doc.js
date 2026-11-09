@@ -51,6 +51,33 @@
       return {x:lerp('x'),y:lerp('y'),zoom:lerp('zoom'),angle:lerp('angle'),easing:a.easing};
     }
   };
+  Q.validLayerMotionKey = function (key,width,height) {
+    return !!key && Number.isInteger(key.frame) && key.frame>=0 && key.frame<=10000 &&
+      Number.isFinite(key.x) && Math.abs(key.x)<=width*4 && Number.isFinite(key.y) && Math.abs(key.y)<=height*4 &&
+      Number.isFinite(key.scale) && key.scale>=0.1 && key.scale<=4 && Number.isFinite(key.angle) && Math.abs(key.angle)<=1440 &&
+      ['linear','in','out','inout'].includes(key.easing);
+  };
+  Q.layerMotionPose = function (layer,frame) {
+    const keys=layer.motionKeys || [];
+    if (!keys.length) return {x:0,y:0,scale:1,angle:0,easing:'linear'};
+    if (frame<=keys[0].frame) return {...keys[0]};
+    if (frame>=keys[keys.length-1].frame) return {...keys[keys.length-1]};
+    for (let i=0;i<keys.length-1;i++) {
+      const a=keys[i], b=keys[i+1]; if (frame>b.frame) continue;
+      const t=Q.motionEase((frame-a.frame)/(b.frame-a.frame),a.easing), lerp=k=>a[k]+(b[k]-a[k])*t;
+      return {x:lerp('x'),y:lerp('y'),scale:lerp('scale'),angle:lerp('angle'),easing:a.easing};
+    }
+  };
+  Q.sanitizeLayerMotion = function (layer,width,height) {
+    const out=[];
+    if (Array.isArray(layer.motionKeys)) layer.motionKeys.slice(0,60).forEach(k=>{
+      if (!Q.validLayerMotionKey(k,width,height)) return;
+      const index=out.findIndex(existing=>existing.frame===k.frame), key={frame:k.frame,x:k.x,y:k.y,scale:k.scale,angle:k.angle,easing:k.easing};
+      if (index>=0) out.splice(index,1); out.push(key);
+    });
+    return out.sort((a,b)=>a.frame-b.frame);
+  };
+  function copyLayer(layer) { return {...layer,motionKeys:(layer.motionKeys || []).map(k=>({...k}))}; }
   let seq = 1;
   function makeLayer(name) { return { id: Q.uid(), name: name || `Layer ${++seq}`, visible: true, opacity: 1, blend: 'source-over' }; }
   class History {
@@ -58,11 +85,11 @@
     notify() { if (this.onchange) this.onchange(); }
     structSnapshot() {
       const d = this.doc;
-      return { layers: d.layers.map(l => ({ ...l })), frames: d.frames.map(f => ({cels: f.cels.slice(), duration: f.duration || 1, group: f.group || '', skipped: !!f.skipped})), activeLayer: d.activeLayer, activeFrame: d.activeFrame, bg: d.bg, playRange: d.playRange ? {...d.playRange} : null, motionGuide:d.motionGuide.map(p=>({...p})), motionGuideVisible:d.motionGuideVisible, cameraEnabled:d.cameraEnabled, cameraKeys:d.cameraKeys.map(k=>({...k})), audioTrack:d.audioTrack ? {...d.audioTrack} : null };
+      return { layers: d.layers.map(copyLayer), frames: d.frames.map(f => ({cels: f.cels.slice(), duration: f.duration || 1, group: f.group || '', skipped: !!f.skipped})), activeLayer: d.activeLayer, activeFrame: d.activeFrame, bg: d.bg, playRange: d.playRange ? {...d.playRange} : null, motionGuide:d.motionGuide.map(p=>({...p})), motionGuideVisible:d.motionGuideVisible, cameraEnabled:d.cameraEnabled, cameraKeys:d.cameraKeys.map(k=>({...k})), audioTrack:d.audioTrack ? {...d.audioTrack} : null };
     }
     applyStruct(s) {
       const d = this.doc;
-      d.layers = s.layers.map(l => ({ ...l })); d.frames = s.frames.map(f => ({ cels: f.cels.slice(), duration: f.duration || 1, group: f.group || '', skipped: !!f.skipped }));
+      d.layers = s.layers.map(copyLayer); d.frames = s.frames.map(f => ({ cels: f.cels.slice(), duration: f.duration || 1, group: f.group || '', skipped: !!f.skipped }));
       d.bg = s.bg || '#ffffff'; d.playRange = s.playRange ? {...s.playRange} : null;
       d.motionGuide = (s.motionGuide || []).map(p=>({...p})); d.motionGuideVisible=!!s.motionGuideVisible;
       d.audioTrack = s.audioTrack ? {...s.audioTrack} : null;
@@ -130,7 +157,7 @@
     addLayer(copyFrom) {
       return this.history.struct(function () {
         const at = this.activeLayer + 1, src = this.layers[copyFrom], layer = makeLayer(src ? src.name + ' copy' : null);
-        if (src) { layer.opacity = src.opacity; layer.blend = src.blend; layer.alphaLocked = !!src.alphaLocked; layer.clipped = !!src.clipped; }
+        if (src) { layer.opacity = src.opacity; layer.blend = src.blend; layer.alphaLocked = !!src.alphaLocked; layer.clipped = !!src.clipped; layer.motionEnabled=!!src.motionEnabled; layer.motionKeys=(src.motionKeys || []).map(k=>({...k})); }
         this.layers.splice(at,0,layer);
         for (const f of this.frames) { const c = src && f.cels[copyFrom]; f.cels.splice(at,0,c ? Q.copyCanvas(c) : null); }
         this.activeLayer = at; return at;
@@ -172,6 +199,7 @@
       if (i <= 0 || i >= this.layers.length) { Q.toast('Nothing below to merge into'); return; }
       if (this.layers[i].locked || this.layers[i-1].locked || this.layers[i].alphaLocked || this.layers[i-1].alphaLocked) { Q.toast('Unlock both layers and alpha first'); return; }
       if (this.layers.some(l=>l.clipped)) { Q.toast('Turn off clipping masks before merging layers',4000); return; }
+      if ((this.layers[i].motionKeys || []).length || (this.layers[i-1].motionKeys || []).length) { Q.toast('Remove motion keys from both layers before merging',4000); return; }
       return this.history.struct(function () {
         const lower = this.layers[i-1], upper = this.layers[i];
         for (const f of this.frames) {
@@ -341,7 +369,10 @@
       });
       return null;
     }
-    normalizeCameraKeys() { this.cameraKeys=this.cameraKeys.filter(k=>k.frame<this.frames.length); }
+    normalizeCameraKeys() {
+      this.cameraKeys=this.cameraKeys.filter(k=>k.frame<this.frames.length);
+      this.layers.forEach(layer=>{ layer.motionKeys=(layer.motionKeys || []).filter(k=>k.frame<this.frames.length); });
+    }
     setCameraKey(key) {
       if (!Q.validCameraKey(key,this.width,this.height) || key.frame>=this.frames.length) return false;
       if (!this.cameraKeys.some(k=>k.frame===key.frame) && this.cameraKeys.length>=60) return false;
@@ -354,6 +385,26 @@
     }
     clearCameraKeys() { if (!this.cameraKeys.length) return false; this.history.struct(function () { this.cameraKeys=[]; }); return true; }
     setCameraEnabled(enabled) { enabled=!!enabled; if (this.cameraEnabled===enabled) return false; this.history.struct(function () { this.cameraEnabled=enabled; }); return true; }
+    setLayerMotionKey(index,key) {
+      const layer=this.layers[index]; if (!layer || layer.locked || !Q.validLayerMotionKey(key,this.width,this.height) || key.frame>=this.frames.length) return false;
+      const keys=layer.motionKeys || [];
+      if (!keys.some(k=>k.frame===key.frame) && keys.length>=60) return false;
+      const copy={frame:key.frame,x:key.x,y:key.y,scale:key.scale,angle:key.angle,easing:key.easing};
+      this.history.struct(function () { const target=this.layers[index]; target.motionKeys=(target.motionKeys || []).filter(k=>k.frame!==copy.frame).concat([copy]).sort((a,b)=>a.frame-b.frame); target.motionEnabled=true; }); return true;
+    }
+    removeLayerMotionKey(index,frame) {
+      const layer=this.layers[index]; if (!layer || layer.locked || !(layer.motionKeys || []).some(k=>k.frame===frame)) return false;
+      this.history.struct(function () { const target=this.layers[index]; target.motionKeys=target.motionKeys.filter(k=>k.frame!==frame); }); return true;
+    }
+    clearLayerMotion(index) {
+      const layer=this.layers[index]; if (!layer || layer.locked || !(layer.motionKeys || []).length) return false;
+      this.history.struct(function () { this.layers[index].motionKeys=[]; }); return true;
+    }
+    setLayerMotionEnabled(index,value) {
+      const layer=this.layers[index]; if (!layer || layer.locked || !!layer.motionEnabled===!!value) return false;
+      this.history.struct(function () { this.layers[index].motionEnabled=!!value; }); return true;
+    }
+    hasLayerMotion() { return this.layers.some(layer=>layer.motionEnabled && (layer.motionKeys || []).length); }
     setAudioTrack(track) {
       if (track !== null && !Q.validAudioTrack(track)) return false;
       const clean=track ? {name:track.name,data:track.data,muted:!!track.muted} : null;
@@ -396,45 +447,50 @@
       const visible=i=>this.layers[i] && (this.layers[i].visible || opts.includeHidden);
       const opacity=i=>opts.ignoreOpacity ? 1 : this.layers[i].opacity;
       const outer=opts.alpha == null ? 1 : opts.alpha;
-      const draw=(image,alpha,blend)=>{ ctx.save(); ctx.globalAlpha=outer*alpha; ctx.globalCompositeOperation=blend || 'source-over'; ctx.drawImage(image,0,0); ctx.restore(); };
+      const transform=(context,i)=>{
+        const layer=this.layers[i]; if (!opts.animated || !layer.motionEnabled || !(layer.motionKeys || []).length) return;
+        const p=Q.layerMotionPose(layer,frameIdx);
+        context.translate(this.width/2+p.x,this.height/2+p.y); context.rotate(p.angle*Math.PI/180); context.scale(p.scale,p.scale); context.translate(-this.width/2,-this.height/2);
+      };
+      const draw=(image,alpha,blend,layerIndex)=>{ ctx.save(); ctx.globalAlpha=outer*alpha; ctx.globalCompositeOperation=blend || 'source-over'; if (layerIndex!=null) transform(ctx,layerIndex); ctx.drawImage(image,0,0); ctx.restore(); };
+      const bufferLayer=(g,index,alpha,blend)=>{ g.save(); g.globalAlpha=alpha; g.globalCompositeOperation=blend; transform(g,index); g.drawImage(f.cels[index],0,0); g.restore(); };
       if (opts.onlyLayer != null) {
         const i=opts.onlyLayer, layer=this.layers[i];
         if (!layer || !visible(i) || !f.cels[i]) return;
-        if (!layer.clipped) { draw(f.cels[i],opacity(i),layer.blend); return; }
+        if (!layer.clipped) { draw(f.cels[i],opacity(i),layer.blend,i); return; }
         const base=this.clipBase(i);
         if (base<0 || !visible(base) || !f.cels[base]) return;
-        const g=this.clipBuffer(); g.globalAlpha=opacity(i); g.drawImage(f.cels[i],0,0);
-        g.globalAlpha=opacity(base); g.globalCompositeOperation='destination-in'; g.drawImage(f.cels[base],0,0);
-        draw(this._clipBuffer,1,'source-over'); return;
+        const g=this.clipBuffer(); bufferLayer(g,i,opacity(i),'source-over'); bufferLayer(g,base,opacity(base),'destination-in');
+        draw(this._clipBuffer,1,'source-over',null); return;
       }
       for (let i=0;i<this.layers.length;) {
         const layer=this.layers[i];
-        // An orphaned clipped layer has no base and is not rendered.
         if (layer.clipped) { i++; continue; }
         let end=i+1; while (end<this.layers.length && this.layers[end].clipped) end++;
         if (visible(i) && f.cels[i]) {
           let hasVisibleClip=false;
           for (let j=i+1;j<end;j++) if (visible(j) && f.cels[j] && opacity(j)>0) { hasVisibleClip=true; break; }
-          if (!hasVisibleClip) draw(f.cels[i],opacity(i),layer.blend);
+          if (!hasVisibleClip) draw(f.cels[i],opacity(i),layer.blend,i);
           else {
-            // Build one clipped stack, preserving the base's alpha. Clipped layers
-            // use Normal; the base blend mode applies to the completed stack.
-            const g=this.clipBuffer(); g.globalAlpha=opacity(i); g.drawImage(f.cels[i],0,0);
-            g.globalCompositeOperation='source-atop';
-            for (let j=i+1;j<end;j++) if (visible(j) && f.cels[j]) { g.globalAlpha=opacity(j); g.drawImage(f.cels[j],0,0); }
-            draw(this._clipBuffer,1,layer.blend);
+            const g=this.clipBuffer(); bufferLayer(g,i,opacity(i),'source-over');
+            for (let j=i+1;j<end;j++) if (visible(j) && f.cels[j]) bufferLayer(g,j,opacity(j),'source-atop');
+            draw(this._clipBuffer,1,layer.blend,null);
           }
         }
         i=end;
       }
     }
-    // Camera affects only animation playback/video/GIF, never editable pixels.
+    // Animation transforms are never applied to the editable source cels.
     compositeCamera(ctx,frameIdx) {
-      if (!this.cameraEnabled || !this.cameraKeys.length) { this.composite(ctx,frameIdx); return; }
-      const pose=Q.cameraPose(this,frameIdx);
+      const camera=this.cameraEnabled && this.cameraKeys.length, animated=this.hasLayerMotion();
+      if (!camera && !animated) { this.composite(ctx,frameIdx); return; }
       ctx.save(); ctx.beginPath(); ctx.rect(0,0,this.width,this.height); ctx.clip();
-      ctx.translate(this.width/2,this.height/2); ctx.scale(pose.zoom,pose.zoom); ctx.rotate(-pose.angle*Math.PI/180); ctx.translate(-pose.x,-pose.y);
-      ctx.beginPath(); ctx.rect(0,0,this.width,this.height); ctx.clip(); this.composite(ctx,frameIdx); ctx.restore();
+      if (camera) {
+        const pose=Q.cameraPose(this,frameIdx);
+        ctx.translate(this.width/2,this.height/2); ctx.scale(pose.zoom,pose.zoom); ctx.rotate(-pose.angle*Math.PI/180); ctx.translate(-pose.x,-pose.y);
+        ctx.beginPath(); ctx.rect(0,0,this.width,this.height); ctx.clip();
+      }
+      this.composite(ctx,frameIdx,{animated:true}); ctx.restore();
     }
     renderFrame(canvas,frameIdx,opts = {}) {
       const c = canvas.getContext('2d'); c.setTransform(1,0,0,1,0,0); c.globalAlpha=1; c.globalCompositeOperation='source-over'; c.clearRect(0,0,canvas.width,canvas.height);

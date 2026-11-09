@@ -542,4 +542,78 @@ function particleOptions(overrides={}) { return {start:0,end:2,count:1,life:2,se
  ok(failed && d.layers.length===1 && d.frames.every(f=>f.cels.length===1) && d.history.undoStack.length===0, 'particle canvas allocation failure is atomic');
 }
 
+
+{
+ const d=setup(); for(let i=1;i<5;i++) d.addFrame(false); d.history.clear();
+ const a={frame:0,x:0,y:0,scale:1,angle:0,easing:'in'}, b={frame:4,x:8,y:4,scale:2,angle:90,easing:'linear'};
+ ok(d.setLayerMotionKey(0,b) && d.setLayerMotionKey(0,a) && d.layer().motionEnabled && d.layer().motionKeys[0].frame===0, 'layer keyframes are sorted and enabled');
+ const pose=Q.layerMotionPose(d.layer(),2); ok(pose.x===2 && pose.y===1 && pose.scale===1.25 && pose.angle===22.5, 'layer transform interpolates using outgoing easing');
+ ok(Q.layerMotionPose(d.layer(),-1).x===0 && Q.layerMotionPose(d.layer(),5).x===8, 'layer animation holds endpoint poses');
+ d.frames[1].duration=6; d.frames[1].skipped=true; ok(Q.layerMotionPose(d.layer(),2).x===2, 'layer interpolation uses frame positions, not skipped frames or holds');
+ d.setLayerMotionKey(0,{...b,frame:2,x:3,easing:'out'}); ok(Q.layerMotionPose(d.layer(),3).x===6.75, 'intermediate layer key applies its own easing');
+ const n=d.history.undoStack.length; const bad=[{...a,frame:5},{...a,x:100},{...a,y:Infinity},{...a,scale:0},{...a,angle:1441},{...a,easing:'invalid'}];
+ ok(bad.every(k=>!d.setLayerMotionKey(0,k)) && d.history.undoStack.length===n, 'invalid layer keys do not change history');
+ d.layer().locked=true; ok(!d.setLayerMotionKey(0,a) && !d.removeLayerMotionKey(0,0) && !d.clearLayerMotion(0) && !d.setLayerMotionEnabled(0,false), 'locked layers protect animation keys'); d.layer().locked=false;
+ d.setLayerMotionEnabled(0,false); ok(!d.hasLayerMotion() && d.layer().motionKeys.length===3, 'layer animation can be disabled without losing keys'); d.history.undo(); ok(d.hasLayerMotion(), 'layer animation toggle is undoable');
+ d.addLayer(0); ok(d.layers.length===2 && d.layer().motionKeys.length===3 && d.layer().motionKeys!==d.layers[0].motionKeys, 'duplicating a layer independently copies motion keys');
+ d.setLayerMotionKey(1,{...a,x:7}); ok(d.layer(0).motionKeys[0].x===0, 'editing duplicated track does not change original');
+ const length=d.layers.length; d.mergeDown(1); ok(d.layers.length===length, 'merging is blocked when either layer has motion keys');
+ d.deleteFrame(4); ok(d.layers.every(l=>!(l.motionKeys || []).some(k=>k.frame===4)), 'deleting frames removes out-of-range layer keys'); d.history.undo(); ok(d.layers.every(l=>l.motionKeys.some(k=>k.frame===4)), 'undo restores trimmed layer keys');
+ d.deleteFrameRange(1,4); ok(d.layers.every(l=>l.motionKeys.length===1), 'batch frame deletion trims all layer tracks'); d.history.undo(); ok(d.layers.every(l=>l.motionKeys.length===3), 'undo restores all layer tracks after batch deletion');
+}
+{
+ const d=setup(), cel=d.activeCel(true), c=cel.getContext('2d'); c.fillStyle='#ff0000'; c.fillRect(2,3,2,2); d.addFrame(true); d.addFrame(true);
+ d.setLayerMotionKey(0,{frame:0,x:0,y:0,scale:1,angle:0,easing:'linear'}); d.setLayerMotionKey(0,{frame:2,x:4,y:2,scale:1,angle:0,easing:'linear'});
+ const cv=createCanvas(16,16); d.compositeCamera(cv.getContext('2d'),1);
+ ok(pixel(cv,4,4)[0]===255 && pixel(cv,2,3)[3]===0, 'animation moves only rendered layer pixels');
+ ok(pixel(d.cel(1,0,false),2,3)[0]===255 && pixel(d.flatten(1,{background:false}),2,3)[0]===255, 'source cels and PNG flatten are not transformed');
+ d.setLayerMotionEnabled(0,false); cv.getContext('2d').clearRect(0,0,16,16); d.compositeCamera(cv.getContext('2d'),1); ok(pixel(cv,2,3)[0]===255, 'disabled layer animation shows original pixels');
+ d.setLayerMotionKey(0,{frame:1,x:4,y:0,scale:2,angle:0,easing:'linear'}); cv.getContext('2d').clearRect(0,0,16,16); d.compositeCamera(cv.getContext('2d'),1);
+ ok(pixel(cv,1,0)[3]===255, 'layer scale uses the canvas center as pivot and crops off-canvas pixels');
+ d.setLayerMotionKey(0,{frame:1,x:0,y:0,scale:1,angle:90,easing:'linear'}); cv.getContext('2d').clearRect(0,0,16,16); d.compositeCamera(cv.getContext('2d'),1); ok(pixel(cv,12,2)[0]===255, 'layer rotation is clockwise around canvas center');
+ const screen=createCanvas(16,16), view=Object.create(Q.View.prototype); Object.assign(view,{doc:d,canvas:screen,ctx:screen.getContext('2d'),dpr:1,scale:1,rot:0,tx:0,ty:0,stroke:null});
+ d.activeFrame=1; App.playing=false; view.render(); ok(pixel(screen,2,3)[1]===0 && pixel(screen,12,2)[1]===255, 'editing view uses original untransformed layer');
+ App.playing=true; view.render(); ok(pixel(screen,12,2)[1]===0 && pixel(screen,2,3)[1]===255, 'playback view displays layer animation'); App.playing=false;
+}
+{
+ const d=setup(); let c=d.activeCel(true).getContext('2d'); c.fillStyle='#0000ff'; c.fillRect(3,4,4,4); d.addLayer(); c=d.activeCel(true).getContext('2d'); c.fillStyle='#ff0000'; c.fillRect(4,4,2,4); d.setLayerClipped(1,true);
+ const k={frame:0,x:4,y:0,scale:1,angle:0,easing:'linear'}; d.setLayerMotionKey(0,k); d.setLayerMotionKey(1,k);
+ const cv=createCanvas(16,16), ctx=cv.getContext('2d'); d.compositeCamera(ctx,0);
+ ok(pixel(cv,8,5)[0]===255 && pixel(cv,7,5)[2]===255 && pixel(cv,4,5)[3]===0, 'animated base and clipped layer move together without losing clip mask');
+ d.setLayerMotionKey(1,{...k,x:0}); ctx.clearRect(0,0,16,16); d.compositeCamera(ctx,0);
+ ok(pixel(cv,8,5)[2]===255 && pixel(cv,4,5)[3]===0, 'clipped layer uses its independent transform and remains masked by animated base');
+ d.setCameraKey({frame:0,x:10,y:8,zoom:1,angle:0,easing:'linear'}); ctx.clearRect(0,0,16,16); d.compositeCamera(ctx,0);
+ ok(pixel(cv,6,5)[2]===255 && pixel(cv,4,5)[3]===0, 'camera transform composes after animated layer and clipping');
+}
+{
+ const d=setup(); let c=d.activeCel(true).getContext('2d'); c.fillStyle='#ff0000'; c.fillRect(14,6,2,2);
+ d.setLayerMotionKey(0,{frame:0,x:4,y:0,scale:1,angle:0,easing:'linear'}); d.setCameraKey({frame:0,x:12,y:8,zoom:1,angle:0,easing:'linear'});
+ const cv=createCanvas(16,16); d.compositeCamera(cv.getContext('2d'),0);
+ ok(pixel(cv,14,6)[3]===0, 'layer motion is cropped at canvas before camera moves');
+}
+
+
+{
+ const d=setup(), c=d.activeCel(true).getContext('2d'); c.fillStyle='#ff0000'; c.fillRect(2,4,2,2); d.addFrame(true);
+ d.setLayerMotionKey(0,{frame:0,x:0,y:0,scale:1,angle:0,easing:'linear'}); d.setLayerMotionKey(0,{frame:1,x:5,y:0,scale:1,angle:0,easing:'linear'});
+ let frames; const oldGif=Q.encodeGif, oldSave=Q.saveBytes; Q.encodeGif=list=>{frames=list;return Promise.resolve({dataUrl:'data:image/gif;base64,AA=='});}; Q.saveBytes=()=>true;
+ App.exportGif({}); await new Promise(r=>setTimeout(r,20));
+ ok(pixel(frames[0],2,4)[0]===255 && pixel(frames[0],2,4)[1]===0 && pixel(frames[1],7,4)[0]===255 && pixel(frames[1],7,4)[1]===0 && pixel(frames[1],2,4)[1]===255, 'GIF captures actual per-layer motion without changing cels');
+ const sheet=Q.renderSpriteSheet(d,2,1,true); ok(pixel(sheet,18,4)[0]===255 && pixel(sheet,23,4)[3]===0, 'sprite sheet uses original source pixels for animated layer');
+ Q.encodeGif=oldGif; Q.saveBytes=oldSave;
+}
+{
+ const d=setup(); let c=d.activeCel(true).getContext('2d'); c.fillStyle='#0000ff'; c.fillRect(0,0,16,16); d.addLayer(); c=d.activeCel(true).getContext('2d'); c.fillStyle='#ff0000'; c.fillRect(2,4,2,2); d.layer().opacity=0.5;
+ d.setLayerMotionKey(1,{frame:0,x:4,y:0,scale:1,angle:0,easing:'linear'});
+ const cv=createCanvas(16,16); d.compositeCamera(cv.getContext('2d'),0); const p=pixel(cv,6,4);
+ ok(p[0]>=125 && p[0]<=130 && p[2]>=125 && p[2]<=130 && p[3]===255 && pixel(cv,2,4)[2]===255, 'animated layers respect layer opacity and background compositing');
+}
+
+
+{
+ const d=setup(); let c=d.activeCel(true).getContext('2d'); c.fillStyle='#00ff00'; c.fillRect(0,0,16,16); d.addLayer(); c=d.activeCel(true).getContext('2d'); c.fillStyle='#ff0000'; c.fillRect(2,4,2,2); d.layer().blend='multiply';
+ d.setLayerMotionKey(1,{frame:0,x:4,y:0,scale:1,angle:0,easing:'linear'}); const cv=createCanvas(16,16); d.compositeCamera(cv.getContext('2d'),0);
+ ok(same(pixel(cv,6,4),[0,0,0,255]) && same(pixel(cv,2,4),[0,255,0,255]), 'animated layer retains its blend mode at the transformed position');
+}
+
 console.log(`all ${n} raster integration checks passed`);
