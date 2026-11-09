@@ -4,20 +4,20 @@ Developed by **Qmer**. An offline painting and frame-animation studio for Androi
 brushes, layers, a colour wheel, a frame timeline with onion skin, Procreate's gesture
 vocabulary, and PNG/GIF export. No account, no ads, no network permission.
 
-**Download:** [`Qalam-2.7.apk`](../artifacts/Qalam-2.7.apk) (~272 KB)
+**Download:** [`Qalam-2.8.apk`](../artifacts/Qalam-2.8.apk) (~273 KB)
 
 | | |
 |---|---|
 | Package | `com.qalam.studio` |
-| Version | 2.7 (versionCode 18) |
+| Version | 2.8 (versionCode 19) |
 | Requires | Android 8.0+ (minSdk 26), built for targetSdk 33 |
 | Permissions | `VIBRATE` only — no internet, no storage, no location |
 | Signing | APK Signature Scheme v1 + v2, self-signed with a public test key |
-| SHA-256 | `9514a6e9dab36ca45a720146ada05c494b68b706fb16b0be286a6aebd9e857e6` |
+| SHA-256 | `a1a9b5e2d57727dfbd90af87cd78d9ebb582672e775a559f76908d83bdc4e6c5` |
 
 ## Install
 
-1. Download `Qalam-2.7.apk` to the phone (or copy it over USB).
+1. Download `Qalam-2.8.apk` to the phone (or copy it over USB).
 2. Open it from the file manager. Android will ask you to allow installs from that
    app the first time ("Install unknown apps") — allow it, then install.
 3. Open **Qalam**.
@@ -68,7 +68,7 @@ timeline, play at 1–30 fps with frame holds, and configurable onion skins.
 label, hold, reverse, duplicate, skip or include a frame range with undo. Onion skins
 have independent directional counts, colour, layer and stacking options. Skipped frames
 are omitted from playback and GIF/MP4, but retained in PNG sequences and sprite sheets.
-Labels are not nested groups. A saved motion guide can generate translated raster cels along its path with easing; the guide overlay itself does not appear in exports. Generated cels replace the current layer within a chosen range after confirmation and can be undone. A single imported audio track can be used for forward preview only (2 MiB limit; ping-pong and exports are silent). Cycle timing is displayed on the timeline. Copy a cel
+Labels are not nested groups. A saved motion guide can generate translated raster cels along its path with easing; the guide overlay itself does not appear in exports. Two-pose transform generation also interpolates movement, scale and rotation around a chosen pivot with easing. Both tools replace cels on the current layer within a chosen range after confirmation and can be undone; neither is a live keyframe track. A single imported audio track can be used for forward preview only (2 MiB limit; ping-pong and exports are silent). Cycle timing is displayed on the timeline. Copy a cel
 across frames or delete a frame range with confirmation and undo; cel copying is
 limited to 64 MiB of new pixel data per operation.
 PNG sprite sheets include every frame once, without timing metadata.

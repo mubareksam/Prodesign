@@ -243,6 +243,31 @@
       this.history.struct(function () { copies.forEach((cel,i)=>{ this.frames[start+i].cels[li]=cel; }); });
       return null;
     }
+    // Interpolate two numeric poses, then rasterize every frame before recording
+    // a single structural edit. The original is never incrementally resampled.
+    validateTransformBake(source,start,end,easing,first,last,pivot) {
+      if (!Number.isInteger(source) || !Number.isInteger(start) || !Number.isInteger(end) || source<0 || source>=this.frames.length || start<0 || end<=start || end>=this.frames.length) return 'Choose a valid source and at least two destination frames';
+      if (!['linear','in','out','inout'].includes(easing)) return 'Choose a valid easing';
+      if (this.layer().locked || this.layer().alphaLocked) return 'Unlock the layer and alpha first';
+      if (!this.cel(source,this.activeLayer,false)) return 'Source cel is empty';
+      const validPose=p=>p && ['x','y','scale','angle'].every(k=>Number.isFinite(p[k])) && Math.abs(p.x)<=this.width*4 && Math.abs(p.y)<=this.height*4 && p.scale>=0.1 && p.scale<=4 && Math.abs(p.angle)<=1440;
+      if (!validPose(first) || !validPose(last)) return 'Offsets must be within four canvas sizes, scale 10–400%, and rotation −1440° to 1440°';
+      if (!pivot || !Number.isFinite(pivot.x) || !Number.isFinite(pivot.y) || pivot.x<0 || pivot.x>this.width || pivot.y<0 || pivot.y>this.height) return 'Pivot must be inside the canvas';
+      if (this.width*this.height*4*(end-start+1)>64*1024*1024) return 'Too many pixels to generate at once; use a smaller range';
+      return null;
+    }
+    bakeTransform(source,start,end,easing,first,last,pivot) {
+      const error=this.validateTransformBake(source,start,end,easing,first,last,pivot); if (error) return error;
+      const src=this.cel(source,this.activeLayer,false), li=this.activeLayer, copies=[];
+      for (let frame=start;frame<=end;frame++) {
+        const t=Q.motionEase((frame-start)/(end-start),easing), lerp=k=>first[k]+(last[k]-first[k])*t;
+        const cv=Q.canvas(this.width,this.height), c=cv.getContext('2d');
+        c.translate(pivot.x+lerp('x'),pivot.y+lerp('y')); c.rotate(lerp('angle')*Math.PI/180); c.scale(lerp('scale'),lerp('scale')); c.translate(-pivot.x,-pivot.y); c.drawImage(src,0,0);
+        copies.push(cv);
+      }
+      this.history.struct(function () { copies.forEach((cel,i)=>{ this.frames[start+i].cels[li]=cel; }); });
+      return null;
+    }
     deleteFrameRange(start,end) {
       if (!Number.isInteger(start) || !Number.isInteger(end) || start<0 || end<start || end>=this.frames.length || end-start+1>=this.frames.length) return false;
       this.history.struct(function () {

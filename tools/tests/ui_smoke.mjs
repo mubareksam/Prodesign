@@ -814,6 +814,28 @@ async function run() {
   Q.UI.motionBakeDialog(); doc.querySelector('[aria-label="Motion source frame"]').value='1'; click('#modalBody .btn.primary'); App.doc.setMotionGuide([{x:1,y:1},{x:2,y:2}]); const hist=App.doc.history.undoStack.length; click('#modalBody .btn.danger');
   ok(App.doc.history.undoStack.length===hist && doc.querySelector('#toast').textContent.includes('cancelled'), 'motion confirmation cancels if guide changes');
 
+  console.log('2.8 transform pose animation');
+  App.createDoc(64,64,'Transform animation'); App.doc.activeCel(true); App.addFrame(false); App.addFrame(false); App.doc.history.clear();
+  if (doc.querySelector('#timeline').classList.contains('hidden')) Q.UI.toggleTimeline();
+  click('#timeline [aria-label="Animation guides and audio"]');
+  ok(!!doc.querySelector('#timeline [aria-label="Generate transform frames"] svg'), 'transform animation is accessible from timeline assist tools');
+  click('#timeline [aria-label="Generate transform frames"]'); click('#modalBody .btn.primary');
+  ok(doc.querySelector('.canvas-error').textContent.includes('empty'), 'empty transform source is rejected');
+  const get=label=>doc.querySelector('#modalBody [aria-label="'+label+'"]'); get('Source frame').value='1'; get('End scale (%)').value='0'; click('#modalBody .btn.primary');
+  ok(doc.querySelector('.canvas-error').textContent.includes('scale'), 'out-of-range transform scale is rejected');
+  get('End scale (%)').value='100'; get('Pivot X').value='-1'; click('#modalBody .btn.primary'); ok(doc.querySelector('.canvas-error').textContent.includes('Pivot'), 'invalid pivot is rejected in the dialog');
+  get('Pivot X').value='32'; get('Start X offset').value=''; click('#modalBody .btn.primary'); ok(doc.querySelector('.canvas-error').textContent.includes('every field'), 'blank transform values are rejected');
+  get('Start X offset').value='0'; click('#modalBody .btn.primary'); ok(doc.querySelector('#modalBody').textContent.includes('Replace 3 cels'), 'transform shows destructive confirmation');
+  click('#modalBody .btn.ghost'); ok(!App.doc.cel(1,0,false) && App.doc.history.undoStack.length===0, 'cancelling transform leaves cels untouched');
+  Q.UI.transformBakeDialog(); get('Source frame').value='1'; get('End X offset').value='12'; get('End Y offset').value='-4'; get('End scale (%)').value='150'; get('End rotation (°)').value='360'; get('Pivot X').value='20'; get('Pivot Y').value='10'; get('Transform easing').value='out';
+  click('#modalBody .btn.primary'); const originalBake=App.bakeTransform; let args=null; App.bakeTransform=function (...values) { args=values; return originalBake(...values); }; click('#modalBody .btn.danger'); App.bakeTransform=originalBake;
+  ok(args && args[0]===0 && args[1]===0 && args[2]===2 && args[3]==='out' && args[5].x===12 && args[5].y===-4 && args[5].scale===1.5 && args[5].angle===360 && args[6].x===20 && args[6].y===10, 'transform dialog passes poses, pivot and easing to engine');
+  ok(!!App.doc.cel(1,0,false) && !!App.doc.cel(2,0,false) && App.doc.history.undoStack.length===1, 'confirmed transform generates one undoable operation');
+  App.undo(); ok(!App.doc.cel(1,0,false) && !App.doc.cel(2,0,false), 'transform undo restores prior destination cels'); App.redo();
+  await App.saveNow(false); const transformReload=await Q.Store.load(App.doc.id); ok(!!transformReload.cel(1,0,false) && !!transformReload.cel(2,0,false), 'generated transform frames survive save and reopen');
+  Q.UI.transformBakeDialog(); get('Source frame').value='1'; click('#modalBody .btn.primary'); App.doc.moveFrame(0,1); const currentHistory=App.doc.history.undoStack.length; click('#modalBody .btn.danger');
+  ok(App.doc.history.undoStack.length===currentHistory && doc.querySelector('#toast').textContent.includes('cancelled'), 'transform confirmation cancels if frames change');
+
   await App.saveNow(false);
   console.log(failures ? `\n${failures} check(s) FAILED` : '\nall UI checks passed');
   process.exit(failures ? 1 : 0);

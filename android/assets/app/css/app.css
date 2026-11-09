@@ -440,3 +440,10 @@ select, .select {
 .effect-card canvas, .effect-fallback { display: block; width: 100%; aspect-ratio: 4/3; border-radius: 6px; background: #393943; }
 .effect-card span { display: block; padding: 5px 2px 2px; font-size: 11px; line-height: 1.2; overflow-wrap: anywhere; }
 .effect-selected { color: var(--accent); font-size: 12px; font-weight: 600; margin-bottom: 8px; }
+
+/* Numeric animation poses stay legible on narrow screens. */
+.transform-heading { font-size: 13px; color: var(--accent); margin: 14px 0 6px; }
+.transform-grid { display: grid; grid-template-columns: repeat(2,minmax(0,1fr)); gap: 8px; }
+.transform-field { min-width: 0; display: flex; flex-direction: column; gap: 4px; }
+.transform-field label { font-size: 12px; color: var(--txt-2); }
+.transform-field input { min-width: 0; width: 100%; }

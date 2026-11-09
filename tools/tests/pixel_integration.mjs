@@ -404,4 +404,44 @@ for (const mode of ['linear','in','out','inout']) {
  ok(failed && d.cel(1,0,false)===null && d.history.undoStack.length===0 && pixel(d.cel(0,0,false),1,1)[3]===255, 'allocation failure leaves every cel and history untouched');
 }
 
+
+{
+ const d=setup(), source=d.activeCel(true), c=source.getContext('2d'); c.fillStyle='#ff0000'; c.fillRect(10,7,2,2);
+ d.addLayer(); d.activeCel(true).getContext('2d').fillRect(0,0,2,2); d.activeLayer=0;
+ d.addFrame(false); d.addFrame(false); d.frames[1].skipped=true; d.frames[1].duration=4;
+ const replaced=d.cel(1,0,true); replaced.getContext('2d').fillRect(0,0,1,1); d.history.clear();
+ const a={x:0,y:0,scale:1,angle:0}, b={x:0,y:0,scale:1,angle:180}, pivot={x:8,y:8};
+ ok(d.bakeTransform(0,0,2,'linear',a,b,pivot)===null, 'transform bake accepts two poses');
+ ok(pixel(d.cel(0,0,false),10,7)[0]===255 && pixel(d.cel(1,0,false),8,10)[0]===255 && pixel(d.cel(2,0,false),5,8)[0]===255, 'transform frames rotate around the chosen pivot with correct intermediate angles');
+ ok(d.frames[1].skipped && d.frames[1].duration===4 && pixel(d.cel(0,1,false),0,0)[3]===255 && d.cel(1,1,false)===null, 'transform leaves timing and other layers unchanged');
+ ok(d.history.undoStack.length===1 && d.cel(1,0,false)!==replaced, 'transform replaces cels in one history step');
+ d.history.undo(); ok(d.cel(0,0,false)===source && d.cel(1,0,false)===replaced && !d.cel(2,0,false), 'transform undo restores original cel identities');
+ d.history.redo(); ok(pixel(d.flatten(2,{background:false}),5,8)[0]===255, 'redo and composite export include transformed artwork');
+ const png=d.flatten(2,{background:false}).toBuffer('image/png'), decoded=await loadImage(png), verify=createCanvas(16,16); verify.getContext('2d').drawImage(decoded,0,0); ok(pixel(verify,5,8)[0]===255, 'transformed artwork survives real PNG encode and decode');
+}
+{
+ const d=setup(); const src=d.activeCel(true); src.getContext('2d').fillRect(10,7,2,2); d.addFrame(false); d.addFrame(false); d.addFrame(false); d.addFrame(false);
+ const a={x:0,y:0,scale:1,angle:0}, b={x:8,y:0,scale:1,angle:0}, p={x:8,y:8};
+ ok(d.bakeTransform(0,0,4,'in',a,b,p)===null && pixel(d.cel(1,0,false),10,7)[3]>0 && pixel(d.cel(2,0,false),12,7)[3]===255, 'transform applies ease-in to frame-index interpolation');
+ d.history.undo(); b.x=0; b.scale=2; ok(d.bakeTransform(0,0,4,'linear',a,b,p)===null && pixel(d.cel(4,0,false),13,7)[3]===255 && pixel(d.cel(4,0,false),14,8)[3]===255 && pixel(d.cel(4,0,false),10,7)[3]===0, 'scale uses original cel about selected pivot');
+ d.history.undo(); b.scale=1; b.angle=360; ok(d.bakeTransform(0,0,4,'linear',a,b,p)===null && pixel(d.cel(2,0,false),5,8)[3]===255 && pixel(d.cel(4,0,false),10,7)[3]===255, 'rotation can intentionally make a full turn');
+}
+{
+ const d=setup(); const src=d.activeCel(true); src.getContext('2d').fillRect(2,2,1,1); d.addFrame(false); d.addFrame(false); d.history.clear();
+ const a={x:0,y:0,scale:1,angle:0}, b={x:-1,y:1,scale:1,angle:0}, p={x:0,y:0};
+ ok(d.bakeTransform(0,1,2,'linear',a,b,p)===null && d.cel(0,0,false)===src && pixel(d.cel(2,0,false),1,3)[3]===255, 'out-of-range source is preserved and negative offsets work'); d.history.undo();
+ d.layer().locked=true; ok(!!d.bakeTransform(0,0,2,'linear',a,b,p), 'locked layer blocks transform'); d.layer().locked=false; d.layer().alphaLocked=true; ok(!!d.bakeTransform(0,0,2,'linear',a,b,p), 'alpha lock blocks transform'); d.layer().alphaLocked=false;
+ ok(!!d.bakeTransform(1,0,2,'linear',a,b,p) && !!d.bakeTransform(0,0,0,'linear',a,b,p) && !!d.bakeTransform(0,0,2,'bad',a,b,p), 'empty source, invalid range and invalid easing are rejected');
+ for (const bad of [{...a,scale:0},{...a,scale:5},{...a,angle:1441},{...a,x:Infinity},{...a,y:100}]) ok(!!d.bakeTransform(0,0,2,'linear',bad,b,p), 'out-of-bounds or non-finite pose is rejected');
+ ok(!!d.bakeTransform(0,0,2,'linear',a,b,{x:-1,y:0}) && !!d.bakeTransform(0,0,2,'linear',a,b,{x:0,y:17}), 'invalid pivot is rejected');
+ ok(d.history.undoStack.length===0 && !d.cel(1,0,false), 'rejected transforms do not change pixels or history');
+ d.width=4096; d.height=4096; ok(!!d.bakeTransform(0,0,2,'linear',a,b,p), 'transform allocation cap refuses excessive pixel memory');
+}
+{
+ const d=setup(); d.activeCel(true).getContext('2d').fillRect(1,1,1,1); d.addFrame(false); d.history.clear();
+ const originalCanvas=Q.canvas; let count=0; Q.canvas=function (...args) { if (++count===2) throw Error('allocation failed'); return originalCanvas(...args); };
+ let failed=false; try { d.bakeTransform(0,0,1,'linear',{x:0,y:0,scale:1,angle:0},{x:1,y:0,scale:1,angle:0},{x:8,y:8}); } catch(e) { failed=true; } finally { Q.canvas=originalCanvas; }
+ ok(failed && d.cel(1,0,false)===null && d.history.undoStack.length===0 && pixel(d.cel(0,0,false),1,1)[3]===255, 'transform allocation failure is atomic');
+}
+
 console.log(`all ${n} raster integration checks passed`);

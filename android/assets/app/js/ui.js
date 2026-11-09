@@ -55,7 +55,8 @@
     previous: '<path d="M6 5v14M18 6l-8 6 8 6z"/>',
     next: '<path d="M18 5v14M6 6l8 6-8 6z"/>',
     onion: '<circle cx="9" cy="12" r="6"/><circle cx="15" cy="12" r="6"/>',
-    audio: '<path d="M10 17V5l9-2v12"/><circle cx="7" cy="18" r="3"/><circle cx="16" cy="16" r="3"/>'
+    audio: '<path d="M10 17V5l9-2v12"/><circle cx="7" cy="18" r="3"/><circle cx="16" cy="16" r="3"/>',
+    tween: '<rect x="3" y="7" width="7" height="7" rx="1"/><path d="M12 12h4M14 10l2 2-2 2"/><rect x="17" y="5" width="4" height="4" rx="1" transform="rotate(25 19 7)"/>'
   };
 
   function fitCanvasToBox(cv, box) {
@@ -1035,6 +1036,7 @@
       tool('Toggle onion skin',ICON.onion,function () { d.onion=!d.onion; app().view.dirty=true; app().markDirty(true); buildTimeline(); },d.onion);
     } else {
       tool('Motion guide',ICON.motion,function () { UI.motionGuideDialog(); });
+      tool('Generate transform frames',ICON.tween,function () { UI.transformBakeDialog(); });
       tool('Manage audio',ICON.audio,function () { UI.audioDialog(); });
     }
     el.appendChild(head); el.appendChild(categories); el.appendChild(more);
@@ -1185,6 +1187,40 @@
       UI.confirm('Replace '+(end-start+1)+' cels?', 'This replaces the current layer in every frame of the range, including skipped frames. The change is undoable.',function () {
         if (app().doc!==d || d.layer()!==layer || d.cel(src,d.activeLayer,false)!==cel || d.motionGuide!==guide) { Q.toast('Motion cancelled because the artwork changed',4000); return; }
         const result=app().bakeMotionPath(src,start,end,mode,reverse); if (result) Q.toast(result,4000);
+      },'Generate');
+    }); actions.appendChild(cancel); actions.appendChild(review); card.appendChild(actions); UI.openModal(card);
+  };
+
+  UI.transformBakeDialog = function () {
+    app().stopPlay(); const d=app().doc; if (!d) return;
+    const card=Q.crel('div'); card.appendChild(Q.crel('h2',null,'Generate transform frames'));
+    card.appendChild(Q.crel('p','sub','Interpolate two numeric poses of the entire source cel (selection is ignored), then bake the results into the current layer. Existing cels in the range are replaced after confirmation, including skipped frames and the source if in range. Undo restores them. This is not a live or editable keyframe track.'));
+    function numberField(container,label,value,step) {
+      const row=Q.crel('div','transform-field'); const text=Q.crel('label',null,label), input=Q.crel('input','select');
+      input.type='number'; input.step=step || '1'; input.value=String(value); input.setAttribute('aria-label',label); row.appendChild(text); row.appendChild(input); container.appendChild(row); return input;
+    }
+    function section(label) { const title=Q.crel('h3','transform-heading',label); card.appendChild(title); const box=Q.crel('div','transform-grid'); card.appendChild(box); return box; }
+    const frames=section('Frames');
+    const source=numberField(frames,'Source frame',d.activeFrame+1), firstFrame=numberField(frames,'First frame',1), lastFrame=numberField(frames,'Last frame',d.frames.length);
+    function pose(label) { const box=section(label); return {x:numberField(box,label+' X offset',0,'any'),y:numberField(box,label+' Y offset',0,'any'),scale:numberField(box,label+' scale (%)',100,'any'),angle:numberField(box,label+' rotation (°)',0,'any')}; }
+    const from=pose('Start'), to=pose('End'), pivotBox=section('Pivot in canvas pixels');
+    const px=numberField(pivotBox,'Pivot X',d.width/2,'any'), py=numberField(pivotBox,'Pivot Y',d.height/2,'any');
+    card.appendChild(Q.crel('p','sub','Offsets are relative to the source. Positive rotation is clockwise around the pivot. Scale is 10–400%; rotation follows the entered numbers, allowing full turns. Movement is by frame number, not hold time. Off-canvas pixels are cropped and resampling can soften artwork.'));
+    const row=Q.crel('div','field studio-field'); row.appendChild(Q.crel('label',null,'Easing')); const easing=Q.crel('select'); easing.setAttribute('aria-label','Transform easing');
+    [['linear','Linear'],['in','Ease in'],['out','Ease out'],['inout','Ease in and out']].forEach(function (choice) { const option=Q.crel('option'); option.value=choice[0]; option.textContent=choice[1]; easing.appendChild(option); }); row.appendChild(easing); card.appendChild(row);
+    const error=Q.crel('p','canvas-error'); error.setAttribute('role','alert'); card.appendChild(error);
+    const actions=Q.crel('div','modal-actions'), cancel=Q.crel('button','btn ghost','Cancel'), review=Q.crel('button','btn primary','Review replacement');
+    cancel.addEventListener('click',function () { UI.closeModal(); }); review.addEventListener('click',function () {
+      const fields=[source,firstFrame,lastFrame,from.x,from.y,from.scale,from.angle,to.x,to.y,to.scale,to.angle,px,py];
+      if (fields.some(input=>!input.value.trim() || !Number.isFinite(Number(input.value)))) { error.textContent='Enter a number in every field.'; return; }
+      const src=Number(source.value)-1, start=Number(firstFrame.value)-1, end=Number(lastFrame.value)-1, mode=easing.value;
+      const read=p=>({x:Number(p.x.value),y:Number(p.y.value),scale:Number(p.scale.value)/100,angle:Number(p.angle.value)});
+      const a=read(from), b=read(to), pivot={x:Number(px.value),y:Number(py.value)};
+      const msg=d.validateTransformBake(src,start,end,mode,a,b,pivot); if (msg) { error.textContent=msg; return; }
+      const layer=d.layer(), cel=d.cel(src,d.activeLayer,false), frames=d.frames.slice(start,end+1);
+      UI.confirm('Replace '+(end-start+1)+' cels?', 'This bakes new pixels into the current layer in every selected frame, including skipped frames. The change is undoable.',function () {
+        if (app().doc!==d || d.layer()!==layer || d.cel(src,d.activeLayer,false)!==cel || frames.some((frame,i)=>d.frames[start+i]!==frame)) { Q.toast('Transform cancelled because the artwork changed',4000); return; }
+        const result=app().bakeTransform(src,start,end,mode,a,b,pivot); if (result) Q.toast(result,4000);
       },'Generate');
     }); actions.appendChild(cancel); actions.appendChild(review); card.appendChild(actions); UI.openModal(card);
   };
