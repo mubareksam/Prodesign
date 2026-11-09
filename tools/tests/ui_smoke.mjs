@@ -679,6 +679,33 @@ async function run() {
   ok(doc.querySelector('#modalBody h2').textContent.includes('Delete frames'), 'range deletion asks for confirmation'); click('#modalBody .btn.danger');
   ok(App.doc.frames.length===2, 'confirmed range deletion removes frames'); App.undo(); ok(App.doc.frames.length===4 && !!App.doc.cel(1,0,false), 'undo restores deleted frames and cels');
 
+
+  console.log('2.3 motion guide and image import');
+  App.createDoc(64,64,'Motion guide'); App.addFrame(false);
+  if (doc.querySelector('#timeline').classList.contains('hidden')) Q.UI.toggleTimeline();
+  ok(doc.querySelector('#timeline .tl-more').textContent.includes('Motion guide'), 'motion guide is accessible in timeline');
+  Q.UI.motionGuideDialog(); let guideAction=label=>Array.from(doc.querySelectorAll('#modalBody button')).find(x=>x.textContent===label).click();
+  guideAction('Draw or replace guide'); const gp1=App.view.toScreen(10,10), gp2=App.view.toScreen(40,40);
+  pointer(view,'pointerdown',gp1.x,gp1.y,{id:210}); pointer(view,'pointermove',gp2.x,gp2.y,{id:210}); pointer(view,'pointerup',gp2.x,gp2.y,{id:210});
+  ok(App.doc.motionGuide.length===2 && App.view.tool==='brush', 'drawing guide stores path and returns to brush');
+  App.undo(); ok(App.doc.motionGuide.length===0, 'guide drawing is undoable'); App.redo(); ok(App.doc.motionGuide.length===2, 'guide drawing is redoable');
+  Q.UI.motionGuideDialog(); guideAction('Hide guide'); ok(!App.doc.motionGuideVisible, 'guide can be hidden');
+  Q.UI.motionGuideDialog(); guideAction('Draw or replace guide'); pointer(view,'pointerdown',gp1.x,gp1.y,{id:211}); pointer(view,'pointermove',gp2.x,gp2.y,{id:211}); pointer(view,'pointerup',gp2.x,gp2.y,{id:211});
+  App.undo(); ok(!App.doc.motionGuideVisible && App.doc.motionGuide.length===2, 'one undo restores hidden previous path after replacement'); App.redo();
+  await App.saveNow(false); const guideReload=await Q.Store.load(App.doc.id); ok(guideReload.motionGuideVisible && guideReload.motionGuide.length===2, 'motion guide survives save and reopen');
+  Q.UI.motionGuideDialog(); guideAction('Draw or replace guide'); pointer(view,'pointerdown',gp1.x,gp1.y,{id:212}); pointer(view,'pointermove',gp2.x,gp2.y,{id:212}); pointer(view,'pointercancel',gp2.x,gp2.y,{id:212});
+  ok(App.doc.motionGuide.length===2 && !App.view.motionDraft, 'cancelled guide leaves previous guide unchanged');
+  click('#btnLayers'); ok(doc.querySelector('#trayBody').textContent.includes('Import'), 'image import is accessible from layers');
+  const input=doc.querySelector('#imageImport'), oldClick=input.click, oldReader=win.FileReader, oldImage=win.Image; let picked=0;
+  input.click=()=>{picked++;}; Q.UI.pickImage(); ok(picked===1 && Q.UI.imageTarget.frame===App.doc.frames[App.doc.activeFrame], 'image import opens file picker for current frame');
+  win.FileReader=class { readAsDataURL() { this.result='data:image/png;base64,AAAA'; setTimeout(()=>this.onload(),0); } };
+  win.Image=class { constructor() {this.width=4;this.height=2;} set src(value) {setTimeout(()=>this.onload(),0);} };
+  Object.defineProperty(input,'files',{value:[{name:'test.png',type:'image/png',size:100}],configurable:true}); input.dispatchEvent(new win.Event('change',{bubbles:true})); await wait(40);
+  ok(App.doc.layers.length===2 && App.doc.layer().name==='test' && !!App.doc.activeCel(false), 'image picker imports as a new layer');
+  App.undo(); ok(App.doc.layers.length===1, 'image import from picker is undoable'); App.redo();
+  await App.saveNow(false); const imageReload=await Q.Store.load(App.doc.id); ok(imageReload.layers.length===2 && !!imageReload.activeCel(false), 'imported layer survives save and reopen');
+  input.click=oldClick; win.FileReader=oldReader; win.Image=oldImage;
+
   await App.saveNow(false);
   console.log(failures ? `\n${failures} check(s) FAILED` : '\nall UI checks passed');
   process.exit(failures ? 1 : 0);

@@ -15,12 +15,13 @@
     notify() { if (this.onchange) this.onchange(); }
     structSnapshot() {
       const d = this.doc;
-      return { layers: d.layers.map(l => ({ ...l })), frames: d.frames.map(f => ({cels: f.cels.slice(), duration: f.duration || 1, group: f.group || '', skipped: !!f.skipped})), activeLayer: d.activeLayer, activeFrame: d.activeFrame, bg: d.bg, playRange: d.playRange ? {...d.playRange} : null };
+      return { layers: d.layers.map(l => ({ ...l })), frames: d.frames.map(f => ({cels: f.cels.slice(), duration: f.duration || 1, group: f.group || '', skipped: !!f.skipped})), activeLayer: d.activeLayer, activeFrame: d.activeFrame, bg: d.bg, playRange: d.playRange ? {...d.playRange} : null, motionGuide:d.motionGuide.map(p=>({...p})), motionGuideVisible:d.motionGuideVisible };
     }
     applyStruct(s) {
       const d = this.doc;
       d.layers = s.layers.map(l => ({ ...l })); d.frames = s.frames.map(f => ({ cels: f.cels.slice(), duration: f.duration || 1, group: f.group || '', skipped: !!f.skipped }));
       d.bg = s.bg || '#ffffff'; d.playRange = s.playRange ? {...s.playRange} : null;
+      d.motionGuide = (s.motionGuide || []).map(p=>({...p})); d.motionGuideVisible=!!s.motionGuideVisible;
       d.activeLayer = Q.clamp(s.activeLayer, 0, d.layers.length - 1); d.activeFrame = Q.clamp(s.activeFrame, 0, d.frames.length - 1);
     }
     struct(fn) { const before = this.structSnapshot(), result = fn.call(this.doc); this.push({ type:'struct', before, after:this.structSnapshot() }); return result; }
@@ -59,6 +60,8 @@
       this.id = opts.id || Q.uid(); this.name = opts.name || 'Untitled'; this.width = opts.width || 2048; this.height = opts.height || 2048;
       this.fps = opts.fps || 12; this.bg = opts.bg || '#ffffff'; this.onion = !!opts.onion; this.onionAlpha = opts.onionAlpha == null ? 0.32 : opts.onionAlpha;
       this.playRange = opts.playRange && Number.isInteger(opts.playRange.start) && Number.isInteger(opts.playRange.end) ? {start:opts.playRange.start,end:opts.playRange.end} : null;
+      this.motionGuide=Array.isArray(opts.motionGuide) ? opts.motionGuide.slice(0,512).filter(p=>p && Number.isFinite(p.x) && Number.isFinite(p.y)).map(p=>({x:Q.clamp(p.x,0,this.width),y:Q.clamp(p.y,0,this.height)})) : [];
+      this.motionGuideVisible=opts.motionGuideVisible !== false;
       this.playMode = opts.playMode || 'loop'; this.onionFrames = Q.clamp(opts.onionFrames || 1, 1, 4);
       this.onionPrevFrames = Q.clamp(opts.onionPrevFrames == null ? this.onionFrames : Math.round(opts.onionPrevFrames),0,4);
       this.onionNextFrames = Q.clamp(opts.onionNextFrames == null ? this.onionFrames : Math.round(opts.onionNextFrames),0,4);
@@ -82,6 +85,16 @@
         for (const f of this.frames) { const c = src && f.cels[copyFrom]; f.cels.splice(at,0,c ? Q.copyCanvas(c) : null); }
         this.activeLayer = at; return at;
       });
+    }
+    insertImageLayer(canvas, name) {
+      if (!canvas || canvas.width!==this.width || canvas.height!==this.height) return false;
+      this.history.struct(function () {
+        const at=this.activeLayer+1, targetFrame=this.activeFrame;
+        this.layers.splice(at,0,makeLayer(String(name || 'Imported image').slice(0,64)));
+        this.frames.forEach((frame,i)=>frame.cels.splice(at,0,i===targetFrame ? canvas : null));
+        this.activeLayer=at;
+      });
+      return true;
     }
     copyRegionToLayer(rect) {
       const source = this.activeCel(false); if (!source || !rect) return false;
@@ -189,6 +202,16 @@
         this.normalizePlayRange();
       });
       return true;
+    }
+    setMotionGuide(points) {
+      if (!Array.isArray(points) || (points.length!==0 && (points.length<2 || points.length>512))) return false;
+      if (points.some(p=>!p || !Number.isFinite(p.x) || !Number.isFinite(p.y))) return false;
+      const clean=points.map(p=>({x:Q.clamp(p.x,0,this.width),y:Q.clamp(p.y,0,this.height)}));
+      this.history.struct(function () { this.motionGuide=clean; if (clean.length) this.motionGuideVisible=true; }); return true;
+    }
+    setMotionGuideVisible(visible) {
+      visible=!!visible; if (this.motionGuideVisible===visible) return;
+      this.history.struct(function () { this.motionGuideVisible=visible; });
     }
     setBackground(color) { if (this.bg === color) return; return this.history.struct(function () { this.bg=color; }); }
     setLayerProp(i,key,value) { if (this.layers[i]) return this.history.struct(function () { this.layers[i][key]=value; }); }

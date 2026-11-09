@@ -1,5 +1,5 @@
 /* Real raster tests: selection clipping, undo and transformations on RGBA pixels. */
-import { createCanvas, loadImage } from '@napi-rs/canvas';
+import { createCanvas, loadImage, Image as NativeImage } from '@napi-rs/canvas';
 import { readFileSync, writeFileSync, mkdirSync } from 'node:fs';
 import { execFileSync } from 'node:child_process';
 import { fileURLToPath } from 'node:url';
@@ -271,6 +271,28 @@ for (const [name,brush,opacity] of [['dry',pen,1],['wet',{...pen,flow:0.5},0.6],
  App.editSelection('fill'); ok(pixel(cel,4,4)[0]===255 && same(pixel(cel,12,12),[0,0,255,255]), 'lasso fill protects outside pixels'); d.history.undo();
  App.copySelectionToLayer(); ok(pixel(d.activeCel(false),4,4)[3]===255 && pixel(d.activeCel(false),12,12)[3]===0, 'copy to layer copies only lasso shape'); d.history.undo();
  const count=d.history.undoStack.length; App.editSelection('flipH'); App.moveScaleSelection(1,1,1); ok(d.history.undoStack.length===count && same(pixel(cel,12,12),[0,0,255,255]), 'unsupported lasso transforms refuse to modify bounding rectangle');
+}
+
+
+{
+ const d=setup(); d.addFrame(false); const source=createCanvas(4,2); const c=source.getContext('2d'); c.fillStyle='#ff0000'; c.fillRect(0,0,4,2);
+ let delay=0; globalThis.Image=NativeImage; globalThis.FileReader=class {readAsDataURL(file) { this.result=file.data; setTimeout(()=>this.onload(),delay); }};
+ const f={name:'red.png',type:'image/png',size:256,data:source.toDataURL('image/png')}, target={doc:d,frame:d.frames[d.activeFrame],layer:d.layer()};
+ App.importImageFile(f,target); await new Promise(r=>setTimeout(r,100));
+ ok(d.layers.length===2 && same(pixel(d.cel(1,1,false),6,7),[255,0,0,255]) && pixel(d.cel(1,1,false),0,0)[3]===0, 'imported raster is centred without enlarging and preserves transparency');
+ ok(!d.cel(0,1,false) && same(pixel(d.flatten(1,{background:false}),6,7),[255,0,0,255]), 'imported layer appears in export only on the selected frame');
+ d.history.undo(); ok(d.layers.length===1, 'image import undo removes layer'); d.history.redo(); ok(d.layers.length===2 && pixel(d.cel(1,1,false),6,7)[0]===255, 'image import redo restores pixels');
+ const before=d.layers.length;
+ const huge=createCanvas(8193,1); App.importImageFile({...f,data:huge.toDataURL('image/png')},{doc:d,frame:d.frames[d.activeFrame],layer:d.layer()}); await new Promise(r=>setTimeout(r,60)); ok(d.layers.length===before, 'oversized decoded dimensions are rejected');
+ App.importImageFile({...f,type:'application/pdf'}, {doc:d,frame:d.frames[d.activeFrame],layer:d.layer()}); await new Promise(r=>setTimeout(r,30)); ok(d.layers.length===before, 'non-image file is rejected');
+ App.importImageFile({...f,size:17*1024*1024},{doc:d,frame:d.frames[d.activeFrame],layer:d.layer()}); await new Promise(r=>setTimeout(r,30)); ok(d.layers.length===before, 'oversized image file is rejected');
+ delay=30; App.importImageFile(f,{doc:d,frame:d.frames[d.activeFrame],layer:d.layer()}); d.activeFrame=0; await new Promise(r=>setTimeout(r,100)); ok(d.layers.length===before, 'switching frames during image load cancels import');
+}
+{
+ const d=setup(); d.setMotionGuide([{x:2,y:2},{x:14,y:14}]);
+ const exported=d.flatten(0,{background:false}); ok(pixel(exported,8,8)[3]===0, 'motion guide is not included in flattened export');
+ const canvas=createCanvas(16,16), view=Object.create(Q.View.prototype); Object.assign(view,{doc:d,canvas,ctx:canvas.getContext('2d'),dpr:1,scale:1,rot:0,tx:0,ty:0,stroke:null});
+ view.render(); ok(pixel(canvas,3,3)[0]>200 && pixel(canvas,3,3)[1]<200, 'motion guide is visible in editor overlay');
 }
 
 console.log(`all ${n} raster integration checks passed`);

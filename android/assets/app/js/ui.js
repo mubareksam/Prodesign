@@ -86,6 +86,11 @@
     el('#btnTimeline').addEventListener('click', function () { UI.toggleTimeline(); });
     el('#btnMenu').addEventListener('click', function () { UI.toggleTray('menu'); });
     el('#btnEffects').addEventListener('click', function () { UI.closeTray(); UI.effectsDialog(); });
+    el('#imageImport').addEventListener('change', function () {
+      const file=this.files && this.files[0], target=UI.imageTarget;
+      this.value=''; UI.imageTarget=null;
+      if (file && target) app().importImageFile(file,target);
+    });
 
     el('#btnBrush').addEventListener('click', function () { UI.toggleTray('brushes'); });
     el('#btnLayers').addEventListener('click', function () { UI.toggleTray('layers'); });
@@ -379,6 +384,12 @@
 
   /* ── layers ─────────────────────────────────────────────── */
 
+  UI.pickImage = function () {
+    const d=app().doc; if (!d) return;
+    app().stopPlay(); UI.imageTarget={doc:d,frame:d.frames[d.activeFrame],layer:d.layer()};
+    Q.el('#imageImport').value=''; Q.el('#imageImport').click();
+  };
+
   function buildLayers(root) {
     const d = app().doc;
     if (!d) return;
@@ -387,8 +398,9 @@
 
     const addBtn = chip('Add', false, function () { app().addLayer(); }, ICON.plus);
     const dupBtn = chip('Copy', false, function () { app().duplicateLayer(); }, ICON.copy);
+    const imageBtn = chip('Import', false, function () { UI.pickImage(); }, ICON.photo);
     const mergeBtn = chip('Merge', false, function () { app().mergeDownLayer(d.activeLayer); }, ICON.merge);
-    root.appendChild(trayHead('Layers · ' + d.layers.length, [addBtn, dupBtn, mergeBtn]));
+    root.appendChild(trayHead('Layers · ' + d.layers.length, [addBtn, dupBtn, mergeBtn, imageBtn]));
 
     const list = Q.crel('div', 'layer-list');
     for (let i = d.layers.length - 1; i >= 0; i--) {
@@ -716,7 +728,7 @@
       const grid=Q.crel('div','menu-grid'); items.forEach(x=>grid.appendChild(item(x[0],x[1],x[2]))); section.appendChild(grid); root.appendChild(section);
     }
     group('Create & edit', [
-      ['New canvas',ICON.plus,()=>UI.newCanvasDialog()], ['Effects',ICON.sparkle,()=>UI.effectsDialog()],
+      ['New canvas',ICON.plus,()=>UI.newCanvasDialog()], ['Import image as layer',ICON.photo,()=>UI.pickImage()], ['Effects',ICON.sparkle,()=>UI.effectsDialog()],
       ['Selection & transform',ICON.copy,()=>UI.selectionDialog()], ['Fill settings',ICON.sparkle,()=>UI.fillSettings()]
     ]);
     group('Canvas & view', [
@@ -954,6 +966,7 @@
     more.appendChild(chip('Frame options', false, function () { UI.frameSheet(d.activeFrame); }, null));
     more.appendChild(chip('Batch frames', false, function () { UI.batchFramesDialog(); }, null));
     more.appendChild(chip('Copy cel', false, function () { UI.copyCelDialog(); }, null));
+    more.appendChild(chip('Motion guide', false, function () { UI.motionGuideDialog(); }, null));
     more.appendChild(chip('Blank frame', false, function () { app().addFrame(false); }, null));
     more.appendChild(chip('◀ Frame', false, function () { app().selectFrame(Math.max(0,d.activeFrame-1)); }, null));
     more.appendChild(chip('Frame ▶', false, function () { app().selectFrame(Math.min(d.frames.length-1,d.activeFrame+1)); }, null));
@@ -1061,6 +1074,18 @@
       UI.confirm('Delete frames '+first+'–'+last+'?', 'This removes all layers in these frames. You can undo this action.', function () { app().deleteFrameRange(first-1,last-1); });
     }); card.appendChild(del);
     const close=Q.crel('button','btn ghost','Close'); close.addEventListener('click',function () { UI.closeModal(); }); card.appendChild(close); UI.openModal(card);
+  };
+
+  UI.motionGuideDialog = function () {
+    app().stopPlay(); const d=app().doc, v=app().view; if (!d) return;
+    const card=Q.crel('div'); card.appendChild(Q.crel('h2',null,'Animation motion guide'));
+    card.appendChild(Q.crel('p','sub','Draw one visual path as a guide across frames. It does not move artwork, create keyframes or appear in exports. The path is saved and can be undone.'));
+    const actions=Q.crel('div','menu-grid');
+    function button(label,fn) { const b=Q.crel('button','menu-item',label); b.addEventListener('click',function () { UI.closeModal(); fn(); }); actions.appendChild(b); }
+    button('Draw or replace guide',function () { v.tool='motionGuide'; v.motionDraft=null; Q.el('#btnFill').classList.remove('on'); Q.el('#btnEyedrop').classList.remove('on'); Q.hint('Draw a motion guide on the canvas',3000); });
+    button(d.motionGuideVisible ? 'Hide guide' : 'Show guide',function () { d.setMotionGuideVisible(!d.motionGuideVisible); v.dirty=true; app().markDirty(); });
+    button('Clear guide',function () { if (d.motionGuide.length) d.setMotionGuide([]); v.dirty=true; app().markDirty(); });
+    card.appendChild(actions); const close=Q.crel('button','btn ghost','Close'); close.addEventListener('click',function () { UI.closeModal(); }); card.appendChild(close); UI.openModal(card);
   };
 
   UI.copyCelDialog = function () {

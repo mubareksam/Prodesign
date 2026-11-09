@@ -34,6 +34,7 @@
     this.onFill = null;
     this.selection = null;
     this.selectionDraft = null;
+    this.motionDraft = null;
     this.lastPointerType = 'touch';
     this.holdTimer = 0;
     this.holdStart = 0;
@@ -159,6 +160,7 @@
     if (doc.onionAbove) this._drawOnionSkins(c,doc);
 
     this._drawGuide(c, doc);
+    this._drawMotionGuide(c, doc);
 
     // Selection is an editing overlay, never part of the exported artwork.
     const selection = this.selectionDraft || this.selection;
@@ -184,6 +186,17 @@
       if (neighbors.previous[n] != null) this._drawOnion(c,neighbors.previous[n],doc.onionPrevColor,alpha);
       if (neighbors.next[n] != null) this._drawOnion(c,neighbors.next[n],doc.onionNextColor,alpha);
     }
+  };
+
+  View.prototype._drawMotionGuide = function (c,doc) {
+    const points=this.motionDraft || (doc.motionGuideVisible ? doc.motionGuide : []);
+    if (!points || points.length<2) return;
+    c.save(); c.beginPath(); c.rect(0,0,doc.width,doc.height); c.clip();
+    c.lineWidth=2/this.scale; c.strokeStyle='#ff9d26'; c.setLineDash([7/this.scale,5/this.scale]); c.beginPath();
+    c.moveTo(points[0].x,points[0].y); for(let i=1;i<points.length;i++) c.lineTo(points[i].x,points[i].y); c.stroke();
+    c.setLineDash([]); c.fillStyle='#ff9d26';
+    for (const p of [points[0],points[points.length-1]]) { c.beginPath(); c.arc(p.x,p.y,4/this.scale,0,Math.PI*2); c.fill(); }
+    c.restore();
   };
 
   View.prototype._drawGuide = function (c, doc) {
@@ -332,13 +345,14 @@
         return;
       }
       if (this.tool === 'fill') { this.pointers.get(e.pointerId).pendingFill = true; return; }
+      if (this.tool === 'motionGuide') { const rec=this.pointers.get(e.pointerId), p=this.toDoc(pos.x,pos.y); rec.guidePoints=[{x:Q.clamp(p.x,0,this.doc.width),y:Q.clamp(p.y,0,this.doc.height)}]; this.motionDraft=rec.guidePoints; return; }
       if (this.tool === 'select' || this.tool === 'lasso') {
         const rec=this.pointers.get(e.pointerId), p=this.toDoc(pos.x,pos.y);
         rec.selectStart=p; if (this.tool === 'lasso') rec.lassoPoints=[p]; this.selectionDraft=null; return;
       }
       this._startStroke(pos, e);
     } else if (this.pointers.size === 2) {
-      this.selectionDraft=null; this.dirty=true;
+      this.selectionDraft=null; this.motionDraft=null; this.dirty=true;
       if (this.stroke) { this.stroke.cancel(); this.stroke = null; this.dirty = true; }
       this._startGesture();
     } else {
@@ -357,6 +371,12 @@
     if (this.g && Q.dist(rec.startX,rec.startY,rec.x,rec.y)>10) this.g.moved=true;
 
     if (this.g) { this._moveGesture(); return; }
+    if (rec.guidePoints) {
+      const p=this.toDoc(pos.x,pos.y), points=rec.guidePoints, last=points[points.length-1];
+      const pt={x:Q.clamp(p.x,0,this.doc.width),y:Q.clamp(p.y,0,this.doc.height)};
+      if (points.length<512 && Q.dist(last.x,last.y,pt.x,pt.y)*this.scale>=3) points.push(pt);
+      this.dirty=true; return;
+    }
     if (rec.selectStart) {
       const p=this.toDoc(pos.x,pos.y);
       if (rec.lassoPoints) {
@@ -406,6 +426,10 @@
       return;
     }
 
+    if (rec.guidePoints) {
+      if (e.type !== 'pointercancel' && rec.guidePoints.length>=2) { this.doc.setMotionGuide(rec.guidePoints); Q.hint('Animation guide saved',1800); }
+      this.motionDraft=null; this.tool='brush'; this.dirty=true; return;
+    }
     if (rec.selectStart) {
       if (e.type !== 'pointercancel' && this.selectionDraft) {
         this.selection=this.selectionDraft; Q.hint('Selection ready · open Menu → Selection & transform', 2500);

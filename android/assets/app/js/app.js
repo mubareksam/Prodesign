@@ -106,7 +106,7 @@
     const v = App.view;
     v.doc = doc;
     v.locked = false;
-    v.tool = 'brush'; v.selection = null; v.selectionDraft = null;
+    v.tool = 'brush'; v.selection = null; v.selectionDraft = null; v.motionDraft = null;
     Q.UI.showStudio();
     Q.el('#btnEyedrop').classList.remove('on');
     Q.el('#btnFill').classList.remove('on');
@@ -213,6 +213,38 @@
     App.view.dirty = true;
     Q.UI.syncDoc();
     App.markDirty();
+  };
+
+  // User-selected images only; imported pixels become a new layer in one frame.
+  App.importImageFile = function (file,target) {
+    if (!file || !target || !target.doc) return;
+    const type=String(file.type || '').toLowerCase(), name=String(file.name || 'Imported image');
+    if (!/^image\/(png|jpeg|webp|gif)$/.test(type) && !(type==='' && /\.(png|jpe?g|webp|gif)$/i.test(name))) { Q.toast('Choose a PNG, JPEG, WebP or GIF image',4000); return; }
+    if (!Number.isFinite(file.size) || file.size<=0 || file.size>16*1024*1024) { Q.toast('Choose an image file smaller than 16 MiB',4000); return; }
+    function valid() { return App.doc===target.doc && App.doc.frames[App.doc.activeFrame]===target.frame && App.doc.layer()===target.layer && !App.playing; }
+    if (!valid()) { Q.toast('Import cancelled because the artwork, frame or layer changed',4000); return; }
+    const reader=new FileReader();
+    reader.onerror=function () { Q.toast('Could not read the selected image',4000); };
+    reader.onload=function () {
+      if (!valid()) { Q.toast('Import cancelled because the artwork, frame or layer changed',4000); return; }
+      const img=new Image();
+      img.onerror=function () { Q.toast('Could not decode the selected image',4000); };
+      img.onload=function () {
+        if (!valid()) { Q.toast('Import cancelled because the artwork, frame or layer changed',4000); return; }
+        const w=img.naturalWidth || img.width, h=img.naturalHeight || img.height, d=target.doc;
+        if (!w || !h || w>8192 || h>8192 || w*h>16777216) { Q.toast('Image dimensions exceed the import limit',4000); return; }
+        try {
+          const canvas=Q.canvas(d.width,d.height), ctx=canvas.getContext('2d');
+          const scale=Math.min(1,d.width/w,d.height/h), dw=Math.max(1,Math.round(w*scale)), dh=Math.max(1,Math.round(h*scale));
+          ctx.drawImage(img,Math.floor((d.width-dw)/2),Math.floor((d.height-dh)/2),dw,dh);
+          const label=name.replace(/\.[^.]+$/,'').slice(0,64) || 'Imported image';
+          d.insertImageLayer(canvas,label); App.view.dirty=true; Q.UI.syncDoc(); Q.UI.refreshTimeline(); App.markDirty();
+          Q.toast('Image imported as a layer · Undo to remove',4000);
+        } catch (e) { Q.toast('Could not import this image on this device',4000); }
+      };
+      img.src=reader.result;
+    };
+    try { reader.readAsDataURL(file); } catch (e) { Q.toast('Could not read the selected image',4000); }
   };
 
   App.duplicateLayer = function (idx) {

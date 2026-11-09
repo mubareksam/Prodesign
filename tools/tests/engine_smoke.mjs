@@ -365,4 +365,17 @@ ok(celDoc.copyCelToRange(0,0,0).includes('destination'), 'source-only cel copy i
 ok(celDoc.copyCelToRange(-1,0,1).includes('Invalid'), 'invalid source is rejected');
 ok(!celDoc.deleteFrameRange(0,2) && !celDoc.deleteFrameRange(-1,1), 'invalid or all-frame deletion is rejected');
 
+
+console.log('2.3 animation guide and image layer');
+const guided=new Q.Doc({width:100,height:100});
+ok(guided.motionGuide.length===0 && guided.motionGuideVisible, 'legacy document defaults to an empty visible animation guide');
+ok(!guided.setMotionGuide([{x:1,y:2}]) && !guided.setMotionGuide([{x:0,y:0},{x:NaN,y:2}]), 'invalid paths are rejected');
+guided.setMotionGuideVisible(false); guided.setMotionGuide([{x:-5,y:20},{x:120,y:80}]);
+ok(guided.motionGuide[0].x===0 && guided.motionGuide[1].x===100 && guided.motionGuideVisible, 'guide is clamped and shown when drawn');
+guided.history.undo(); ok(guided.motionGuide.length===0 && !guided.motionGuideVisible, 'one undo restores previous guide and visibility');
+guided.history.redo(); ok(guided.motionGuide.length===2 && guided.motionGuideVisible, 'guide redraw is redoable');
+const imported=Q.canvas(100,100); guided.addFrame(false); ok(guided.insertImageLayer(imported,'Imported') && guided.layers.length===2 && guided.cel(1,1,false)===imported && !guided.cel(0,1,false), 'import inserts image in current frame only');
+guided.history.undo(); ok(guided.layers.length===1 && guided.motionGuide.length===2, 'undo import removes image layer without deleting guide');
+guided.history.redo(); ok(guided.cel(1,1,false)===imported, 'redo restores imported cel');
+
 console.log(`\nall ${checks} engine checks passed`);

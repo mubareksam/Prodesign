@@ -8,11 +8,11 @@ brushes, layers with blend modes, a colour wheel, a frame timeline with onion sk
 Procreate's gesture vocabulary, PNG/GIF export and device-dependent MP4 export — all offline, with no account and
 no network permissions at all.
 
-- Package: `com.qalam.studio` · version 2.2 (versionCode 13)
+- Package: `com.qalam.studio` · version 2.3 (versionCode 14)
 - minSdk 26 (Android 8.0) · targetSdk 33 · armeabi-v7a/arm64/x86/x86_64 independent
   (everything is HTML/JS running inside the app's own `WebView`, so the APK has no
   native code)
-- APK: **`artifacts/Qalam-2.2.apk`** (~260 KB), signed with a v1+v2 scheme
+- APK: **`artifacts/Qalam-2.3.apk`** (~265 KB), signed with a v1+v2 scheme
 - The written analysis of Procreate that this app was specified from:
   [`docs/procreate-analysis.md`](procreate-analysis.md)
 
@@ -20,7 +20,7 @@ no network permissions at all.
 
 ## 1. Install
 
-1. Copy `artifacts/Qalam-2.2.apk` to the phone (USB, Drive, chat to yourself — anything).
+1. Copy `artifacts/Qalam-2.3.apk` to the phone (USB, Drive, chat to yourself — anything).
 2. Open it with the phone's file manager. Android will ask to allow installs from
    that app the first time ("Install unknown apps").
 3. Install and open **Qalam**. If an earlier Qalam version is already installed, Android should offer an update that preserves its data. Back up important artwork first. Android does not allow this app to silently uninstall itself; do not uninstall it unless you have backed up its local artwork.
@@ -78,6 +78,16 @@ Bottom bar: **Gallery · Layer · Brush · Colour · Timeline · Menu** (plus **
   their transparency. Turn it off to use erasers, clear, flip, transform or merge.
   Alpha lock does not prevent layer/frame deletion or undo/redo. It persists and
   is copied when duplicating a layer.
+- **Layers → Import** (or **Actions → Create & edit → Import image as layer**) —
+  choose a PNG, JPEG, WebP or GIF through Android's document picker. The image is
+  centred and reduced to fit when needed, never enlarged. GIF imports its first
+  displayed image, not an animation. It becomes a new layer on the current frame;
+  its other frames are blank. The import is undoable and saves with the artwork.
+  Files are limited to 16 MiB and decoded images to 8192 pixels per side and
+  16,777,216 pixels. Large files can still exceed a device's memory while decoding.
+  If the artwork, current layer or frame changes while loading, import is cancelled.
+  This uses a user-selected document grant rather than storage permission; the
+  Android picker and decode behaviour have not been tested on a physical device.
 - **Timeline** — add blank or duplicate frames, use thumbnails, previous/next or the
   scrub slider to select a frame, play/stop and toggle onion skin. **Settings** offers
   1–30 fps, loop, ping-pong or one-shot, opacity, separate 0–4 previous and 0–4 next
@@ -101,6 +111,11 @@ Bottom bar: **Gallery · Layer · Brush · Colour · Timeline · Menu** (plus **
   previous cels. Unlock the layer and alpha first. One operation allocates at most
   64 MiB of copied pixel data; choose a smaller range if needed. Actual peak memory
   can be higher, especially with undo history and large canvases.
+- **Timeline → Motion guide** — draw or replace one freehand path, show/hide it,
+  or clear it. The guide is shared across frames, is saved with the project and its
+  edits can be undone. It is an editor overlay only and is excluded from exports.
+  It is not a motion path that animates artwork, a snapping guide or a keyframe
+  system. The path is limited to 512 sampled points.
 - **Fill tool** — tap the bucket on the right rail, then tap an area. It fills the
   connected pixels on the current layer with the selected colour at full opacity;
   undo reverses the fill. **Menu → Fill settings** adjusts colour tolerance. It
@@ -210,7 +225,7 @@ android/
     js/storage.js            IndexedDB store with localStorage fallback
     js/ui.js                 trays, colour wheel, layers, timeline, dialogs
     js/app.js                App shell: documents, saving, export, back button
-  smali/com/qalam/studio/    MainActivity, Bridge (JS <-> Java), BackCb
+  smali/com/qalam/studio/    MainActivity, PickerChrome, Bridge (JS <-> Java), BackCb
   reference/*.java           the same Java, kept javac-compilable as a check
 tools/
   fetch-toolchain.sh         downloads JVM/apktool/aapt2/android.jar + npm modules
@@ -219,11 +234,11 @@ tools/
   verify_apk.py              re-parses the APK: zip, arsc, dex, v2 signature
   make_icons.py              icon source -> all mipmap densities + adaptive icon
   apksign/sign.mjs           v1+v2 signer
-  tests/engine_smoke.mjs     130 engine checks (history, brushes, doc, GIF, …)
+  tests/engine_smoke.mjs     138 engine checks (history, brushes, doc, GIF, …)
   tests/pixel_integration.mjs real raster and animation export checks
   tests/gif_roundtrip.mjs    encodes a GIF and decodes it with an independent decoder
   tests/ui_smoke.mjs         jsdom boot + full UI drive (gallery -> export)
-artifacts/Qalam-2.2.apk           the signed, installable artefact
+artifacts/Qalam-2.3.apk           the signed, installable artefact
 docs/procreate-analysis.md   the Procreate study this app was built from
 docs/qalam.md                this file
 ```
@@ -253,7 +268,7 @@ Design notes worth knowing before changing code:
 
 ```bash
 bash tools/fetch-toolchain.sh     # once per machine: JVM, apktool, aapt2, jars, npm
-bash tools/build.sh               # -> artifacts/Qalam-2.2.apk (signed + verified)
+bash tools/build.sh               # -> artifacts/Qalam-2.3.apk (signed + verified)
 bash tools/check_reference.sh     # optional: javac-check the Java mirrors
 ```
 
@@ -269,7 +284,7 @@ bash tools/check_reference.sh     # optional: javac-check the Java mirrors
 
 ```bash
 cd tools/tests && npm install
-npm test        # engine_smoke (130 checks) + pixel_integration + gif_roundtrip + ui_smoke
+npm test        # engine_smoke (138 checks) + pixel_integration + gif_roundtrip + ui_smoke
 ```
 
 `pixel_integration.mjs` uses a native desktop canvas implementation to verify
@@ -288,7 +303,7 @@ install, not merely that a build command exited 0.
 
 ## 7. Known limits & roadmap
 
-This is not a full Procreate replacement. Canvas sizes are finite (up to 4096 px per side), and artwork is raster: magnification up to 64× reveals pixels rather than creating infinite detail. Image import, clipping masks, layer groups, audio tracks, motion paths, keyframes/easing, IK, camera animation, morphing and particles are not implemented. Onion skins provide ghost frames. Brush Studio edits existing presets only;
+This is not a full Procreate replacement. Canvas sizes are finite (up to 4096 px per side), and artwork is raster: magnification up to 64× reveals pixels rather than creating infinite detail. Clipping masks, layer groups, audio tracks, automated motion paths, keyframes/easing, IK, camera animation, morphing and particles are not implemented. Onion skins provide ghost frames. Brush Studio edits existing presets only;
 custom tips/grains, dual brushes and import/export are not implemented. Guide
 snapping, adjustable vanishing-point placement, rectangle/arc QuickShape, imported
 image references, automatic selection, feathered masks, interactive

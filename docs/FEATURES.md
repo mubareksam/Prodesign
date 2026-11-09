@@ -18,6 +18,13 @@ The supplied feature inventory is a roadmap, not a list of completed work.
   with adjustable tolerance and undo; it does not sample other layers.
 - A movable, zoomable reference window showing the current canvas. Importing an
   external reference image or using a camera is not implemented.
+- PNG, JPEG, WebP and first-frame GIF import through the Android document picker
+  into a new layer on the current frame. Imports are centred, downscaled to fit,
+  undoable and saved. Files are limited to 16 MiB, decoded images to 8192 pixels
+  per side and 16,777,216 pixels. Real-device picker/decoder testing is still needed.
+- One freehand visual motion guide can be drawn, hidden, cleared, saved and undone;
+  it is shared across frames and is not exported. It does not animate or snap
+  artwork and does not provide keyframes.
 - Temporary rectangular and freehand lasso selections clip brushes, erasers, flood
   fill and effects. Both support fill/clear and copy to a new layer. Rectangle-only
   flips, 180° rotation and numeric move/scale are undoable; lasso transforms are
@@ -64,12 +71,12 @@ The supplied feature inventory is a roadmap, not a list of completed work.
 
 ## Not yet implemented
 
-Snapping/drawing assist for grids and perspective, image import, camera references, layer masks/groups/clipping, automatic selection,
+Snapping/drawing assist for grids and perspective, camera references, layer masks/groups/clipping, automatic selection,
 feathered selection, interactive transforms and free rotation, cross-layer ColorDrop/reference fill, smudge, advanced filters and liquify, typography,
 DPI settings, timelapse, gallery stacks, PSD/Procreate/PDF/TIFF compatibility, brush
 import/export, and most advanced colour-management and accessibility features.
 Apple Pencil-specific controls are not applicable on Android. See the original
 [Procreate analysis](procreate-analysis.md) for background; its feature matrix
-predates version 2.2.
+predates version 2.3.
 
-Animation motion paths, animation guides, keyframes/easing, IK, camera animation, morphing, particle animation and audio tracks are not implemented. Onion skins are available as ghost frames. The canvas is finite raster, not infinite or resolution-independent.
+Automated animation motion paths, keyframes/easing, IK, camera animation, morphing, particle animation and audio tracks are not implemented. Onion skins are available as ghost frames. The canvas is finite raster, not infinite or resolution-independent.

@@ -8,6 +8,8 @@
 
 .field private web:Landroid/webkit/WebView;
 
+.field private imageCallback:Landroid/webkit/ValueCallback;
+
 
 # direct methods
 .method public constructor <init>()V
@@ -113,6 +115,10 @@
 
     invoke-virtual {v1, v4}, Landroid/webkit/WebView;->setWebViewClient(Landroid/webkit/WebViewClient;)V
 
+    new-instance v4, Lcom/qalam/studio/PickerChrome;
+    invoke-direct {v4, p0}, Lcom/qalam/studio/PickerChrome;-><init>(Lcom/qalam/studio/MainActivity;)V
+    invoke-virtual {v1, v4}, Landroid/webkit/WebView;->setWebChromeClient(Landroid/webkit/WebChromeClient;)V
+
     const/4 v4, 0x2
 
     invoke-virtual {v1, v4}, Landroid/webkit/WebView;->setOverScrollMode(I)V
@@ -160,9 +166,71 @@
     return-void
 .end method
 
-.method protected onDestroy()V
-    .locals 1
+.method public chooseImage(Landroid/webkit/ValueCallback;)Z
+    .locals 3
+    iget-object v0, p0, Lcom/qalam/studio/MainActivity;->imageCallback:Landroid/webkit/ValueCallback;
+    if-eqz v0, :no_old_callback
+    const/4 v1, 0x0
+    invoke-interface {v0, v1}, Landroid/webkit/ValueCallback;->onReceiveValue(Ljava/lang/Object;)V
+    :no_old_callback
+    iput-object p1, p0, Lcom/qalam/studio/MainActivity;->imageCallback:Landroid/webkit/ValueCallback;
+    :try_start_picker
+    new-instance v0, Landroid/content/Intent;
+    const-string v1, "android.intent.action.OPEN_DOCUMENT"
+    invoke-direct {v0, v1}, Landroid/content/Intent;-><init>(Ljava/lang/String;)V
+    const-string v1, "android.intent.category.OPENABLE"
+    invoke-virtual {v0, v1}, Landroid/content/Intent;->addCategory(Ljava/lang/String;)Landroid/content/Intent;
+    const-string v1, "image/*"
+    invoke-virtual {v0, v1}, Landroid/content/Intent;->setType(Ljava/lang/String;)Landroid/content/Intent;
+    const/16 v1, 0x1069
+    invoke-virtual {p0, v0, v1}, Lcom/qalam/studio/MainActivity;->startActivityForResult(Landroid/content/Intent;I)V
+    :try_end_picker
+    .catch Ljava/lang/Exception; {:try_start_picker .. :try_end_picker} :picker_failed
+    goto :picker_done
+    :picker_failed
+    move-exception v0
+    const/4 v1, 0x0
+    iput-object v1, p0, Lcom/qalam/studio/MainActivity;->imageCallback:Landroid/webkit/ValueCallback;
+    invoke-interface {p1, v1}, Landroid/webkit/ValueCallback;->onReceiveValue(Ljava/lang/Object;)V
+    :picker_done
+    const/4 v0, 0x1
+    return v0
+.end method
 
+.method protected onActivityResult(IILandroid/content/Intent;)V
+    .locals 4
+    invoke-super {p0, p1, p2, p3}, Landroid/app/Activity;->onActivityResult(IILandroid/content/Intent;)V
+    const/16 v0, 0x1069
+    if-ne p1, v0, :result_done
+    iget-object v0, p0, Lcom/qalam/studio/MainActivity;->imageCallback:Landroid/webkit/ValueCallback;
+    if-eqz v0, :result_done
+    const/4 v1, 0x0
+    iput-object v1, p0, Lcom/qalam/studio/MainActivity;->imageCallback:Landroid/webkit/ValueCallback;
+    const/4 v2, -0x1
+    if-ne p2, v2, :result_deliver
+    if-eqz p3, :result_deliver
+    invoke-virtual {p3}, Landroid/content/Intent;->getData()Landroid/net/Uri;
+    move-result-object v2
+    if-eqz v2, :result_deliver
+    const/4 v3, 0x1
+    new-array v1, v3, [Landroid/net/Uri;
+    const/4 v3, 0x0
+    aput-object v2, v1, v3
+    :result_deliver
+    invoke-interface {v0, v1}, Landroid/webkit/ValueCallback;->onReceiveValue(Ljava/lang/Object;)V
+    :result_done
+    return-void
+.end method
+
+.method protected onDestroy()V
+    .locals 2
+
+    iget-object v0, p0, Lcom/qalam/studio/MainActivity;->imageCallback:Landroid/webkit/ValueCallback;
+    if-eqz v0, :no_destroy_callback
+    const/4 v1, 0x0
+    iput-object v1, p0, Lcom/qalam/studio/MainActivity;->imageCallback:Landroid/webkit/ValueCallback;
+    invoke-interface {v0, v1}, Landroid/webkit/ValueCallback;->onReceiveValue(Ljava/lang/Object;)V
+    :no_destroy_callback
     iget-object v0, p0, Lcom/qalam/studio/MainActivity;->web:Landroid/webkit/WebView;
 
     if-eqz v0, :cond_destroy_end
