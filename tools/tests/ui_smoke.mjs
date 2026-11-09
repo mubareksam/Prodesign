@@ -1,0 +1,331 @@
+/* Integration test: boots the real Qalam web app inside jsdom with a stubbed
+ * 2D canvas, then drives the actual UI — new canvas, brushes, layers, colour,
+ * strokes, undo, animation frames, timeline, save + reopen — so wiring bugs
+ * show up here instead of on a phone.
+ *
+ * Run:  cd tools/tests && npm install && node ui_smoke.mjs
+ */
+import { readFileSync } from 'node:fs';
+import { fileURLToPath } from 'node:url';
+import path from 'node:path';
+import { JSDOM } from 'jsdom';
+
+const here = path.dirname(fileURLToPath(import.meta.url));
+const root = path.resolve(here, '../..');
+const APP = path.join(root, 'android/assets/app');
+
+let failures = 0;
+function ok(cond, label) {
+  if (cond) { console.log('  ✓ ' + label); }
+  else { failures++; console.log('  ✗ ' + label); }
+}
+
+/* ── 2D context stub ─────────────────────────────────────── */
+
+const counts = { drawImage: 0, fill: 0, putImageData: 0, getImageData: 0 };
+
+function makeCtx(cv) {
+  return {
+    canvas: cv,
+    globalAlpha: 1, globalCompositeOperation: 'source-over',
+    fillStyle: '#000', strokeStyle: '#000', lineWidth: 1, lineCap: 'butt',
+    shadowColor: '', shadowBlur: 0, shadowOffsetX: 0, shadowOffsetY: 0, filter: 'none',
+    save() {}, restore() {},
+    beginPath() {}, closePath() {}, arc() {}, moveTo() {}, lineTo() {},
+    fill() { counts.fill++; }, stroke() {},
+    rect() {}, clip() {}, ellipse() {}, quadraticCurveTo() {}, bezierCurveTo() {},
+    clearRect() {}, fillRect() {}, strokeRect() {},
+    drawImage() { counts.drawImage++; },
+    putImageData() { counts.putImageData++; },
+    getImageData(x, y, w, h) {
+      counts.getImageData++;
+      return { width: w, height: h, data: new Uint8ClampedArray(Math.max(4, w * h * 4)) };
+    },
+    createImageData(w, h) { return { width: w, height: h, data: new Uint8ClampedArray(Math.max(4, w * h * 4)) }; },
+    createLinearGradient() { return { addColorStop() {} }; },
+    createRadialGradient() { return { addColorStop() {} }; },
+    createPattern() { return null; },
+    setTransform() {}, resetTransform() {}, translate() {}, rotate() {}, scale() {},
+    measureText() { return { width: 8 }; }, fillText() {}, strokeText() {}, setLineDash() {}
+  };
+}
+
+const html = readFileSync(path.join(APP, 'index.html'), 'utf8');
+const dom = new JSDOM(html, {
+  url: 'https://qalam.local/',
+  runScripts: 'outside-only',
+  pretendToBeVisual: true
+});
+const win = dom.window;
+const doc = win.document;
+
+// ctx stub for every canvas
+win.HTMLCanvasElement.prototype.getContext = function (type) {
+  if (!this._ctx) this._ctx = makeCtx(this);
+  return this._ctx;
+};
+win.HTMLCanvasElement.prototype.toDataURL = function () {
+  return 'data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mP8z8BQDwAEhQGAhKmMIQAAAABJRU5ErkJggg==';
+};
+win.HTMLCanvasElement.prototype.setPointerCapture = function () {};
+win.HTMLCanvasElement.prototype.releasePointerCapture = function () {};
+win.HTMLCanvasElement.prototype.hasPointerCapture = function () { return false; };
+// give every element a sensible box so hit tests / layout maths work
+win.Element.prototype.getBoundingClientRect = function () {
+  const w = this.width && this.width > 1 ? this.width : 1024;
+  const h = this.height && this.height > 1 ? this.height : 768;
+  return { left: 0, top: 0, right: w, bottom: h, width: w, height: h, x: 0, y: 0 };
+};
+// jsdom never decodes images; emulate a loader that resolves on the next tick
+win.Image = class {
+  set src(value) { this._src = value; setTimeout(() => { if (this.onload) this.onload(); }, 0); }
+  get src() { return this._src; }
+};
+// no indexedDB: exercises the localStorage fallback
+delete win.indexedDB;
+win.URL.createObjectURL = () => 'blob:stub';
+win.URL.revokeObjectURL = () => {};
+win.navigator.vibrate = () => true;
+
+/* ── load the app scripts in page order ─────────────────── */
+
+const files = ['core.js', 'doc.js', 'brushes.js', 'gif.js', 'view.js', 'storage.js', 'ui.js', 'app.js'];
+for (const f of files) {
+  const code = readFileSync(path.join(APP, 'js', f), 'utf8');
+  win.eval(code);
+}
+
+const Q = win.Q;
+const App = Q.App;
+
+function pointer(target, type, x, y, opts = {}) {
+  const e = new win.Event(type, { bubbles: true, cancelable: true });
+  Object.assign(e, {
+    clientX: x, clientY: y,
+    pointerId: opts.id || 1,
+    pointerType: opts.pointerType || 'touch',
+    pressure: opts.pressure == null ? 1 : opts.pressure,
+    isPrimary: true,
+    getCoalescedEvents: () => [],
+    preventDefault() {}, stopPropagation() {}
+  });
+  target.dispatchEvent(e);
+  return e;
+}
+
+function click(sel) {
+  const el = doc.querySelector(sel);
+  if (!el) throw new Error('missing element ' + sel);
+  el.dispatchEvent(new win.Event('click', { bubbles: true }));
+  return el;
+}
+
+const wait = (ms) => new Promise((r) => setTimeout(r, ms));
+const tick = () => new Promise((r) => setTimeout(r, 0));
+
+async function run() {
+  await tick(); await tick();
+
+  // jsdom leaves a canvas at its default 300x150 box; give the viewport a
+  // phone-sized box so screen coordinates map onto the document the way they
+  // do on a device (otherwise "in the middle of the canvas" is off-paper).
+  const viewCv = doc.querySelector('#view');
+  viewCv.width = 960;
+  viewCv.height = 720;
+  App.view.resize();
+
+  console.log('boot');
+  ok(!!App.view, 'viewport created');
+  ok(doc.querySelector('#gallery') && !doc.querySelector('#gallery').classList.contains('hidden'), 'gallery visible on launch');
+  ok(Q.Store.mode() === 'local', 'storage fell back to localStorage: ' + Q.Store.mode());
+
+  console.log('new canvas');
+  click('#btnNew');
+  ok(!doc.querySelector('#modal').classList.contains('hidden'), 'new-canvas dialog opens');
+  const presets = doc.querySelectorAll('#modalBody .preset');
+  ok(presets.length >= 4, 'presets rendered (' + presets.length + ')');
+  presets[4].dispatchEvent(new win.Event('click', { bubbles: true }));   // animation 1280x1280
+  const nameInput = doc.querySelector('#modalBody input');
+  nameInput.value = 'Test artwork';
+  click('#modalBody .btn.primary');
+  await tick();
+  ok(!!App.doc, 'document created');
+  ok(App.doc.name === 'Test artwork', 'name applied');
+  ok(doc.querySelector('#gallery').classList.contains('hidden'), 'studio shown');
+  ok(App.doc.width === 1280 && App.doc.height === 1280, 'preset size applied');
+
+  console.log('brushes');
+  click('#btnBrush');
+  ok(!doc.querySelector('#tray').classList.contains('hidden'), 'brush tray opens');
+  const cards = doc.querySelectorAll('#trayBody .brush-card');
+  ok(cards.length === Q.BRUSHES.length, 'all ' + cards.length + ' brushes listed');
+  cards[5].dispatchEvent(new win.Event('click', { bubbles: true }));
+  await tick();
+  ok(App.view.brush.id === Q.BRUSHES[5].id, 'brush selection applied: ' + App.view.brush.name);
+  const sizeBefore = App.view.size;
+  const slider = doc.querySelector('#sizeSlider');
+  slider.value = '48';
+  slider.dispatchEvent(new win.Event('input', { bubbles: true }));
+  ok(App.view.size === 48, 'size slider drives the brush');
+
+  console.log('drawing');
+  const view = doc.querySelector('#view');
+  const before = App.doc.history.undoStack.length;
+  pointer(view, 'pointerdown', 120, 140, { pointerType: 'pen', pressure: 0.5 });
+  for (let i = 1; i <= 12; i++) pointer(view, 'pointermove', 120 + i * 12, 140 + Math.sin(i / 2) * 20);
+  pointer(view, 'pointerup', 264, 140);
+  await tick();
+  ok(App.doc.history.undoStack.length === before + 1, 'stroke created one undo step');
+  ok(App.doc.activeCel(false) !== null, 'cel allocated by the stroke');
+  ok(counts.fill + counts.drawImage > 20, 'stamps were painted');
+
+  console.log('undo / redo');
+  click('#btnUndo');
+  ok(App.doc.history.canRedo(), 'undo works from the toolbar');
+  click('#btnRedo');
+  ok(!App.doc.history.canRedo(), 'redo works from the toolbar');
+
+  console.log('layers');
+  click('#btnLayers');
+  ok(doc.querySelectorAll('#trayBody .layer-row').length === 1, 'one layer row');
+  click('#trayBody .chip');
+  ok(App.doc.layers.length === 2, 'add layer from the tray');
+  ok(doc.querySelectorAll('#trayBody .layer-row').length === 2, 'layer list refreshed');
+  const more = doc.querySelectorAll('#trayBody .layer-row .mini-btn')[1];
+  more.dispatchEvent(new win.Event('click', { bubbles: true }));
+  ok(!doc.querySelector('#modal').classList.contains('hidden'), 'layer action sheet opens');
+  Q.UI.closeModal();
+  const blendSel = doc.querySelectorAll('#trayBody .layer-row select');
+  ok(blendSel.length >= 0, 'layer rows built without errors');
+  Q.UI.closeTray();
+
+  console.log('colour');
+  click('#btnColor');
+  ok(!!doc.querySelector('#trayBody #wheel'), 'colour wheel rendered');
+  const swatch = doc.querySelector('#trayBody .swatches button');
+  swatch.dispatchEvent(new win.Event('click', { bubbles: true }));
+  ok(Q.rgbToHex(App.view.color).startsWith('#'), 'palette swatch applied: ' + Q.rgbToHex(App.view.color));
+  const hex = doc.querySelector('#trayBody .hexrow input');
+  hex.value = '#22b8cf';
+  hex.dispatchEvent(new win.Event('change', { bubbles: true }));
+  ok(Q.rgbToHex(App.view.color) === '#22b8cf', 'hex field applied');
+  Q.UI.closeTray();
+
+  console.log('animation + timeline');
+  click('#btnTimeline');
+  ok(!doc.querySelector('#timeline').classList.contains('hidden'), 'timeline opens');
+  ok(doc.querySelectorAll('#timeline .tl-frame').length === 1, 'one frame thumbnail');
+  click('#timeline .tl-add');
+  ok(App.doc.frames.length === 2, 'frame added');
+  ok(App.doc.onion === true, 'onion skin switched on automatically');
+  await tick();
+  ok(doc.querySelectorAll('#timeline .tl-frame').length === 2, 'timeline refreshed');
+  App.togglePlay();
+  ok(App.playing === true, 'playback started');
+  await wait(120);
+  App.togglePlay();
+  ok(App.playing === false, 'playback stopped');
+  App.selectFrame(0);
+  ok(App.doc.activeFrame === 0, 'frame selection works');
+
+  console.log('menu + save');
+  click('#btnMenu');
+  ok(doc.querySelectorAll('#trayBody .menu-item').length >= 6, 'action menu populated');
+  Q.UI.closeTray();
+  const savedId = App.doc.id;
+  await App.saveNow(false);
+  const list = await Q.Store.list();
+  ok(list.length === 1 && list[0].id === savedId, 'artwork saved to storage');
+  ok(!!list[0].thumb, 'thumbnail stored');
+
+  console.log('reopen from gallery');
+  App.backToGallery();
+  await tick(); await tick();
+  ok(!doc.querySelector('#gallery').classList.contains('hidden'), 'back to gallery');
+  const cardsG = doc.querySelectorAll('#galGrid .g-card');
+  ok(cardsG.length === 1, 'gallery lists the artwork');
+  cardsG[0].dispatchEvent(new win.Event('click', { bubbles: true }));
+  await wait(60);
+  ok(!!App.doc && App.doc.id === savedId, 'artwork reopened');
+  ok(!doc.querySelector('#studio').classList.contains('hidden'), 'studio re-entered after opening');
+  ok(App.doc.frames.length === 2, 'frames survived the round trip');
+  ok(App.doc.layers.length === 2, 'layers survived the round trip');
+
+  console.log('gestures');
+  App.view.fit();
+  const scaleBefore = App.view.scale;
+  pointer(view, 'pointerdown', 300, 300, { id: 1, pointerType: 'touch' });
+  pointer(view, 'pointerdown', 500, 300, { id: 2, pointerType: 'touch' });
+  pointer(view, 'pointermove', 260, 300, { id: 1, pointerType: 'touch' });
+  pointer(view, 'pointermove', 560, 300, { id: 2, pointerType: 'touch' });
+  ok(App.view.scale > scaleBefore, 'pinch zoom changes the viewport scale');
+  pointer(view, 'pointerup', 260, 300, { id: 1, pointerType: 'touch' });
+  pointer(view, 'pointerup', 560, 300, { id: 2, pointerType: 'touch' });
+  ok(App.view.g === null, 'gesture state cleared');
+
+  console.log('gesture shortcuts');
+  App.view.fit();
+  // a freshly opened artwork starts with an empty history, so lay down one
+  // stroke first — undo/redo shortcuts need something to act on
+  pointer(view, 'pointerdown', 300, 300, { id: 30, pointerType: 'pen', pressure: 0.6 });
+  for (let i = 1; i <= 8; i++) pointer(view, 'pointermove', 300 + i * 8, 300 + i * 3, { id: 30, pointerType: 'pen' });
+  pointer(view, 'pointerup', 364, 324, { id: 30, pointerType: 'pen' });
+  await tick();
+  const undoLen = App.doc.history.undoStack.length;
+  ok(undoLen >= 1, 'a stroke to undo exists (' + undoLen + ')');
+
+  // two-finger tap = undo
+  pointer(view, 'pointerdown', 400, 400, { id: 11, pointerType: 'touch' });
+  pointer(view, 'pointerdown', 460, 400, { id: 12, pointerType: 'touch' });
+  pointer(view, 'pointerup', 400, 400, { id: 11, pointerType: 'touch' });
+  pointer(view, 'pointerup', 460, 400, { id: 12, pointerType: 'touch' });
+  await tick();
+  ok(App.doc.history.undoStack.length === undoLen - 1, 'two-finger tap undid a step');
+
+  // three-finger tap = redo
+  pointer(view, 'pointerdown', 400, 380, { id: 21, pointerType: 'touch' });
+  pointer(view, 'pointerdown', 460, 380, { id: 22, pointerType: 'touch' });
+  pointer(view, 'pointerdown', 520, 380, { id: 23, pointerType: 'touch' });
+  pointer(view, 'pointerup', 400, 380, { id: 21, pointerType: 'touch' });
+  pointer(view, 'pointerup', 460, 380, { id: 22, pointerType: 'touch' });
+  pointer(view, 'pointerup', 520, 380, { id: 23, pointerType: 'touch' });
+  await tick();
+  ok(App.doc.history.undoStack.length === undoLen, 'three-finger tap redid the step');
+
+  console.log('long-press eyedropper');
+  const histBefore = App.doc.history.undoStack.length;
+  pointer(view, 'pointerdown', 480, 420, { id: 31, pointerType: 'pen', pressure: 0.4 });
+  await wait(800);
+  pointer(view, 'pointerup', 480, 420, { id: 31, pointerType: 'pen' });
+  ok(App.doc.history.undoStack.length === histBefore, 'long press did not paint');
+  ok(Q.rgbToHex(App.view.color) === '#ffffff', 'long press picked the canvas colour: ' + Q.rgbToHex(App.view.color));
+
+  console.log('quickshape');
+  const qsBefore = App.doc.history.undoStack.length;
+  pointer(view, 'pointerdown', 200, 300, { id: 41, pointerType: 'pen', pressure: 0.6 });
+  for (let i = 1; i <= 10; i++) pointer(view, 'pointermove', 200 + i * 10, 300 + i * 2, { id: 41, pointerType: 'pen' });
+  await wait(700);
+  pointer(view, 'pointerup', 300, 320, { id: 41, pointerType: 'pen' });
+  await tick();
+  ok(App.doc.history.undoStack.length === qsBefore + 1, 'quickshape committed exactly one stroke');
+
+  console.log('hardware back');
+  ok(App.qalamBackSafe === undefined, 'no stray globals');
+  ok(win.qalamBack() === 0, 'back from studio is handled in-app');
+  ok(win.qalamBack() === 1, 'back from gallery exits to the launcher');
+
+  console.log('export paths');
+  let saved = null;
+  Q.saveBytes = (dataUrl, mime, name) => { saved = { mime, name }; return true; };
+  App.exportPng();
+  ok(saved && saved.mime === 'image/png', 'PNG export routed to the native bridge');
+
+  await App.saveNow(false);
+  console.log(failures ? `\n${failures} check(s) FAILED` : '\nall UI checks passed');
+  process.exit(failures ? 1 : 0);
+}
+
+run().catch((err) => {
+  console.error('test crashed:', err && err.stack || err);
+  process.exit(1);
+});

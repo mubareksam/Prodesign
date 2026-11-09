@@ -1,0 +1,971 @@
+/* Qalam — UI: gallery, trays, colour wheel, layers, animation timeline, dialogs. */
+(function () {
+  'use strict';
+  const Q = window.Q;
+  const UI = (Q.UI = {});
+
+  const PALETTE = [
+    '#1b1b1f', '#3a3a42', '#7a7a86', '#c9c9d1', '#ffffff',
+    '#8a1c1c', '#e03131', '#ff8787', '#ffa94d', '#f0b46a',
+    '#e8d44d', '#94c748', '#2f9e44', '#0ca678', '#22b8cf',
+    '#1c7ed6', '#4c6ef5', '#7048e8', '#ae3ec9', '#e64980',
+    '#5c3d2e', '#8d6e63', '#c8a27a', '#f5e6d3'
+  ];
+
+  let tray = null;
+  let timelineOpen = false;
+  let wheelState = { hue: 210, sat: 0.1, val: 0.12, drag: null };
+
+  function app() { return Q.App; }
+
+  /* ── shared bits ────────────────────────────────────────── */
+
+  function icon(path, cls) {
+    return '<svg viewBox="0 0 24 24" class="' + (cls || '') + '">' + path + '</svg>';
+  }
+  const ICON = {
+    close: '<path d="M6 6l12 12M18 6L6 18"/>',
+    plus: '<path d="M12 5v14M5 12h14"/>',
+    eye: '<path d="M2 12s3.5-6 10-6 10 6 10 6-3.5 6-10 6-10-6-10-6z"/><circle cx="12" cy="12" r="2.6"/>',
+    eyeOff: '<path d="M3 3l18 18"/><path d="M10.6 6.2A9.6 9.6 0 0112 6c6.5 0 10 6 10 6a17 17 0 01-3 3.6"/><path d="M6.3 7.8A17 17 0 002 12s3.5 6 10 6a9.7 9.7 0 003.6-.7"/>',
+    trash: '<path d="M4 7h16M9 7V5h6v2M6 7l1 13h10l1-13"/>',
+    copy: '<rect x="9" y="9" width="11" height="11" rx="2"/><path d="M5 15V5h10"/>',
+    up: '<path d="M12 19V5M6 11l6-6 6 6"/>',
+    down: '<path d="M12 5v14M6 13l6 6 6-6"/>',
+    merge: '<path d="M12 3v10"/><path d="M8 9l4 4 4-4"/><path d="M4 17h16"/>',
+    clear: '<path d="M5 19h14"/><path d="M9 15l7-7 3 3-7 7z"/>',
+    play: '<path d="M7 5l12 7-12 7z"/>',
+    pause: '<path d="M8 5v14M16 5v14"/>',
+    photo: '<rect x="3" y="4" width="18" height="16" rx="2"/><path d="M3 15l5-4 4 3 3-3 6 5"/>',
+    film: '<rect x="3" y="4" width="18" height="16" rx="2"/><path d="M7 4v16M17 4v16"/>',
+    wrench: '<path d="M14.7 6.3a3.5 3.5 0 104.9 4.9L21 21l-9.8-1.4a3.5 3.5 0 01-4.9-4.9L4 5l9.8 1.4"/>',
+    layers: '<path d="M12 3l9 5-9 5-9-5z"/><path d="M3 13l9 5 9-5"/>',
+    flip: '<path d="M12 3v18"/><path d="M8 7L3 12l5 5z"/><path d="M16 7l5 5-5 5z"/>',
+    reset: '<path d="M4 12a8 8 0 1015-4"/><path d="M19 4v5h-5"/>',
+    save: '<path d="M5 3h11l3 3v15H5z"/><path d="M8 3v6h7V3M8 14h8v7H8z"/>',
+    sparkle: '<path d="M12 3l1.8 5.2L19 10l-5.2 1.8L12 17l-1.8-5.2L5 10l5.2-1.8z"/>'
+  };
+
+  function fitCanvasToBox(cv, box) {
+    const r = cv.getBoundingClientRect();
+    const dpr = Math.min(window.devicePixelRatio || 1, 2.5);
+    const w = Math.max(1, Math.round((r.width || box || 160) * dpr));
+    const h = Math.max(1, Math.round((r.height || 52) * dpr));
+    if (cv.width !== w || cv.height !== h) { cv.width = w; cv.height = h; }
+  }
+
+  UI.toast = Q.toast;
+
+  /* ── init ───────────────────────────────────────────────── */
+
+  UI.init = function () {
+    const el = Q.el;
+
+    el('#btnNew').addEventListener('click', function () { UI.newCanvasDialog(); });
+    el('#btnGallery').addEventListener('click', function () { app().backToGallery(); });
+
+    el('#btnUndo').addEventListener('click', function () { app().undo(); });
+    el('#btnRedo').addEventListener('click', function () { app().redo(); });
+    el('#btnTimeline').addEventListener('click', function () { UI.toggleTimeline(); });
+    el('#btnMenu').addEventListener('click', function () { UI.toggleTray('menu'); });
+
+    el('#btnBrush').addEventListener('click', function () { UI.toggleTray('brushes'); });
+    el('#btnLayers').addEventListener('click', function () { UI.toggleTray('layers'); });
+    el('#btnColor').addEventListener('click', function () { UI.toggleTray('color'); });
+    el('#btnEyedrop').addEventListener('click', function () {
+      const v = app().view;
+      v.tool = v.tool === 'eyedrop' ? 'brush' : 'eyedrop';
+      el('#btnEyedrop').classList.toggle('on', v.tool === 'eyedrop');
+      Q.hint(v.tool === 'eyedrop' ? 'Tap the canvas to pick a colour' : 'Brush mode', 1600);
+    });
+
+    const size = el('#sizeSlider');
+    size.addEventListener('input', function () {
+      app().setSize(parseFloat(size.value));
+    });
+    const op = el('#opacitySlider');
+    op.addEventListener('input', function () {
+      app().setOpacity(parseInt(op.value, 10) / 100);
+    });
+
+    const title = el('#docTitle');
+    title.addEventListener('change', function () {
+      if (!app().doc) return;
+      app().doc.name = title.value.trim() || 'Untitled';
+      app().markDirty(true);
+    });
+    title.addEventListener('focus', function () { title.select(); });
+    title.addEventListener('keydown', function (e) { if (e.key === 'Enter') title.blur(); });
+
+    el('#modal').addEventListener('pointerdown', function (e) {
+      if (e.target.id === 'modal') UI.closeModal();
+    });
+
+    window.addEventListener('resize', function () {
+      if (app().view) { app().view.resize(); app().view.dirty = true; }
+      if (tray === 'color') buildColor();
+    });
+
+    // keyboard shortcuts for desktop testing
+    window.addEventListener('keydown', function (e) {
+      if (e.key === 'Escape') { UI.closeTray(); UI.closeModal(); }
+      if ((e.ctrlKey || e.metaKey) && e.key === 'z') { e.preventDefault(); if (e.shiftKey) app().redo(); else app().undo(); }
+      if (e.key === '[' ) app().setSize(app().view.size * 0.85);
+      if (e.key === ']' ) app().setSize(app().view.size * 1.18);
+    });
+    void ICON;
+  };
+
+  /* ── gallery ────────────────────────────────────────────── */
+
+  UI.renderGallery = function () {
+    const grid = Q.el('#galGrid');
+    const empty = Q.el('#galEmpty');
+    grid.innerHTML = '';
+    Q.Store.list().then(function (items) {
+      empty.classList.toggle('hidden', items.length > 0);
+      items.forEach(function (item) {
+        const card = Q.crel('div', 'g-card');
+        if (item.thumb) {
+          const img = Q.crel('img');
+          img.src = item.thumb;
+          img.alt = item.name || 'artwork';
+          card.appendChild(img);
+        } else {
+          card.appendChild(Q.crel('div', 'g-ph', 'ቀ'));
+        }
+        const info = Q.crel('div', 'g-info');
+        info.appendChild(Q.crel('div', 'g-name', escapeHtml(item.name || 'Untitled')));
+        const when = new Date(item.updated || Date.now());
+        info.appendChild(Q.crel('div', 'g-sub',
+          (item.frames > 1 ? item.frames + ' frames · ' : '') +
+          (item.w || '?') + '×' + (item.h || '?') + ' · ' + when.toLocaleDateString()));
+        card.appendChild(info);
+
+        const del = Q.crel('button', 'g-del', icon(ICON.trash));
+        del.addEventListener('click', function (e) {
+          e.stopPropagation();
+          UI.confirm('Delete “‘' + (item.name || 'Untitled') + '”?' , 'This removes the artwork from this device.', function () {
+            Q.Store.remove(item.id).then(function () { UI.renderGallery(); });
+          });
+        });
+        card.appendChild(del);
+
+        card.addEventListener('click', function () { app().openDoc(item.id); });
+        grid.appendChild(card);
+      });
+    });
+  };
+
+  function escapeHtml(s) {
+    return String(s).replace(/[&<>"']/g, function (c) {
+      return ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' })[c];
+    });
+  }
+
+  UI.showGallery = function () {
+    Q.el('#studio').classList.add('hidden');
+    Q.el('#gallery').classList.remove('hidden');
+    UI.closeTray();
+    Q.el('#timeline').classList.add('hidden');
+    timelineOpen = false;
+    UI.renderGallery();
+  };
+
+  UI.showStudio = function () {
+    Q.el('#gallery').classList.add('hidden');
+    Q.el('#studio').classList.remove('hidden');
+    const v = app().view;
+    v.resize();
+    v.fit();
+    v.dirty = true;
+    UI.syncDoc();
+  };
+
+  UI.syncDoc = function () {
+    const d = app().doc;
+    if (!d) return;
+    Q.el('#docTitle').value = d.name;
+    Q.el('#docMeta').textContent = d.width + ' × ' + d.height + ' · ' +
+      (d.frames.length > 1 ? d.frames.length + ' frames · ' : '') + d.layers.length + (d.layers.length > 1 ? ' layers' : ' layer');
+    UI.syncBrushUi();
+    UI.syncHistory();
+    if (tray === 'layers') buildLayers(Q.el('#trayBody'));
+    if (timelineOpen) buildTimeline();
+  };
+
+  UI.syncBrushUi = function () {
+    const v = app().view;
+    Q.el('#sizeSlider').value = Math.round(v.size);
+    Q.el('#sizeVal').textContent = Math.round(v.size);
+    Q.el('#opacitySlider').value = Math.round(v.opacity * 100);
+    Q.el('#opacityVal').textContent = Math.round(v.opacity * 100);
+    const sw = Q.el('#btnColor');
+    sw.style.background = Q.rgbToHex(v.color);
+    Q.el('#btnBrush').classList.toggle('on', tray === 'brushes');
+  };
+
+  UI.syncHistory = function () {
+    const d = app().doc;
+    Q.el('#btnUndo').disabled = !d || !d.history.canUndo();
+    Q.el('#btnRedo').disabled = !d || !d.history.canRedo();
+  };
+
+  /* ── trays ──────────────────────────────────────────────── */
+
+  const BUILDERS = {
+    brushes: buildBrushes,
+    layers: buildLayers,
+    color: buildColor,
+    menu: buildMenu
+  };
+
+  UI.toggleTray = function (kind) {
+    if (tray === kind) { UI.closeTray(); return; }
+    UI.openTray(kind);
+  };
+
+  UI.openTray = function (kind) {
+    tray = kind;
+    const t = Q.el('#tray');
+    t.classList.remove('hidden');
+    Q.el('#trayBody').innerHTML = '';
+    if (BUILDERS[kind]) BUILDERS[kind](Q.el('#trayBody'));
+    UI.syncBrushUi();
+    Q.el('#btnBrush').classList.toggle('on', kind === 'brushes');
+    Q.el('#btnLayers').classList.toggle('on', kind === 'layers');
+    Q.el('#btnColor').classList.toggle('on', kind === 'color');
+    Q.el('#btnMenu').classList.toggle('on', kind === 'menu');
+  };
+
+  UI.closeTray = function () {
+    tray = null;
+    Q.el('#tray').classList.add('hidden');
+    ['#btnBrush', '#btnLayers', '#btnColor', '#btnMenu'].forEach(function (s) {
+      Q.el(s).classList.remove('on');
+    });
+  };
+
+  function trayHead(title, rightNodes) {
+    const head = Q.crel('div', 'tray-head');
+    head.appendChild(Q.crel('h3', null, title));
+    const row = Q.crel('div', 'row');
+    (rightNodes || []).forEach(function (n) { row.appendChild(n); });
+    head.appendChild(row);
+    return head;
+  }
+
+  function chip(label, on, onClick, iconPath) {
+    const b = Q.crel('button', 'chip' + (on ? ' on' : ''));
+    if (iconPath) b.innerHTML = icon(iconPath);
+    b.appendChild(document.createTextNode(label));
+    b.addEventListener('click', onClick);
+    return b;
+  }
+
+  /* ── brushes ────────────────────────────────────────────── */
+
+  function buildBrushes(root) {
+    root.appendChild(trayHead('Brushes', []));
+    const grid = Q.crel('div', 'brush-grid');
+    Q.BRUSHES.forEach(function (b) {
+      const card = Q.crel('button', 'brush-card' + (b.id === app().view.brush.id ? ' on' : ''));
+      const cv = Q.crel('canvas');
+      cv.width = 132; cv.height = 40;
+      card.appendChild(cv);
+      card.appendChild(Q.crel('span', null, b.name));
+      grid.appendChild(card);
+      requestAnimationFrame(function () {
+        Q.brushPreview(b, cv, [240, 236, 232]);
+      });
+      card.addEventListener('click', function () {
+        app().setBrush(b.id);
+        UI.openTray('brushes');
+      });
+    });
+    root.appendChild(grid);
+
+    const head2 = Q.crel('div', 'tray-head');
+    head2.style.marginTop = '12px';
+    head2.appendChild(Q.crel('h3', null, 'Pressure response'));
+    root.appendChild(head2);
+    const row = Q.crel('div', 'field');
+    row.innerHTML = '<label>Size</label>';
+    const r1 = Q.crel('input');
+    r1.type = 'range'; r1.min = '0'; r1.max = '100';
+    r1.value = Math.round((app().view.brush.pressureSize || 0) * 100);
+    const v1 = Q.crel('div', 'val', String(r1.value));
+    r1.addEventListener('input', function () {
+      app().view.brush.pressureSize = parseInt(r1.value, 10) / 100;
+      v1.textContent = r1.value;
+    });
+    row.appendChild(r1); row.appendChild(v1);
+    root.appendChild(row);
+    void fitCanvasToBox;
+  }
+
+  /* ── layers ─────────────────────────────────────────────── */
+
+  function buildLayers(root) {
+    const d = app().doc;
+    if (!d) return;
+    root = root || Q.el('#trayBody');
+    root.innerHTML = '';
+
+    const addBtn = chip('Add', false, function () { app().addLayer(); }, ICON.plus);
+    const dupBtn = chip('Copy', false, function () { app().duplicateLayer(); }, ICON.copy);
+    const mergeBtn = chip('Merge', false, function () { app().mergeDown(); }, ICON.merge);
+    root.appendChild(trayHead('Layers · ' + d.layers.length, [addBtn, dupBtn, mergeBtn]));
+
+    const list = Q.crel('div', 'layer-list');
+    for (let i = d.layers.length - 1; i >= 0; i--) {
+      const layer = d.layers[i];
+      const row = Q.crel('div', 'layer-row' + (i === d.activeLayer ? ' on' : ''));
+
+      const thumb = Q.crel('div', 'layer-thumb');
+      const tcv = d.layerThumbnail(i, 46);
+      thumb.appendChild(tcv);
+      row.appendChild(thumb);
+
+      const meta = Q.crel('div', 'layer-meta');
+      meta.appendChild(Q.crel('div', 'layer-name', escapeHtml(layer.name)));
+      const sub = Q.crel('div', 'layer-sub', Math.round(layer.opacity * 100) + '% · ' + blendLabel(layer.blend));
+      meta.appendChild(sub);
+      row.appendChild(meta);
+
+      const tools = Q.crel('div', 'layer-tools');
+      const eye = Q.crel('button', 'mini-btn', icon(layer.visible ? ICON.eye : ICON.eyeOff));
+      eye.addEventListener('click', function (e) {
+        e.stopPropagation();
+        app().setLayerProp(i, 'visible', !layer.visible);
+        buildLayers(root);
+      });
+      tools.appendChild(eye);
+
+      const more = Q.crel('button', 'mini-btn', '<svg viewBox="0 0 24 24"><circle cx="5" cy="12" r="1.6"/><circle cx="12" cy="12" r="1.6"/><circle cx="19" cy="12" r="1.6"/></svg>');
+      more.addEventListener('click', function (e) {
+        e.stopPropagation();
+        UI.layerSheet(i);
+      });
+      tools.appendChild(more);
+      row.appendChild(tools);
+
+      row.addEventListener('click', function () {
+        d.activeLayer = i;
+        buildLayers(root);
+        UI.syncDoc();
+      });
+
+      // horizontal drag on the row adjusts opacity
+      attachOpacityDrag(row, i, root);
+      list.appendChild(row);
+    }
+    root.appendChild(list);
+
+    const info = Q.crel('div', 'layer-sub');
+    info.style.marginTop = '10px';
+    info.textContent = 'Memory used: ' + d.memoryMB() + ' MB across ' + d.frames.length + ' frame(s)';
+    root.appendChild(info);
+  }
+
+  function blendLabel(id) {
+    for (const m of Q.BLEND_MODES) if (m[0] === id) return m[1];
+    return 'Normal';
+  }
+
+  function attachOpacityDrag(row, idx, root) {
+    let startX = 0, startOpacity = 1, dragging = false;
+    row.addEventListener('pointerdown', function (e) {
+      if (e.target.closest('button')) return;
+      startX = e.clientX; startOpacity = app().doc.layers[idx].opacity; dragging = true;
+    });
+    row.addEventListener('pointermove', function (e) {
+      if (!dragging) return;
+      const delta = (e.clientX - startX) / 220;
+      const val = Q.clamp(startOpacity + delta, 0.02, 1);
+      app().view.doc.layers[idx].opacity = val;
+      app().view.dirty = true;
+      const sub = row.querySelector('.layer-sub');
+      if (sub) sub.textContent = Math.round(val * 100) + '% · ' + blendLabel(app().doc.layers[idx].blend);
+    });
+    row.addEventListener('pointerup', function () {
+      if (!dragging) return;
+      dragging = false;
+      app().commitLayerOpacity(idx, startOpacity);
+      void root;
+    });
+    row.addEventListener('pointercancel', function () { dragging = false; });
+  }
+
+  UI.layerSheet = function (i) {
+    const d = app().doc;
+    const layer = d.layers[i];
+    if (!layer) return;
+    const card = Q.crel('div');
+    card.appendChild(Q.crel('h2', null, 'Layer'));
+    card.appendChild(Q.crel('p', 'sub', 'Row ' + (i + 1) + ' of ' + d.layers.length));
+
+    const nameField = Q.crel('div', 'field');
+    nameField.innerHTML = '<label>Name</label>';
+    const input = Q.crel('input');
+    input.type = 'text';
+    input.value = layer.name;
+    input.className = 'select';
+    input.style.height = '36px';
+    nameField.appendChild(input);
+    card.appendChild(nameField);
+
+    const blendField = Q.crel('div', 'field');
+    blendField.innerHTML = '<label>Blend</label>';
+    const sel = Q.crel('select');
+    Q.BLEND_MODES.forEach(function (m) {
+      const o = document.createElement('option');
+      o.value = m[0]; o.textContent = m[1];
+      if (m[0] === layer.blend) o.selected = true;
+      sel.appendChild(o);
+    });
+    blendField.appendChild(sel);
+    card.appendChild(blendField);
+
+    const actions = Q.crel('div', 'menu-grid');
+    const mk = function (label, ico, fn, danger) {
+      const b = Q.crel('button', 'menu-item' + (danger ? ' danger' : ''));
+      b.innerHTML = icon(ico);
+      b.appendChild(document.createTextNode(label));
+      b.addEventListener('click', function () { UI.closeModal(); fn(); });
+      return b;
+    };
+    actions.appendChild(mk('Move up', ICON.up, function () { app().moveLayer(i, 1); }));
+    actions.appendChild(mk('Move down', ICON.down, function () { app().moveLayer(i, -1); }));
+    actions.appendChild(mk('Duplicate', ICON.copy, function () { app().duplicateLayer(i); }));
+    actions.appendChild(mk('Clear', ICON.clear, function () { app().clearLayer(i); }));
+    actions.appendChild(mk('Merge down', ICON.merge, function () { app().mergeDownLayer(i); }));
+    actions.appendChild(mk('Delete', ICON.trash, function () { app().deleteLayer(i); }));
+    card.appendChild(actions);
+
+    input.addEventListener('change', function () {
+      layer.name = input.value.trim() || layer.name;
+      app().markDirty(true);
+      if (tray === 'layers') buildLayers(Q.el('#trayBody'));
+    });
+    sel.addEventListener('change', function () {
+      app().setLayerProp(i, 'blend', sel.value);
+      if (tray === 'layers') buildLayers(Q.el('#trayBody'));
+    });
+
+    UI.openModal(card);
+  };
+
+  /* ── colour ─────────────────────────────────────────────── */
+
+  function currentHsv() {
+    const rgb = app().view.color;
+    const hsv = Q.rgbToHsv(rgb[0], rgb[1], rgb[2]);
+    return { hue: hsv[0], sat: hsv[1], val: hsv[2] };
+  }
+
+  function buildColor(root) {
+    const hsv = currentHsv();
+    wheelState.hue = hsv.hue;
+    wheelState.sat = hsv.sat;
+    wheelState.val = hsv.val;
+
+    root.appendChild(trayHead('Colour', []));
+    const wrap = Q.crel('div', 'color-wrap');
+
+    const wheel = Q.crel('canvas');
+    wheel.id = 'wheel';
+    wrap.appendChild(wheel);
+
+    const side = Q.crel('div', 'color-side');
+
+    const hexRow = Q.crel('div', 'hexrow');
+    const hex = Q.crel('input');
+    hex.value = Q.rgbToHex(app().view.color);
+    hex.addEventListener('change', function () {
+      const rgb = Q.hexToRgb(hex.value);
+      if (rgb) applyColor(rgb);
+      else hex.value = Q.rgbToHex(app().view.color);
+    });
+    hexRow.appendChild(hex);
+    side.appendChild(hexRow);
+
+    const sw = Q.crel('div', 'swatches');
+    PALETTE.forEach(function (hexv) {
+      const b = Q.crel('button');
+      b.style.background = hexv;
+      b.addEventListener('click', function () {
+        const rgb = Q.hexToRgb(hexv);
+        if (rgb) applyColor(rgb);
+      });
+      sw.appendChild(b);
+    });
+    side.appendChild(sw);
+
+    const recentLabel = Q.crel('div', 'layer-sub', 'Recent');
+    side.appendChild(recentLabel);
+    const recent = Q.crel('div', 'recent');
+    (app().recent || []).slice(0, 12).forEach(function (rgb) {
+      const b = Q.crel('button');
+      b.style.background = Q.rgbToHex(rgb);
+      b.addEventListener('click', function () { applyColor(rgb); });
+      recent.appendChild(b);
+    });
+    side.appendChild(recent);
+
+    wrap.appendChild(side);
+    root.appendChild(wrap);
+
+    drawWheel(wheel);
+    attachWheel(wheel);
+
+    function applyColor(rgb) {
+      app().setColor(rgb);
+      hex.value = Q.rgbToHex(rgb);
+      const h = Q.rgbToHsv(rgb[0], rgb[1], rgb[2]);
+      wheelState.hue = h[0]; wheelState.sat = h[1]; wheelState.val = h[2];
+      drawWheel(wheel);
+    }
+  }
+
+  function drawWheel(canvas) {
+    const dpr = Math.min(window.devicePixelRatio || 1, 2.5);
+    const css = canvas.getBoundingClientRect().width || 190;
+    canvas.width = Math.round(css * dpr);
+    canvas.height = Math.round(css * dpr);
+    const c = canvas.getContext('2d');
+    const S = canvas.width, mid = S / 2, R = mid - 2;
+    c.clearRect(0, 0, S, S);
+
+    const ring = R * 0.16;
+    for (let a = 0; a < 360; a += 2) {
+      const a0 = (a - 1.2) * Math.PI / 180, a1 = (a + 1.2) * Math.PI / 180;
+      c.beginPath();
+      c.arc(mid, mid, R - ring / 2, a0, a1);
+      c.lineWidth = ring;
+      c.strokeStyle = 'hsl(' + a + ',85%,55%)';
+      c.stroke();
+    }
+
+    const inner = R - ring - 3;
+    const sq = inner * 0.92;
+    const x0 = mid - sq / 2, y0 = mid - sq / 2;
+    const hueRgb = Q.hsvToRgb(wheelState.hue, 1, 1);
+    c.fillStyle = Q.rgbToHex(hueRgb);
+    c.fillRect(x0, y0, sq, sq);
+
+    const gw = c.createLinearGradient(x0, 0, x0 + sq, 0);
+    gw.addColorStop(0, 'rgba(255,255,255,1)');
+    gw.addColorStop(1, 'rgba(255,255,255,0)');
+    c.fillStyle = gw;
+    c.fillRect(x0, y0, sq, sq);
+
+    const gb = c.createLinearGradient(0, y0, 0, y0 + sq);
+    gb.addColorStop(0, 'rgba(0,0,0,0)');
+    gb.addColorStop(1, 'rgba(0,0,0,1)');
+    c.fillStyle = gb;
+    c.fillRect(x0, y0, sq, sq);
+
+    // hue marker
+    const ha = wheelState.hue * Math.PI / 180;
+    const hx = mid + Math.cos(ha) * (R - ring / 2);
+    const hy = mid + Math.sin(ha) * (R - ring / 2);
+    c.beginPath(); c.arc(hx, hy, ring * 0.55, 0, Math.PI * 2);
+    c.strokeStyle = '#fff'; c.lineWidth = Math.max(1.5, S * 0.012); c.stroke();
+    c.beginPath(); c.arc(hx, hy, ring * 0.55, 0, Math.PI * 2);
+    c.strokeStyle = 'rgba(0,0,0,0.35)'; c.lineWidth = Math.max(0.6, S * 0.004); c.stroke();
+
+    // sv marker
+    const mx = x0 + wheelState.sat * sq;
+    const my = y0 + (1 - wheelState.val) * sq;
+    c.beginPath(); c.arc(mx, my, Math.max(5, S * 0.026), 0, Math.PI * 2);
+    c.strokeStyle = '#fff'; c.lineWidth = Math.max(1.6, S * 0.012); c.stroke();
+    c.beginPath(); c.arc(mx, my, Math.max(5, S * 0.026), 0, Math.PI * 2);
+    c.strokeStyle = 'rgba(0,0,0,0.4)'; c.lineWidth = 1; c.stroke();
+  }
+
+  function attachWheel(canvas) {
+    let mode = null;
+    const pick = function (e) {
+      const r = canvas.getBoundingClientRect();
+      const S = Math.min(r.width, r.height);
+      const mid = S / 2;
+      const x = e.clientX - r.left - r.width / 2;
+      const y = e.clientY - r.top - r.height / 2;
+      const dist = Math.sqrt(x * x + y * y);
+      const R = mid - 2;
+      const ring = R * 0.16;
+      const inner = R - ring - 3;
+      const sq = inner * 0.92;
+
+      if (!mode) mode = dist > inner + 2 ? 'hue' : 'sv';
+
+      if (mode === 'hue') {
+        let a = Math.atan2(y, x) * 180 / Math.PI;
+        if (a < 0) a += 360;
+        wheelState.hue = a;
+      } else {
+        const x0 = -sq / 2, y0 = -sq / 2;
+        wheelState.sat = Q.clamp((x - x0) / sq, 0, 1);
+        wheelState.val = 1 - Q.clamp((y - y0) / sq, 0, 1);
+      }
+      const rgb = Q.hsvToRgb(wheelState.hue, wheelState.sat, wheelState.val);
+      app().setColor(rgb);
+      const hexInput = Q.el('#trayBody .hexrow input');
+      if (hexInput) hexInput.value = Q.rgbToHex(rgb);
+      drawWheel(canvas);
+    };
+
+    canvas.addEventListener('pointerdown', function (e) {
+      canvas.setPointerCapture(e.pointerId);
+      pick(e);
+    });
+    canvas.addEventListener('pointermove', function (e) {
+      if (canvas.hasPointerCapture && canvas.hasPointerCapture(e.pointerId)) pick(e);
+    });
+    canvas.addEventListener('pointerup', function () { mode = null; });
+    canvas.addEventListener('pointercancel', function () { mode = null; });
+  }
+
+  /* ── menu ───────────────────────────────────────────────── */
+
+  function buildMenu(root) {
+    const d = app().doc;
+    root.appendChild(trayHead('Actions', []));
+    const grid = Q.crel('div', 'menu-grid');
+
+    const item = function (label, ico, fn) {
+      const b = Q.crel('button', 'menu-item');
+      b.innerHTML = icon(ico);
+      b.appendChild(document.createTextNode(label));
+      b.addEventListener('click', function () { fn(); });
+      return b;
+    };
+
+    grid.appendChild(item('Export PNG', ICON.photo, function () { app().exportPng(); }));
+    grid.appendChild(item('Export GIF', ICON.film, function () { UI.exportDialog(); }));
+    grid.appendChild(item('New canvas', ICON.plus, function () { UI.newCanvasDialog(); }));
+    grid.appendChild(item('Add frame', ICON.film, function () { app().addFrame(true); }));
+    grid.appendChild(item('Onion skin', ICON.sparkle, function () {
+      if (!d) return;
+      d.onion = !d.onion;
+      app().view.dirty = true;
+      Q.toast(d.onion ? 'Onion skin on' : 'Onion skin off');
+      buildMenu(root);
+    }));
+    grid.appendChild(item('Flip canvas', ICON.flip, function () { app().flipCanvas(); }));
+    grid.appendChild(item('Rotate 90°', ICON.reset, function () { app().view.rotateBy(90); }));
+    grid.appendChild(item('Zoom to fit', ICON.layers, function () { app().view.fit(); }));
+    grid.appendChild(item('Reset view', ICON.reset, function () { app().view.fit(); }));
+    grid.appendChild(item('Save now', ICON.save, function () { app().saveNow(true); }));
+
+    if (d && d.frames.length > 1) {
+      grid.appendChild(item('Delete frame', ICON.trash, function () { app().deleteFrame(); }));
+    }
+    grid.appendChild(item('Gestures & help', ICON.sparkle, function () { UI.helpSheet(); }));
+    grid.appendChild(item('About Qalam', ICON.layers, function () { UI.aboutSheet(); }));
+
+    root.appendChild(grid);
+
+    const info = Q.crel('div', 'layer-sub');
+    info.style.margin = '12px 2px 0';
+    info.textContent = d ? ('Canvas ' + d.width + '×' + d.height + ' · ' + d.memoryMB() + ' MB · stored on device (' + Q.Store.mode() + ')') : '';
+    root.appendChild(info);
+  }
+
+  /* ── animation timeline ─────────────────────────────────── */
+
+  UI.toggleTimeline = function () {
+    const el = Q.el('#timeline');
+    timelineOpen = !timelineOpen;
+    el.classList.toggle('hidden', !timelineOpen);
+    Q.el('#btnTimeline').classList.toggle('on', timelineOpen);
+    if (timelineOpen) buildTimeline();
+  };
+
+  function buildTimeline() {
+    const d = app().doc;
+    const el = Q.el('#timeline');
+    if (!d) return;
+    el.classList.remove('hidden');
+    el.innerHTML = '';
+
+    const head = Q.crel('div', 'tl-head');
+    head.appendChild(Q.crel('div', 'tl-title', 'Animation · ' + d.frames.length + ' frames'));
+    head.appendChild(chip(d.fps + ' fps', false, function () {
+      const next = d.fps >= 30 ? 6 : d.fps + 2;
+      d.fps = next;
+      app().markDirty(true);
+      buildTimeline();
+    }, null));
+    head.appendChild(chip('Onion', d.onion, function () {
+      d.onion = !d.onion;
+      app().view.dirty = true;
+      app().markDirty(true);
+      buildTimeline();
+    }, ICON.sparkle));
+    head.appendChild(chip('', false, function () { app().togglePlay(); }, app().playing ? ICON.pause : ICON.play));
+    head.appendChild(chip('', false, function () { app().addFrame(true); }, ICON.plus));
+    el.appendChild(head);
+
+    const strip = Q.crel('div', 'tl-frames');
+    d.frames.forEach(function (fr, i) {
+      const b = Q.crel('button', 'tl-frame' + (i === d.activeFrame ? ' on' : ''));
+      const cv = d.thumbnail(i, 112);
+      const small = Q.canvas(72, 72 * (d.height / d.width));
+      small.getContext('2d').drawImage(cv, 0, 0, small.width, small.height);
+      b.appendChild(small);
+      b.appendChild(Q.crel('span', 'n', String(i + 1)));
+      b.addEventListener('click', function () { app().selectFrame(i); });
+      b.addEventListener('dblclick', function () { UI.frameSheet(i); });
+      b.addEventListener('contextmenu', function (e) { e.preventDefault(); UI.frameSheet(i); });
+      strip.appendChild(b);
+    });
+
+    const add = Q.crel('button', 'tl-add', icon(ICON.plus));
+    add.addEventListener('click', function () { app().addFrame(true); });
+    strip.appendChild(add);
+    el.appendChild(strip);
+  }
+
+  UI.frameSheet = function (i) {
+    const card = Q.crel('div');
+    card.appendChild(Q.crel('h2', null, 'Frame ' + (i + 1)));
+    card.appendChild(Q.crel('p', 'sub', 'Frames are duplicated when added so you can build on the previous drawing.'));
+    const grid = Q.crel('div', 'menu-grid');
+    const mk = function (label, ico, fn) {
+      const b = Q.crel('button', 'menu-item');
+      b.innerHTML = icon(ico);
+      b.appendChild(document.createTextNode(label));
+      b.addEventListener('click', function () { UI.closeModal(); fn(); });
+      return b;
+    };
+    grid.appendChild(mk('Duplicate', ICON.copy, function () { app().selectFrame(i); app().addFrame(true); }));
+    grid.appendChild(mk('Blank frame', ICON.plus, function () { app().selectFrame(i); app().addFrame(false); }));
+    grid.appendChild(mk('Move left', ICON.up, function () { app().moveFrame(i, -1); }));
+    grid.appendChild(mk('Move right', ICON.down, function () { app().moveFrame(i, 1); }));
+    grid.appendChild(mk('Delete', ICON.trash, function () { app().deleteFrame(i); }));
+    card.appendChild(grid);
+    UI.openModal(card);
+  };
+
+  UI.helpSheet = function () {
+    const card = Q.crel('div');
+    card.appendChild(Q.crel('h2', null, 'Gestures & tools'));
+    card.appendChild(Q.crel('p', 'sub', 'Qalam is built for a finger or a stylus. Stylus pressure changes size and opacity when the pen reports it.'));
+    const rows = [
+      ['One finger / stylus', 'Draw'],
+      ['Two fingers', 'Pan, pinch to zoom, twist to rotate'],
+      ['Two-finger tap', 'Undo'],
+      ['Three-finger tap', 'Redo'],
+      ['Long press', 'Pick a colour (eyedropper)'],
+      ['Hold at the end of a stroke', 'Snap to a straight line or ellipse'],
+      ['Drag a layer row sideways', 'Change layer opacity'],
+      ['Double-tap a frame', 'Duplicate, reorder or delete it']
+    ];
+    rows.forEach(function (r) {
+      const line = Q.crel('div', 'field');
+      line.style.alignItems = 'flex-start';
+      line.innerHTML = '<label style="width:132px">' + r[0] + '</label>';
+      const txt = Q.crel('div');
+      txt.style.cssText = 'flex:1;font-size:12.5px;color:#b9b9c4';
+      txt.textContent = r[1];
+      line.appendChild(txt);
+      card.appendChild(line);
+    });
+    const actions = Q.crel('div', 'modal-actions');
+    const close = Q.crel('button', 'btn primary', 'Got it');
+    close.addEventListener('click', function () { UI.closeModal(); });
+    actions.appendChild(close);
+    card.appendChild(actions);
+    UI.openModal(card);
+  };
+
+  UI.aboutSheet = function () {
+    const card = Q.crel('div');
+    card.appendChild(Q.crel('h2', null, 'Qalam'));
+    card.appendChild(Q.crel('p', 'sub', 'A paint, sketch and frame-by-frame animation studio for Android. Built from scratch: brush engine, layer compositor, GIF encoder and UI. Artwork is stored on this device only — nothing is uploaded.'));
+    card.appendChild(Q.crel('p', 'sub', 'ቀለም (qalam) means “pen” or “ink”.'));
+    card.appendChild(Q.crel('p', 'sub', 'Version 1.0'));
+    const actions = Q.crel('div', 'modal-actions');
+    const close = Q.crel('button', 'btn primary', 'Close');
+    close.addEventListener('click', function () { UI.closeModal(); });
+    actions.appendChild(close);
+    card.appendChild(actions);
+    UI.openModal(card);
+  };
+
+  UI.refreshTimeline = function () {
+    if (timelineOpen) buildTimeline();
+  };
+
+  /* ── dialogs ────────────────────────────────────────────── */
+
+  UI.openModal = function (node) {
+    const m = Q.el('#modal');
+    const body = Q.el('#modalBody');
+    body.innerHTML = '';
+    body.appendChild(node);
+    m.classList.remove('hidden');
+  };
+
+  UI.closeModal = function () {
+    Q.el('#modal').classList.add('hidden');
+  };
+
+  UI.confirm = function (title, text, onYes) {
+    const card = Q.crel('div');
+    card.appendChild(Q.crel('h2', null, title));
+    card.appendChild(Q.crel('p', 'sub', text));
+    const actions = Q.crel('div', 'modal-actions');
+    const no = Q.crel('button', 'btn ghost', 'Cancel');
+    no.addEventListener('click', function () { UI.closeModal(); });
+    const yes = Q.crel('button', 'btn danger', 'Delete');
+    yes.addEventListener('click', function () { UI.closeModal(); onYes(); });
+    actions.appendChild(no); actions.appendChild(yes);
+    card.appendChild(actions);
+    UI.openModal(card);
+  };
+
+  const PRESETS = [
+    { name: 'Square', w: 2048, h: 2048, note: '2048 × 2048' },
+    { name: 'Portrait', w: 1600, h: 2133, note: '1600 × 2133' },
+    { name: 'Landscape', w: 2133, h: 1600, note: '2133 × 1600' },
+    { name: 'HD frame', w: 1920, h: 1080, note: '1920 × 1080' },
+    { name: 'Animation', w: 1280, h: 1280, note: '1280 × 1280' },
+    { name: 'Story', w: 1080, h: 1920, note: '1080 × 1920' }
+  ];
+
+  UI.newCanvasDialog = function () {
+    let chosen = PRESETS[0];
+    const card = Q.crel('div');
+    card.appendChild(Q.crel('h2', null, 'New canvas'));
+    card.appendChild(Q.crel('p', 'sub', 'Pick a size. You can animate on any canvas by adding frames.'));
+
+    const nameField = Q.crel('div', 'field');
+    nameField.innerHTML = '<label>Name</label>';
+    const nameInput = Q.crel('input');
+    nameInput.type = 'text';
+    nameInput.value = 'Untitled';
+    nameInput.className = 'select';
+    nameInput.style.height = '36px';
+    nameField.appendChild(nameInput);
+    card.appendChild(nameField);
+
+    const grid = Q.crel('div', 'preset-grid');
+    PRESETS.forEach(function (p) {
+      const b = Q.crel('button', 'preset' + (p === chosen ? ' on' : ''));
+      const pv = Q.crel('div', 'pv');
+      pv.style.aspectRatio = String(p.w / p.h);
+      const txt = Q.crel('div');
+      txt.appendChild(Q.crel('div', 'pn', p.name));
+      txt.appendChild(Q.crel('div', 'pd', p.note));
+      b.appendChild(pv); b.appendChild(txt);
+      b.addEventListener('click', function () {
+        chosen = p;
+        Q.els('.preset', grid).forEach(function (n) { n.classList.remove('on'); });
+        b.classList.add('on');
+      });
+      grid.appendChild(b);
+    });
+    card.appendChild(grid);
+
+    const actions = Q.crel('div', 'modal-actions');
+    const cancel = Q.crel('button', 'btn ghost', 'Cancel');
+    cancel.addEventListener('click', function () { UI.closeModal(); });
+    const go = Q.crel('button', 'btn primary', 'Create');
+    go.addEventListener('click', function () {
+      UI.closeModal();
+      app().createDoc(chosen.w, chosen.h, nameInput.value.trim() || 'Untitled');
+    });
+    actions.appendChild(cancel); actions.appendChild(go);
+    card.appendChild(actions);
+    UI.openModal(card);
+    void fitCanvasToBox;
+  };
+
+  UI.exportDialog = function () {
+    const d = app().doc;
+    if (!d) return;
+    let scale = 1, loop = 0;
+    const card = Q.crel('div');
+    card.appendChild(Q.crel('h2', null, 'Export animation'));
+    card.appendChild(Q.crel('p', 'sub', d.frames.length + ' frames at ' + d.fps + ' fps. Saved to Pictures/Qalam.'));
+
+    const scaleField = Q.crel('div', 'field');
+    scaleField.innerHTML = '<label>Size</label>';
+    const sel = Q.crel('select');
+    [[1, '100%'], [0.5, '50%'], [1.5, '150%']].forEach(function (o) {
+      const opt = document.createElement('option');
+      opt.value = String(o[0]); opt.textContent = o[1] + ' · ' + Math.round(d.width * o[0]) + '×' + Math.round(d.height * o[0]);
+      sel.appendChild(opt);
+    });
+    sel.addEventListener('change', function () { scale = parseFloat(sel.value); });
+    scaleField.appendChild(sel);
+    card.appendChild(scaleField);
+
+    const loopField = Q.crel('div', 'field');
+    loopField.innerHTML = '<label>Loop</label>';
+    const loopSel = Q.crel('select');
+    [[0, 'Forever'], [1, 'Once']].forEach(function (o) {
+      const opt = document.createElement('option');
+      opt.value = String(o[0]); opt.textContent = o[1];
+      loopSel.appendChild(opt);
+    });
+    loopSel.addEventListener('change', function () { loop = parseInt(loopSel.value, 10); });
+    loopField.appendChild(loopSel);
+    card.appendChild(loopField);
+
+    const actions = Q.crel('div', 'modal-actions');
+    const cancel = Q.crel('button', 'btn ghost', 'Cancel');
+    cancel.addEventListener('click', function () { UI.closeModal(); });
+    const go = Q.crel('button', 'btn primary', 'Export GIF');
+    go.addEventListener('click', function () {
+      UI.closeModal();
+      app().exportGif({ scale: scale, loop: loop });
+    });
+    actions.appendChild(cancel); actions.appendChild(go);
+    card.appendChild(actions);
+    UI.openModal(card);
+  };
+
+  UI.progress = function (title, text, value) {
+    let node = document.getElementById('progressCard');
+    if (!node) {
+      node = Q.crel('div');
+      node.id = 'progressCard';
+      const card = Q.crel('div');
+      card.appendChild(Q.crel('h2', null, title));
+      const p = Q.crel('p', 'sub', text);
+      p.id = 'progressText';
+      card.appendChild(p);
+      const bar = Q.crel('div');
+      bar.style.cssText = 'height:8px;border-radius:6px;background:#242430;overflow:hidden;margin-top:6px';
+      const fill = Q.crel('div');
+      fill.id = 'progressFill';
+      fill.style.cssText = 'height:100%;width:0%;background:linear-gradient(90deg,#f0b46a,#ffd9a0);transition:width .2s';
+      bar.appendChild(fill);
+      card.appendChild(bar);
+      node.appendChild(card);
+      UI.openModal(node);
+    }
+    const fillEl = document.getElementById('progressFill');
+    if (fillEl) fillEl.style.width = Math.round((value || 0) * 100) + '%';
+    const textEl = document.getElementById('progressText');
+    if (textEl && text) textEl.textContent = text;
+  };
+
+  UI.endProgress = function () {
+    const node = document.getElementById('progressCard');
+    if (node) node.remove();
+    UI.closeModal();
+  };
+
+  UI.refreshLayersIfOpen = function () {
+    if (tray === 'layers') buildLayers(Q.el('#trayBody'));
+  };
+
+  UI.refreshMenuIfOpen = function () {
+    if (tray === 'menu') buildMenu(Q.el('#trayBody'));
+  };
+})();

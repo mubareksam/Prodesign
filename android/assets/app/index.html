@@ -1,0 +1,107 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, minimum-scale=1, user-scalable=no, viewport-fit=cover">
+<meta name="theme-color" content="#0e0e10">
+<meta name="mobile-web-app-capable" content="yes">
+<title>Qalam</title>
+<link rel="stylesheet" href="css/app.css">
+</head>
+<body>
+
+<!-- ───────────────────────── gallery ───────────────────────── -->
+<section id="gallery" class="screen">
+  <header class="gal-head">
+    <div class="brand">
+      <div class="brand-mark">ቀ</div>
+      <div class="brand-txt">
+        <h1>Qalam</h1>
+        <span>draw · paint · animate</span>
+      </div>
+    </div>
+    <button id="btnNew" class="btn primary">
+      <svg viewBox="0 0 24 24"><path d="M12 5v14M5 12h14"/></svg>
+      New canvas
+    </button>
+  </header>
+
+  <div id="galGrid" class="gal-grid"></div>
+
+  <div id="galEmpty" class="gal-empty">
+    <div class="gal-empty-art">ቀ</div>
+    <h2>Your studio is empty</h2>
+    <p>Make a canvas and start painting. Artwork, layers and animation frames stay on this device.</p>
+  </div>
+</section>
+
+<!-- ───────────────────────── studio ───────────────────────── -->
+<section id="studio" class="screen hidden">
+  <canvas id="view"></canvas>
+
+  <div class="topbar">
+    <button class="icon-btn" id="btnGallery" aria-label="Gallery">
+      <svg viewBox="0 0 24 24"><path d="M15 5l-7 7 7 7"/></svg>
+    </button>
+
+    <div class="title-wrap">
+      <input id="docTitle" type="text" value="Untitled" spellcheck="false" autocomplete="off">
+      <span id="docMeta">2048 × 2048</span>
+    </div>
+
+    <button class="icon-btn" id="btnUndo" aria-label="Undo">
+      <svg viewBox="0 0 24 24"><path d="M9 7L4 12l5 5"/><path d="M4 12h9a6 6 0 010 12"/></svg>
+    </button>
+    <button class="icon-btn" id="btnRedo" aria-label="Redo">
+      <svg viewBox="0 0 24 24"><path d="M15 7l5 5-5 5"/><path d="M20 12h-9a6 6 0 000 12"/></svg>
+    </button>
+    <button class="icon-btn" id="btnTimeline" aria-label="Timeline">
+      <svg viewBox="0 0 24 24"><path d="M3 9h18M3 15h18"/><circle cx="7" cy="9" r="1.6"/><circle cx="14" cy="15" r="1.6"/></svg>
+    </button>
+    <button class="icon-btn" id="btnMenu" aria-label="Actions">
+      <svg viewBox="0 0 24 24"><path d="M4 7h16M4 12h16M4 17h16"/></svg>
+    </button>
+  </div>
+
+  <div class="rail rail-left">
+    <button class="rail-btn" id="btnBrush" aria-label="Brushes">
+      <svg viewBox="0 0 24 24"><path d="M4 20c3 0 4-2 4-4 0-1.4-.8-2.4-2-2.6C4.6 13.1 4 12 4 11c0 0 2 .4 3.2 1.6C8.8 14.2 9 16 9 16s2.4.2 4.2-1.6C15 12.6 19 4 19 4s1.6 5.6-1.4 9.4C15.4 16 12.4 16.4 10.6 18c-1.2 1.1-2.6 2-6.6 2z"/></svg>
+    </button>
+
+    <div class="vslider" id="sizeWrap">
+      <input id="sizeSlider" type="range" min="1" max="240" value="14">
+      <div class="vslider-val" id="sizeVal">14</div>
+    </div>
+    <div class="vslider" id="opacityWrap">
+      <input id="opacitySlider" type="range" min="1" max="100" value="100">
+      <div class="vslider-val" id="opacityVal">100</div>
+    </div>
+  </div>
+
+  <div class="rail rail-right">
+    <button class="swatch" id="btnColor" aria-label="Colour"></button>
+    <button class="rail-btn" id="btnEyedrop" aria-label="Eyedropper">
+      <svg viewBox="0 0 24 24"><path d="M15 4l5 5-9 9-3 .8.8-3z"/><path d="M13 6l5 5"/></svg>
+    </button>
+    <button class="rail-btn" id="btnLayers" aria-label="Layers">
+      <svg viewBox="0 0 24 24"><path d="M12 3l9 5-9 5-9-5z"/><path d="M3 13l9 5 9-5"/></svg>
+    </button>
+  </div>
+
+  <div id="tray" class="tray hidden"><div id="trayBody" class="tray-body"></div></div>
+  <div id="timeline" class="timeline hidden"></div>
+  <div id="hint" class="hint"></div>
+  <div id="toast" class="toast"></div>
+  <div id="modal" class="modal hidden"><div class="modal-card" id="modalBody"></div></div>
+</section>
+
+<script src="js/core.js"></script>
+<script src="js/doc.js"></script>
+<script src="js/brushes.js"></script>
+<script src="js/gif.js"></script>
+<script src="js/view.js"></script>
+<script src="js/storage.js"></script>
+<script src="js/ui.js"></script>
+<script src="js/app.js"></script>
+</body>
+</html>

@@ -1,0 +1,12 @@
+{
+  "name": "qalam-tests",
+  "private": true,
+  "type": "module",
+  "description": "Headless checks for the Qalam web app (engine smoke test + jsdom UI test)",
+  "scripts": {
+    "test": "node engine_smoke.mjs && node gif_roundtrip.mjs && node ui_smoke.mjs"
+  },
+  "devDependencies": {
+    "jsdom": "^24.1.3"
+  }
+}
