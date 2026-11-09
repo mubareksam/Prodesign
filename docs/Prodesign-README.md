@@ -4,12 +4,12 @@ Developed by **Qmer**. An offline painting and frame-animation studio for Androi
 brushes, layers, a colour wheel, a frame timeline with onion skin, Procreate's gesture
 vocabulary, and PNG/GIF export. No account, no ads, no network permission.
 
-**Download:** [`Qalam-2.0.apk`](../artifacts/Qalam-2.0.apk) (~260 KB)
+**Download:** [`Qalam-2.1.apk`](../artifacts/Qalam-2.1.apk) (~260 KB)
 
 | | |
 |---|---|
 | Package | `com.qalam.studio` |
-| Version | 2.0 (versionCode 11) |
+| Version | 2.1 (versionCode 12) |
 | Requires | Android 8.0+ (minSdk 26), built for targetSdk 33 |
 | Permissions | `VIBRATE` only — no internet, no storage, no location |
 | Signing | APK Signature Scheme v1 + v2, self-signed with a public test key |
@@ -17,7 +17,7 @@ vocabulary, and PNG/GIF export. No account, no ads, no network permission.
 
 ## Install
 
-1. Download `Qalam-2.0.apk` to the phone (or copy it over USB).
+1. Download `Qalam-2.1.apk` to the phone (or copy it over USB).
 2. Open it from the file manager. Android will ask you to allow installs from that
    app the first time ("Install unknown apps") — allow it, then install.
 3. Open **Qalam**.
@@ -68,7 +68,9 @@ timeline, play at 1–30 fps with frame holds, and configurable onion skins.
 label, hold, reverse, duplicate, skip or include a frame range with undo. Onion skins
 have independent directional counts, colour, layer and stacking options. Skipped frames
 are omitted from playback and GIF/MP4, but retained in PNG sequences and sprite sheets.
-Labels are not nested groups.
+Labels are not nested groups. Cycle timing is displayed on the timeline. Copy a cel
+across frames or delete a frame range with confirmation and undo; cel copying is
+limited to 64 MiB of new pixel data per operation.
 PNG sprite sheets include every frame once, without timing metadata.
 
 **Saving & export** — everything autosaves on the device (≈2.5 s after a change, and

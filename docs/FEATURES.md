@@ -41,6 +41,11 @@ The supplied feature inventory is a roadmap, not a list of completed work.
   preview, GIF and MP4. Batch label, hold, reverse, duplicate, skip or include a
   range in one undo step. Labels are tags, not nested groups; range boundaries are
   positions, so reordering changes which drawings fall inside them.
+- Estimated timeline cycle duration and tick counts respect frame holds, skips, range and
+  ping-pong. Confirmed batch frame deletion is undoable and leaves at least one
+  frame. Copy one non-empty current-layer cel to a range of frames with confirmation
+  and undo; allocation is capped at 64 MiB per operation and locked/alpha-locked
+  layers are protected. Other layers and frame metadata are unchanged.
 - Undoable per-frame layer effects: soft box blur, horizontal motion blur, sharpen,
   bloom, glitch, pixelate, posterize, solarize, grayscale, invert, sepia,
   brightness, saturation, contrast, hue shift, noise, chromatic shift, halftone
@@ -64,4 +69,4 @@ DPI settings, timelapse, gallery stacks, PSD/Procreate/PDF/TIFF compatibility, b
 import/export, and most advanced colour-management and accessibility features.
 Apple Pencil-specific controls are not applicable on Android. See the original
 [Procreate analysis](procreate-analysis.md) for background; its feature matrix
-predates version 2.0.
+predates version 2.1.

@@ -222,4 +222,32 @@ for (const [name,brush,opacity] of [['dry',pen,1],['wet',{...pen,flow:0.5},0.6]]
  d.history.undo(); ok(same(pixel(cel,0,0),[255,0,0,255]) && same(pixel(cel,1,0),[0,0,255,255]), 'pixelate is undoable');
 }
 
+
+{
+ const d=setup(); const source=d.activeCel(true); source.getContext('2d').fillStyle='#ff0000'; source.getContext('2d').fillRect(0,0,4,4);
+ d.addFrame(false); const original=d.activeCel(true); original.getContext('2d').fillStyle='#0000ff'; original.getContext('2d').fillRect(0,0,4,4);
+ d.addFrame(false); d.frames[2].skipped=true; d.frames[2].duration=9; d.addLayer(); d.activeCel(true).getContext('2d').fillRect(0,0,1,1); const other=d.cel(2,1,false); d.activeLayer=0;
+ ok(d.copyCelToRange(0,0,2)===null && same(pixel(d.cel(1,0,false),1,1),[255,0,0,255]) && same(pixel(d.cel(2,0,false),1,1),[255,0,0,255]), 'cel copying replaces destination pixels including skipped frames');
+ ok(d.cel(2,1,false)===other && d.frames[2].duration===9 && d.frames[2].skipped, 'cel copying leaves other layers and frame metadata intact');
+ d.cel(1,0,false).getContext('2d').clearRect(0,0,4,4);
+ ok(pixel(source,1,1)[0]===255 && pixel(d.cel(2,0,false),1,1)[0]===255, 'each copied cel is independent from source and other copies');
+ d.history.undo(); ok(d.cel(1,0,false)===original && same(pixel(original,1,1),[0,0,255,255]) && d.cel(2,0,false)===null, 'undo restores overwritten and empty destination cels');
+ d.history.redo(); ok(d.cel(2,0,false) && pixel(d.cel(2,0,false),1,1)[0]===255, 'redo restores copied cels');
+ d.layer().locked=true; ok(!!d.copyCelToRange(0,1,1), 'cel copy respects layer lock'); d.layer().locked=false; d.layer().alphaLocked=true; ok(!!d.copyCelToRange(0,1,1), 'cel copy respects alpha lock');
+ d.layer().alphaLocked=false; const old=d.cel(2,0,false), savedCopy=Q.copyCanvas; let attempts=0; Q.copyCanvas=(cv)=>{ if (++attempts===2) throw Error('allocation'); return savedCopy(cv); };
+ try { d.copyCelToRange(0,1,2); } catch(e) {} Q.copyCanvas=savedCopy; ok(d.cel(2,0,false)===old, 'failed allocation leaves every destination unchanged');
+}
+{
+ const d=setup(); for(let i=0;i<4;i++) d.addFrame(false); d.activeFrame=4; d.setPlayRange(2,4); d.frames[1].skipped=true; d.frames[2].duration=3;
+ ok(d.deleteFrameRange(1,3) && d.frames.length===2 && d.activeFrame===1 && d.playRange.start===1 && d.playRange.end===1, 'delete range clamps current frame and positional playback range');
+ d.history.undo(); ok(d.frames.length===5 && d.activeFrame===4 && d.frames[1].skipped && d.frames[2].duration===3 && d.playRange.start===2, 'undo range deletion restores frames, metadata, selection and playback range');
+ d.history.redo(); ok(d.frames.length===2, 'redo range deletion removes the same frames');
+ ok(!d.deleteFrameRange(0,1) && d.frames.length===2, 'range deletion refuses to remove every frame');
+}
+{
+ const d=setup(); for(let i=0;i<3;i++) d.addFrame(false); d.fps=10; d.frames[1].skipped=true; d.frames[2].duration=3; d.playMode='pingpong';
+ let stats=Q.playbackStats(d); ok(stats.frames===3 && stats.ticks===8 && stats.seconds===0.8, 'timing statistics include holds, skips and ping-pong return');
+ d.setPlayRange(1,1); stats=Q.playbackStats(d); ok(stats.frames===0 && stats.ticks===0 && stats.seconds===0, 'timing reports empty when selected range is all skipped');
+}
+
 console.log(`all ${n} raster integration checks passed`);

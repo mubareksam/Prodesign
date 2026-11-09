@@ -8,11 +8,11 @@ brushes, layers with blend modes, a colour wheel, a frame timeline with onion sk
 Procreate's gesture vocabulary, PNG/GIF export and device-dependent MP4 export — all offline, with no account and
 no network permissions at all.
 
-- Package: `com.qalam.studio` · version 2.0 (versionCode 11)
+- Package: `com.qalam.studio` · version 2.1 (versionCode 12)
 - minSdk 26 (Android 8.0) · targetSdk 33 · armeabi-v7a/arm64/x86/x86_64 independent
   (everything is HTML/JS running inside the app's own `WebView`, so the APK has no
   native code)
-- APK: **`artifacts/Qalam-2.0.apk`** (~260 KB), signed with a v1+v2 scheme
+- APK: **`artifacts/Qalam-2.1.apk`** (~260 KB), signed with a v1+v2 scheme
 - The written analysis of Procreate that this app was specified from:
   [`docs/procreate-analysis.md`](procreate-analysis.md)
 
@@ -20,7 +20,7 @@ no network permissions at all.
 
 ## 1. Install
 
-1. Copy `artifacts/Qalam-2.0.apk` to the phone (USB, Drive, chat to yourself — anything).
+1. Copy `artifacts/Qalam-2.1.apk` to the phone (USB, Drive, chat to yourself — anything).
 2. Open it with the phone's file manager. Android will ask to allow installs from
    that app the first time ("Install unknown apps").
 3. Install and open **Qalam**. If an earlier Qalam version is already installed, Android should offer an update that preserves its data. Back up important artwork first. Android does not allow this app to silently uninstall itself; do not uninstall it unless you have backed up its local artwork.
@@ -90,7 +90,17 @@ Bottom bar: **Gallery · Layer · Brush · Colour · Timeline · Menu** (plus **
   duplicate, move or delete. Skipped frames remain editable but are omitted from
   playback, GIF and MP4; a range with no included frames cannot play or export.
   **Batch frames** labels, holds, reverses, duplicates, skips or includes a range
-  in one undo step. The 60-frame limit still applies; labels are tags, not groups.
+  in one undo step. **Delete range** removes a range after confirmation and must leave
+  at least one frame; undo restores its cels and settings. The 60-frame limit still
+  applies; labels are tags, not groups. The timeline reports included frames, ticks
+  and estimated seconds per playback cycle, factoring in holds, skips, range and ping-pong.
+  Actual playback or export duration can differ due to timing and encoding.
+  **Copy cel** replaces the current layer's cels in a selected frame range with
+  independent copies of a non-empty source cel, after confirmation. It includes
+  skipped frames but leaves other layers, timing and source untouched. Undo restores
+  previous cels. Unlock the layer and alpha first. One operation allocates at most
+  64 MiB of copied pixel data; choose a smaller range if needed. Actual peak memory
+  can be higher, especially with undo history and large canvases.
 - **Fill tool** — tap the bucket on the right rail, then tap an area. It fills the
   connected pixels on the current layer with the selected colour at full opacity;
   undo reverses the fill. **Menu → Fill settings** adjusts colour tolerance. It
@@ -211,11 +221,11 @@ tools/
   verify_apk.py              re-parses the APK: zip, arsc, dex, v2 signature
   make_icons.py              icon source -> all mipmap densities + adaptive icon
   apksign/sign.mjs           v1+v2 signer
-  tests/engine_smoke.mjs     125 engine checks (history, brushes, doc, GIF, …)
+  tests/engine_smoke.mjs     130 engine checks (history, brushes, doc, GIF, …)
   tests/pixel_integration.mjs real raster and animation export checks
   tests/gif_roundtrip.mjs    encodes a GIF and decodes it with an independent decoder
   tests/ui_smoke.mjs         jsdom boot + full UI drive (gallery -> export)
-artifacts/Qalam-2.0.apk           the signed, installable artefact
+artifacts/Qalam-2.1.apk           the signed, installable artefact
 docs/procreate-analysis.md   the Procreate study this app was built from
 docs/qalam.md                this file
 ```
@@ -245,7 +255,7 @@ Design notes worth knowing before changing code:
 
 ```bash
 bash tools/fetch-toolchain.sh     # once per machine: JVM, apktool, aapt2, jars, npm
-bash tools/build.sh               # -> artifacts/Qalam-2.0.apk (signed + verified)
+bash tools/build.sh               # -> artifacts/Qalam-2.1.apk (signed + verified)
 bash tools/check_reference.sh     # optional: javac-check the Java mirrors
 ```
 
@@ -261,7 +271,7 @@ bash tools/check_reference.sh     # optional: javac-check the Java mirrors
 
 ```bash
 cd tools/tests && npm install
-npm test        # engine_smoke (125 checks) + pixel_integration + gif_roundtrip + ui_smoke
+npm test        # engine_smoke (130 checks) + pixel_integration + gif_roundtrip + ui_smoke
 ```
 
 `pixel_integration.mjs` uses a native desktop canvas implementation to verify

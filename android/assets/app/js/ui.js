@@ -967,6 +967,7 @@
     head.appendChild(chip('Settings', false, function () { UI.animationSettings(); }, null));
     head.appendChild(chip('Frame options', false, function () { UI.frameSheet(d.activeFrame); }, null));
     head.appendChild(chip('Batch frames', false, function () { UI.batchFramesDialog(); }, null));
+    head.appendChild(chip('Copy cel', false, function () { UI.copyCelDialog(); }, null));
     head.appendChild(chip('Blank frame', false, function () { app().addFrame(false); }, null));
     head.appendChild(chip('◀ Frame', false, function () { app().selectFrame(Math.max(0,d.activeFrame-1)); }, null));
     head.appendChild(chip('Frame ▶', false, function () { app().selectFrame(Math.min(d.frames.length-1,d.activeFrame+1)); }, null));
@@ -1007,6 +1008,8 @@
     scrub.addEventListener('input',function () { d.activeFrame=Q.clamp(Number(scrub.value)-1,0,d.frames.length-1); app().view.dirty=true; UI.highlightFrame(d.activeFrame); UI.refreshReference(); });
     scrub.addEventListener('change',function () { app().selectFrame(Number(scrub.value)-1); });
     scrubRow.appendChild(scrub); scrubRow.appendChild(readout); el.appendChild(scrubRow);
+    const stats=Q.playbackStats(d), timing=Q.crel('div','tl-timing',stats.frames ? stats.frames+' included · '+stats.ticks+' ticks · '+stats.seconds.toFixed(2)+' s estimated per cycle' : 'No included frames in playback range');
+    timing.setAttribute('aria-label','Playback timing'); el.appendChild(timing);
   }
 
   UI.highlightFrame = function (i) {
@@ -1066,7 +1069,31 @@
       if (app().batchFrames(first-1,last-1,op,op==='label' ? label.value : ticks)) UI.closeModal();
     }); grid.appendChild(b); }
     action('Apply label','label'); action('Apply hold','hold'); action('Skip range','skip'); action('Include range','include'); action('Reverse range','reverse'); action('Duplicate range','duplicate'); card.appendChild(grid);
+    const del=Q.crel('button','btn danger','Delete range'); del.addEventListener('click',function () {
+      const first=Number(start.value), last=Number(end.value);
+      if (!start.value.trim() || !end.value.trim() || !Number.isInteger(first) || !Number.isInteger(last) || first<1 || last<first || last>d.frames.length || last-first+1>=d.frames.length) { error.textContent='Choose a valid range that leaves at least one frame.'; return; }
+      UI.confirm('Delete frames '+first+'–'+last+'?', 'This removes all layers in these frames. You can undo this action.', function () { app().deleteFrameRange(first-1,last-1); });
+    }); card.appendChild(del);
     const close=Q.crel('button','btn ghost','Close'); close.addEventListener('click',function () { UI.closeModal(); }); card.appendChild(close); UI.openModal(card);
+  };
+
+  UI.copyCelDialog = function () {
+    app().stopPlay(); const d=app().doc; if (!d) return;
+    const card=Q.crel('div'); card.appendChild(Q.crel('h2',null,'Copy cel to frames'));
+    card.appendChild(Q.crel('p','sub','Copy the current layer from the source frame to an inclusive range. Existing cels on that layer will be replaced, including in skipped frames. Other layers and frame timing are unchanged. The source is never overwritten. Undo restores the previous cels.'));
+    function field(label,value) { const row=Q.crel('div','field'); row.appendChild(Q.crel('label',null,label)); const input=Q.crel('input','select'); input.type='number'; input.min=1; input.max=d.frames.length; input.value=value; input.setAttribute('aria-label',label); row.appendChild(input); card.appendChild(row); return input; }
+    const source=field('Source frame',d.activeFrame+1), first=field('First destination',1), last=field('Last destination',d.frames.length);
+    const error=Q.crel('p','canvas-error'); error.setAttribute('role','alert'); card.appendChild(error);
+    const actions=Q.crel('div','modal-actions'), cancel=Q.crel('button','btn ghost','Cancel'), next=Q.crel('button','btn primary','Review replacement');
+    cancel.addEventListener('click',function () { UI.closeModal(); }); next.addEventListener('click',function () {
+      const a=Number(source.value), b=Number(first.value), c=Number(last.value);
+      if (!source.value.trim() || !first.value.trim() || !last.value.trim() || !Number.isInteger(a) || !Number.isInteger(b) || !Number.isInteger(c) || a<1 || a>d.frames.length || b<1 || c<b || c>d.frames.length || (b===c && a===b)) { error.textContent='Enter a valid source and at least one different destination.'; return; }
+      if (d.layer().locked || d.layer().alphaLocked) { error.textContent='Unlock the layer and alpha first.'; return; }
+      if (!d.cel(a-1,d.activeLayer,false)) { error.textContent='Source cel is empty.'; return; }
+      const count=c-b+1-(a>=b && a<=c ? 1 : 0);
+      if (d.width*d.height*4*count>64*1024*1024) { error.textContent='Too many pixels to copy at once; use a smaller range.'; return; }
+      UI.confirm('Replace '+count+' cel'+(count===1?'':'s')+'?', 'Existing artwork on the current layer in the destination frames will be replaced. Undo restores it.', function () { const result=app().copyCelToRange(a-1,b-1,c-1); if (result) Q.toast(result,4000); }, 'Replace');
+    }); actions.appendChild(cancel); actions.appendChild(next); card.appendChild(actions); UI.openModal(card);
   };
 
   UI.spriteSheetDialog = function () {
@@ -1151,14 +1178,14 @@
     Q.el('#modal').classList.add('hidden');
   };
 
-  UI.confirm = function (title, text, onYes) {
+  UI.confirm = function (title, text, onYes, yesLabel) {
     const card = Q.crel('div');
     card.appendChild(Q.crel('h2', null, title));
     card.appendChild(Q.crel('p', 'sub', text));
     const actions = Q.crel('div', 'modal-actions');
     const no = Q.crel('button', 'btn ghost', 'Cancel');
     no.addEventListener('click', function () { UI.closeModal(); });
-    const yes = Q.crel('button', 'btn danger', 'Delete');
+    const yes = Q.crel('button', 'btn danger', yesLabel || 'Delete');
     yes.addEventListener('click', function () { UI.closeModal(); onYes(); });
     actions.appendChild(no); actions.appendChild(yes);
     card.appendChild(actions);

@@ -370,6 +370,22 @@
     } catch (err) { Q.toast('Could not update frames on this device',4000); return false; }
   };
 
+  Q.playbackStats = function (doc) {
+    const order=Q.playbackOrder(doc), ticks=order.reduce((sum,i)=>sum+(doc.frames[i].duration || 1),0);
+    return {frames:Q.playableFrames(doc).length, ticks:ticks, seconds:ticks/Q.clamp(doc.fps,1,30)};
+  };
+  App.copyCelToRange = function (source,start,end) {
+    App.stopPlay(); const d=App.doc; if (!d) return 'No document';
+    try {
+      const error=d.copyCelToRange(source,start,end); if (error) return error;
+      App.view.dirty=true; Q.UI.syncDoc(); Q.UI.refreshTimeline(); App.markDirty(); Q.toast('Cels copied · Undo to revert'); return null;
+    } catch (err) { return 'Could not copy cels on this device'; }
+  };
+  App.deleteFrameRange = function (start,end) {
+    App.stopPlay(); const d=App.doc; if (!d || !d.deleteFrameRange(start,end)) return false;
+    App.view.dirty=true; Q.UI.syncDoc(); Q.UI.refreshTimeline(); App.markDirty(); Q.toast('Frames deleted · Undo to restore'); return true;
+  };
+
   App.flipCanvas = function () {
     const d = App.doc;
     if (!d) return;

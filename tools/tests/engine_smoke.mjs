@@ -355,4 +355,14 @@ ok(solar.data.join(',')==='64,127,15,255', 'solarize inverts bright channels');
 const block={width:3,height:1,data:new Uint8ClampedArray([255,0,0,255,0,0,0,0,0,255,0,255])}; Q.applyPixelEffect(block,'pixelate',0.01);
 ok(block.data[0]===255 && block.data[3]===128 && block.data[4]===255 && block.data[7]===128 && block.data[9]===255, 'pixelate averages premultiplied colour and handles partial blocks');
 
+
+console.log('2.1 batch cel and frame operations');
+const celDoc=new Q.Doc({width:4096,height:4096}); celDoc.activeCel(true); celDoc.addFrame(false); celDoc.addFrame(false);
+const beforeHistory=celDoc.history.undoStack.length;
+ok(celDoc.copyCelToRange(0,1,2).includes('Too many pixels') && celDoc.history.undoStack.length===beforeHistory && !celDoc.cel(1,0,false), 'oversized cel copy is rejected without edits or history');
+ok(celDoc.copyCelToRange(1,0,0).includes('empty'), 'empty source cel is rejected');
+ok(celDoc.copyCelToRange(0,0,0).includes('destination'), 'source-only cel copy is rejected');
+ok(celDoc.copyCelToRange(-1,0,1).includes('Invalid'), 'invalid source is rejected');
+ok(!celDoc.deleteFrameRange(0,2) && !celDoc.deleteFrameRange(-1,1), 'invalid or all-frame deletion is rejected');
+
 console.log(`\nall ${checks} engine checks passed`);

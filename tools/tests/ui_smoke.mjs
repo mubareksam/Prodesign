@@ -640,6 +640,26 @@ async function run() {
   App.exportMp4(); ok(doc.querySelector('#toast').textContent.includes('No included frames'), 'MP4 export rejects an all-skipped range');
   App.batchFrames(1,2,'include'); ok(!App.doc.frames[1].skipped && !App.doc.frames[2].skipped && App.doc.frames[0].skipped, 'batch include re-enables selected frames only');
 
+
+  console.log('2.1 cel and timeline tools');
+  App.createDoc(64,64,'Cel tools'); for(let i=1;i<4;i++) App.addFrame(false); App.selectFrame(0); App.doc.activeCel(true);
+  if (doc.querySelector('#timeline').classList.contains('hidden')) Q.UI.toggleTimeline();
+  ok(doc.querySelector('#timeline .tl-timing').textContent.includes('4 included'), 'timeline shows playback timing');
+  App.doc.frames[1].duration=3; App.doc.frames[2].skipped=true; App.doc.playMode='pingpong'; App.doc.fps=10; Q.UI.refreshTimeline();
+  ok(doc.querySelector('#timeline .tl-timing').textContent.includes('8 ticks') && doc.querySelector('#timeline .tl-timing').textContent.includes('0.80 s'), 'timeline timing respects holds, skips and ping-pong');
+  Q.UI.copyCelDialog(); let src=doc.querySelector('input[aria-label="Source frame"]'), dst1=doc.querySelector('input[aria-label="First destination"]'), dst2=doc.querySelector('input[aria-label="Last destination"]');
+  dst1.value='1'; dst2.value='1'; click('#modalBody .btn.primary'); ok(doc.querySelector('.canvas-error').textContent.includes('different destination'), 'cel copy rejects source-only range');
+  dst1.value='2'; dst2.value='3'; click('#modalBody .btn.primary'); ok(doc.querySelector('#modalBody h2').textContent.includes('Replace 2 cels'), 'cel replacement asks for confirmation');
+  click('#modalBody .btn.ghost'); ok(!App.doc.cel(1,0,false), 'cancel leaves destination unchanged');
+  Q.UI.copyCelDialog(); dst1=doc.querySelector('input[aria-label="First destination"]'); dst2=doc.querySelector('input[aria-label="Last destination"]'); dst1.value='2'; dst2.value='3'; click('#modalBody .btn.primary'); click('#modalBody .btn.danger');
+  ok(!!App.doc.cel(1,0,false) && !!App.doc.cel(2,0,false), 'confirmed cel copy populates the destination range');
+  App.undo(); ok(!App.doc.cel(1,0,false), 'cel copy undo restores empty destination'); App.redo(); ok(!!App.doc.cel(1,0,false), 'cel copy redo restores destination');
+  await App.saveNow(false); const copiedReload=await Q.Store.load(App.doc.id); ok(!!copiedReload.cel(1,0,false) && !!copiedReload.cel(2,0,false), 'copied cels survive save and reopen');
+  Q.UI.batchFramesDialog(); click('#modalBody .btn.danger'); ok(doc.querySelector('.canvas-error').textContent.includes('leaves at least one'), 'delete range refuses all frames');
+  doc.querySelector('input[aria-label="First frame"]').value='2'; doc.querySelector('input[aria-label="Last frame"]').value='3'; click('#modalBody .btn.danger');
+  ok(doc.querySelector('#modalBody h2').textContent.includes('Delete frames'), 'range deletion asks for confirmation'); click('#modalBody .btn.danger');
+  ok(App.doc.frames.length===2, 'confirmed range deletion removes frames'); App.undo(); ok(App.doc.frames.length===4 && !!App.doc.cel(1,0,false), 'undo restores deleted frames and cels');
+
   await App.saveNow(false);
   console.log(failures ? `\n${failures} check(s) FAILED` : '\nall UI checks passed');
   process.exit(failures ? 1 : 0);

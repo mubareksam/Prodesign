@@ -165,6 +165,31 @@
       });
       return true;
     }
+    // Replace this layer's destination cels with independent copies in a single undo step.
+    copyCelToRange(source,start,end) {
+      if (!Number.isInteger(source) || !Number.isInteger(start) || !Number.isInteger(end) || source<0 || source>=this.frames.length || start<0 || end<start || end>=this.frames.length) return 'Invalid frame range';
+      const layer=this.layer(), src=this.cel(source,this.activeLayer,false);
+      if (layer.locked || layer.alphaLocked) return 'Unlock the layer and alpha first';
+      if (!src) return 'Source cel is empty';
+      const targets=[]; for (let i=start;i<=end;i++) if (i!==source) targets.push(i);
+      if (!targets.length) return 'Choose at least one destination other than the source';
+      // Limit new pixel allocations before touching the document. Existing cels remain
+      // in undo history, so peak memory can still be higher than this bound.
+      if (this.width*this.height*4*targets.length>64*1024*1024) return 'Too many pixels to copy at once; use a smaller range';
+      const copies=targets.map(()=>Q.copyCanvas(src)), li=this.activeLayer;
+      this.history.struct(function () { targets.forEach((frame,i)=>{ this.frames[frame].cels[li]=copies[i]; }); });
+      return null;
+    }
+    deleteFrameRange(start,end) {
+      if (!Number.isInteger(start) || !Number.isInteger(end) || start<0 || end<start || end>=this.frames.length || end-start+1>=this.frames.length) return false;
+      this.history.struct(function () {
+        const count=end-start+1, current=this.activeFrame;
+        this.frames.splice(start,count);
+        this.activeFrame=current<start ? current : current>end ? current-count : Math.min(start,this.frames.length-1);
+        this.normalizePlayRange();
+      });
+      return true;
+    }
     setBackground(color) { if (this.bg === color) return; return this.history.struct(function () { this.bg=color; }); }
     setLayerProp(i,key,value) { if (this.layers[i]) return this.history.struct(function () { this.layers[i][key]=value; }); }
     setLayerPropLive(i,key,value) { if (this.layers[i]) this.layers[i][key]=value; }

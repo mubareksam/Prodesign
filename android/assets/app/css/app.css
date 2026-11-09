@@ -400,3 +400,5 @@ select, .select {
 .tl-scrub { display: flex; align-items: center; gap: 8px; margin-top: 6px; }
 .tl-scrub input { flex: 1; min-width: 0; }
 .tl-position { color: #e2e2e9; font-size: 11px; white-space: nowrap; }
+
+.tl-timing { margin-top: 3px; color: var(--txt-3); font-size: 11px; }
