@@ -18,11 +18,14 @@ The supplied feature inventory is a roadmap, not a list of completed work.
   with adjustable tolerance and undo; it does not sample other layers.
 - A movable, zoomable reference window showing the current canvas. Importing an
   external reference image or using a camera is not implemented.
-- Temporary rectangular selection for fill, clear, horizontal/vertical flip and
-  180° rotation of the current layer and frame, with undo. Flips and 180° rotation
-  also work on the whole cel when nothing is selected. Selection does not clip
-  brushes, flood fill or effects; it is not saved with the artwork. Freehand,
-  automatic, additive/subtractive selection and move/scale/free rotation are absent.
+- Temporary rectangular selection clips brushes, erasers, active-cel flood fill and
+  effects. Fill, clear, flips, 180° rotation, numeric move and uniform scale are
+  undoable for the current layer/frame; selected pixels can be copied to a new layer
+  in the current frame. No live transform preview. Pixel undo does not restore the
+  selection outline. Selections are not saved and cannot be feathered or freehand.
+- Per-layer lock prevents painting, fill, effects, selection edits, clearing, deleting
+  and merging the layer, and persists with the artwork. It does not block visibility,
+  reordering, undo/redo or frame deletion.
 - Hold-to-snap QuickShape for lines and ellipses. Rectangles, arcs and shape editing
   are not implemented.
 - Frame timeline, add/duplicate/delete, preview, 1–30 fps, loop, ping-pong and
@@ -45,9 +48,9 @@ The supplied feature inventory is a roadmap, not a list of completed work.
 ## Not yet implemented
 
 Snapping/drawing assist for grids and perspective, image import, camera references, layer masks/groups/clipping/alpha lock, freehand/automatic selection,
-selection masking and move/scale/free rotation transforms, cross-layer ColorDrop/reference fill, smudge, advanced filters and liquify, typography,
+feathered selection, interactive transforms and free rotation, cross-layer ColorDrop/reference fill, smudge, advanced filters and liquify, typography,
 DPI settings, timelapse, gallery stacks, PSD/Procreate/PDF/TIFF compatibility, brush
 import/export, and most advanced colour-management and accessibility features.
 Apple Pencil-specific controls are not applicable on Android. See the original
 [Procreate analysis](procreate-analysis.md) for background; its feature matrix
-predates version 1.6.
+predates version 1.7.

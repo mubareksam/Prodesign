@@ -77,9 +77,22 @@
         this.activeLayer = at; return at;
       });
     }
+    copyRegionToLayer(rect) {
+      const source = this.activeCel(false); if (!source || !rect) return false;
+      // Prepare pixels before changing structure, so allocation errors cannot leave a half-created layer.
+      const copied=Q.canvas(this.width,this.height), ctx=copied.getContext('2d');
+      ctx.drawImage(source,rect.x,rect.y,rect.w,rect.h,rect.x,rect.y,rect.w,rect.h);
+      this.history.struct(function () {
+        const at=this.activeLayer+1; this.layers.splice(at,0,makeLayer('Selection copy'));
+        this.frames.forEach((frame,idx) => { frame.cels.splice(at,0,idx===this.activeFrame ? copied : null); });
+        this.activeLayer=at;
+      });
+      return true;
+    }
     deleteLayer(i) {
       if (this.layers.length < 2) { Q.toast('A canvas needs at least one layer'); return; }
       if (i < 0 || i >= this.layers.length) return;
+      if (this.layers[i].locked) { Q.toast('Unlock the layer first'); return; }
       return this.history.struct(function () { this.layers.splice(i,1); for (const f of this.frames) f.cels.splice(i,1); this.activeLayer = Q.clamp(this.activeLayer,0,this.layers.length-1); });
     }
     moveLayer(i,dir) {
@@ -88,6 +101,7 @@
     }
     mergeDown(i) {
       if (i <= 0 || i >= this.layers.length) { Q.toast('Nothing below to merge into'); return; }
+      if (this.layers[i].locked || this.layers[i-1].locked) { Q.toast('Unlock both layers first'); return; }
       return this.history.struct(function () {
         const lower = this.layers[i-1], upper = this.layers[i];
         for (const f of this.frames) {
@@ -101,7 +115,7 @@
         lower.opacity = 1; lower.blend = 'source-over'; lower.visible = true; this.layers.splice(i,1); this.activeLayer = i-1;
       });
     }
-    clearLayer(i) { if (i < 0 || i >= this.layers.length) return; return this.history.struct(function () { for (const f of this.frames) f.cels[i] = null; }); }
+    clearLayer(i) { if (i < 0 || i >= this.layers.length) return; if (this.layers[i].locked) { Q.toast('Unlock the layer first'); return; } return this.history.struct(function () { for (const f of this.frames) f.cels[i] = null; }); }
     addFrame(duplicate) { return this.history.struct(function () { const at = this.activeFrame+1; this.frames.splice(at,0,{ cels:duplicate ? this.cloneCels(this.frames[this.activeFrame].cels) : this.blankCels(), duration: duplicate ? (this.frames[this.activeFrame].duration || 1) : 1, group: duplicate ? (this.frames[this.activeFrame].group || '') : '' }); this.activeFrame=at; }); }
     setFrameDuration(i, duration) { if (!this.frames[i]) return; return this.history.struct(function () { this.frames[i].duration = Q.clamp(Math.round(duration) || 1,1,12); }); }
     setFrameGroup(i, group) { if (!this.frames[i]) return; const name = String(group || '').trim().slice(0, 32); if (this.frames[i].group === name) return; return this.history.struct(function () { this.frames[i].group = name; }); }

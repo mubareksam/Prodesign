@@ -9,6 +9,11 @@
     const bottom = Math.min(height, Math.ceil(Math.max(a.y,b.y)));
     return right > x && bottom > y ? { x:x, y:y, w:right-x, h:bottom-y } : null;
   };
+  Q.intersectRect = function (a, b) {
+    const x=Math.max(a.x,b.x), y=Math.max(a.y,b.y);
+    const right=Math.min(a.x+a.w,b.x+b.w), bottom=Math.min(a.y+a.h,b.y+b.h);
+    return right > x && bottom > y ? {x:x,y:y,w:right-x,h:bottom-y} : null;
+  };
   Q.flipImage = function (image, horizontal, vertical) {
     const w=image.width, h=image.height, data=image.data;
     if (!horizontal && !vertical) return;

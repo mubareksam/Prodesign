@@ -2,11 +2,12 @@
   "name": "qalam-tests",
   "private": true,
   "type": "module",
-  "description": "Headless checks for the Qalam web app (engine smoke test + jsdom UI test)",
+  "description": "Engine, real raster, GIF and jsdom UI checks for Qalam",
   "scripts": {
-    "test": "node engine_smoke.mjs && node gif_roundtrip.mjs && node ui_smoke.mjs"
+    "test": "node engine_smoke.mjs && node pixel_integration.mjs && node gif_roundtrip.mjs && node ui_smoke.mjs"
   },
   "devDependencies": {
+    "@napi-rs/canvas": "^0.1.100",
     "jsdom": "^24.1.3"
   }
 }

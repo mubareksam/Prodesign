@@ -428,11 +428,12 @@
       Q.toast('This layer is hidden');
       return;
     }
+    if (layer.locked) { Q.toast('This layer is locked'); return; }
     const p = this.toDoc(pos.x, pos.y);
     this.strokePointerId = e.pointerId;
     this.strokePointerType = e.pointerType || 'touch';
     const brushOpacity = this.opacity * (this.brush.opacity == null ? 1 : this.brush.opacity);
-    this.stroke = new Q.Stroke(doc, this.brush, this.color, this.size, brushOpacity);
+    this.stroke = new Q.Stroke(doc, this.brush, this.color, this.size, brushOpacity, this.selection);
     this.stroke.begin({ x: p.x, y: p.y, pressure: this._pressure(e), t: Q.now() });
     this._lastStampTime = Q.now();
     this.strokeStartScreen = { x: pos.x, y: pos.y };
@@ -508,7 +509,7 @@
     // replay the idealised shape through a fresh stroke so it picks up brush dynamics
     const shape = closed ? this._ellipsePoints(bbox) : [p0, p1];
     const bop = this.opacity * (this.brush.opacity == null ? 1 : this.brush.opacity);
-    const s2 = new Q.Stroke(doc, this.brush, this.color, this.size, bop);
+    const s2 = new Q.Stroke(doc, this.brush, this.color, this.size, bop, this.selection);
     s2.begin({ x: shape[0].x, y: shape[0].y, pressure: 0.7, t: Q.now() });
     for (let i = 1; i < shape.length; i++) {
       s2.add({ x: shape[i].x, y: shape[i].y, pressure: 0.9, t: Q.now() + i });

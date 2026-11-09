@@ -386,7 +386,7 @@
 
     const addBtn = chip('Add', false, function () { app().addLayer(); }, ICON.plus);
     const dupBtn = chip('Copy', false, function () { app().duplicateLayer(); }, ICON.copy);
-    const mergeBtn = chip('Merge', false, function () { app().mergeDown(); }, ICON.merge);
+    const mergeBtn = chip('Merge', false, function () { app().mergeDownLayer(d.activeLayer); }, ICON.merge);
     root.appendChild(trayHead('Layers · ' + d.layers.length, [addBtn, dupBtn, mergeBtn]));
 
     const list = Q.crel('div', 'layer-list');
@@ -401,7 +401,7 @@
 
       const meta = Q.crel('div', 'layer-meta');
       meta.appendChild(Q.crel('div', 'layer-name', escapeHtml(layer.name)));
-      const sub = Q.crel('div', 'layer-sub', Math.round(layer.opacity * 100) + '% · ' + blendLabel(layer.blend));
+      const sub = Q.crel('div', 'layer-sub', Math.round(layer.opacity * 100) + '% · ' + blendLabel(layer.blend) + (layer.locked ? ' · Locked' : ''));
       meta.appendChild(sub);
       row.appendChild(meta);
 
@@ -507,6 +507,7 @@
       b.addEventListener('click', function () { UI.closeModal(); fn(); });
       return b;
     };
+    actions.appendChild(mk(layer.locked ? 'Unlock layer' : 'Lock layer', ICON.sparkle, function () { app().setLayerProp(i, 'locked', !layer.locked); }));
     actions.appendChild(mk('Move up', ICON.up, function () { app().moveLayer(i, 1); }));
     actions.appendChild(mk('Move down', ICON.down, function () { app().moveLayer(i, -1); }));
     actions.appendChild(mk('Duplicate', ICON.copy, function () { app().duplicateLayer(i); }));
@@ -776,7 +777,7 @@
     const v=app().view, d=app().doc; if (!d) return;
     const card=Q.crel('div'); card.appendChild(Q.crel('h2',null,'Selection & transform'));
     card.appendChild(Q.crel('p','sub', v.selection ? 'Rectangle selected. Edits affect the current layer and frame.' : 'No rectangle selected. Flips and rotation use the whole current layer and frame.'));
-    card.appendChild(Q.crel('p','sub','The rectangle limits these edits only; it does not clip brush strokes, flood fill or effects.'));
+    card.appendChild(Q.crel('p','sub','The rectangle clips brushes, erasers, flood fill and effects. It is temporary and applies to the current layer and frame.'));
     const actions=Q.crel('div','menu-grid');
     function action(label, fn) { const b=Q.crel('button','menu-item',label); b.addEventListener('click',function () { UI.closeModal(); UI.closeTray(); fn(); }); actions.appendChild(b); }
     action('Draw rectangle',function () {
@@ -787,11 +788,34 @@
     action('Deselect',function () { v.selection=null; v.selectionDraft=null; if (v.tool === 'select') v.tool='brush'; v.dirty=true; });
     action('Fill rectangle',function () { app().editSelection('fill'); });
     action('Clear rectangle',function () { app().editSelection('clear'); });
+    action('Copy to layer',function () { app().copySelectionToLayer(); });
     action('Flip horizontal',function () { app().editSelection('flipH'); });
     action('Flip vertical',function () { app().editSelection('flipV'); });
     action('Rotate 180°',function () { app().editSelection('rotate180'); });
+    action('Move / scale',function () { UI.transformDialog(); });
     card.appendChild(actions);
     const done=Q.crel('button','btn ghost','Close'); done.addEventListener('click',function () { UI.closeModal(); }); card.appendChild(done); UI.openModal(card);
+  };
+
+  UI.transformDialog = function () {
+    const card=Q.crel('div'); card.appendChild(Q.crel('h2',null,'Move / scale'));
+    card.appendChild(Q.crel('p','sub','Moves and scales the selected rectangle, or the whole current cel. Pixels outside the canvas are cropped. Values are applied without a live preview.'));
+    function field(label, initial) {
+      const row=Q.crel('div','field'); row.appendChild(Q.crel('label',null,label));
+      const input=Q.crel('input','select'); input.type='number'; input.value=initial; input.setAttribute('aria-label',label); row.appendChild(input); card.appendChild(row); return input;
+    }
+    const dx=field('Move X (px)',0), dy=field('Move Y (px)',0), scale=field('Scale (%)',100);
+    const error=Q.crel('p','canvas-error'); error.setAttribute('role','alert'); card.appendChild(error);
+    const actions=Q.crel('div','modal-actions'), cancel=Q.crel('button','btn ghost','Cancel'), apply=Q.crel('button','btn primary','Apply');
+    cancel.addEventListener('click',function () { UI.closeModal(); });
+    apply.addEventListener('click',function () {
+      const x=Number(dx.value), y=Number(dy.value), pct=Number(scale.value), d=app().doc;
+      if (!dx.value.trim() || !dy.value.trim() || !scale.value.trim() || !Number.isInteger(x) || !Number.isInteger(y) || Math.abs(x)>d.width*2 || Math.abs(y)>d.height*2 || !Number.isFinite(pct) || pct<25 || pct>400) {
+        error.textContent='Use whole-pixel offsets within twice the canvas size and a scale from 25% to 400%.'; return;
+      }
+      UI.closeModal(); app().moveScaleSelection(x,y,pct/100);
+    });
+    actions.appendChild(cancel); actions.appendChild(apply); card.appendChild(actions); UI.openModal(card);
   };
 
   UI.fillSettings = function () {
@@ -1006,7 +1030,7 @@
     card.appendChild(Q.crel('p', 'sub', 'A paint, sketch and frame-by-frame animation studio for Android. Artwork is stored on this device only — nothing is uploaded.'));
     card.appendChild(Q.crel('p', 'sub', 'Developed by Qmer'));
     card.appendChild(Q.crel('p', 'sub', 'ቀለም (qalam) means “pen” or “ink”.'));
-    card.appendChild(Q.crel('p', 'sub', 'Version 1.6'));
+    card.appendChild(Q.crel('p', 'sub', 'Version 1.7'));
     const actions = Q.crel('div', 'modal-actions');
     const close = Q.crel('button', 'btn primary', 'Close');
     close.addEventListener('click', function () { UI.closeModal(); });

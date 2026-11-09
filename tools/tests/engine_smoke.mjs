@@ -267,4 +267,20 @@ ok(ids(rot)==='6,5,4,3,2,1', '180 degree rotation swaps opposite pixels');
 Q.flipImage(rot,true,true);
 ok(ids(rot)==='1,2,3,4,5,6', 'rotating twice restores image');
 
+
+console.log('layer protection');
+Q.toast = () => {};
+const protectedDoc = new Q.Doc({width:16,height:16});
+protectedDoc.addLayer(); const protectedCel=protectedDoc.activeCel(true);
+protectedDoc.setLayerProp(1,'locked',true); const lockCount=protectedDoc.history.undoStack.length;
+protectedDoc.clearLayer(1); protectedDoc.deleteLayer(1); protectedDoc.mergeDown(1);
+ok(protectedDoc.layers.length===2 && protectedDoc.activeCel(false)===protectedCel && protectedDoc.history.undoStack.length===lockCount, 'locked layer cannot be cleared, deleted or merged');
+protectedDoc.history.undo(); ok(!protectedDoc.layers[1].locked, 'lock toggle is undoable');
+protectedDoc.history.redo(); ok(protectedDoc.layers[1].locked, 'lock toggle is redoable');
+protectedDoc.setLayerProp(1,'locked',false); protectedDoc.setLayerProp(0,'locked',true); protectedDoc.mergeDown(1);
+ok(protectedDoc.layers.length===2, 'cannot merge into a locked lower layer');
+const intersection=Q.intersectRect({x:0,y:0,w:5,h:5},{x:3,y:2,w:5,h:3});
+ok(intersection.x===3 && intersection.y===2 && intersection.w===2 && intersection.h===3, 'selection intersection bounds dirty regions');
+ok(Q.intersectRect({x:0,y:0,w:1,h:1},{x:1,y:1,w:2,h:2})===null, 'disjoint selection intersection is empty');
+
 console.log(`\nall ${checks} engine checks passed`);

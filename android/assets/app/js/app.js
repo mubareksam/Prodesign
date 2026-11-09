@@ -392,6 +392,7 @@
     if (!d) return;
     const layer=d.layer();
     if (!layer || !layer.visible) { Q.toast('This layer is hidden'); return; }
+    if (layer.locked) { Q.toast('This layer is locked'); return; }
     const sel=v.selection;
     if (!sel && (operation === 'clear' || operation === 'fill')) { Q.toast('Draw a rectangle or select all first'); return; }
     const r=sel || {x:0,y:0,w:d.width,h:d.height};
@@ -416,21 +417,60 @@
     } catch (err) { Q.toast('Could not edit this area on this device',4000); }
   };
 
+  App.copySelectionToLayer = function () {
+    const d=App.doc, v=App.view; if (!d) return;
+    if (!v.selection) { Q.toast('Draw a rectangle or select all first'); return; }
+    if (!d.activeCel(false)) { Q.toast('Draw on this layer first'); return; }
+    try {
+      d.copyRegionToLayer(v.selection); v.dirty=true; Q.UI.syncDoc(); App.markDirty();
+      Q.toast('Selection copied to a new layer · Undo to revert');
+    } catch (err) { Q.toast('Could not copy selection on this device',4000); }
+  };
+
+  App.moveScaleSelection = function (dx, dy, scale) {
+    const d=App.doc, v=App.view; if (!d) return;
+    const layer=d.layer(), cel=d.activeCel(false);
+    if (!layer || !layer.visible) { Q.toast('This layer is hidden'); return; }
+    if (layer.locked) { Q.toast('This layer is locked'); return; }
+    if (!cel) { Q.toast('Draw on this layer first'); return; }
+    if (!Number.isInteger(dx) || !Number.isInteger(dy) || Math.abs(dx)>d.width*2 || Math.abs(dy)>d.height*2 || !Number.isFinite(scale) || scale<0.25 || scale>4) { Q.toast('Invalid transform'); return; }
+    const src=v.selection || {x:0,y:0,w:d.width,h:d.height};
+    const dst={x:src.x+dx,y:src.y+dy,w:Math.max(1,Math.round(src.w*scale)),h:Math.max(1,Math.round(src.h*scale))};
+    if (dx===0 && dy===0 && dst.w===src.w && dst.h===src.h) { Q.toast('Nothing changed'); return; }
+    const x=Math.min(src.x,dst.x), y=Math.min(src.y,dst.y);
+    const right=Math.max(src.x+src.w,dst.x+dst.w), bottom=Math.max(src.y+src.h,dst.y+dst.h);
+    const rect=Q.intersectRect({x:x,y:y,w:right-x,h:bottom-y},{x:0,y:0,w:d.width,h:d.height});
+    try {
+      const copy=Q.canvas(src.w,src.h), temp=copy.getContext('2d'), ctx=cel.getContext('2d');
+      temp.drawImage(cel,src.x,src.y,src.w,src.h,0,0,src.w,src.h);
+      d.history.beginPixels(cel);
+      ctx.save(); ctx.setTransform(1,0,0,1,0,0); ctx.globalAlpha=1; ctx.globalCompositeOperation='source-over';
+      ctx.clearRect(src.x,src.y,src.w,src.h);
+      ctx.drawImage(copy,0,0,src.w,src.h,dst.x,dst.y,dst.w,dst.h); ctx.restore();
+      d.history.endPixels(rect);
+      if (v.selection) v.selection=Q.intersectRect(dst,{x:0,y:0,w:d.width,h:d.height});
+      v.dirty=true; App.markDirty(); Q.toast('Transform applied · Undo to revert');
+    } catch (err) { Q.toast('Could not transform this area on this device',4000); }
+  };
+
   App.fillAt = function (x, y) {
     const d = App.doc;
     if (!d || x < 0 || y < 0 || x >= d.width || y >= d.height) return;
     const layer = d.layer();
     if (!layer || !layer.visible) { Q.toast('This layer is hidden'); return; }
+    if (layer.locked) { Q.toast('This layer is locked'); return; }
+    const bounds=App.view.selection ? {...App.view.selection} : {x:0,y:0,w:d.width,h:d.height};
+    if (x < bounds.x || y < bounds.y || x >= bounds.x+bounds.w || y >= bounds.y+bounds.h) { Q.toast('Tap inside the selection'); return; }
     const cel = d.activeCel(true), color = App.view.color.slice(), tolerance = App.fillThreshold;
     App.view.locked = true;
     Q.UI.progress('Filling', 'Processing the current layer…', 0);
     setTimeout(function () {
       try {
         if (App.doc !== d || d.activeCel(false) !== cel) { Q.UI.endProgress(); return; }
-        const ctx=cel.getContext('2d'), image=ctx.getImageData(0,0,d.width,d.height);
-        const rect=Q.floodFill(image,x,y,color,tolerance);
+        const ctx=cel.getContext('2d'), image=ctx.getImageData(bounds.x,bounds.y,bounds.w,bounds.h);
+        const rect=Q.floodFill(image,x-bounds.x,y-bounds.y,color,tolerance);
         if (rect) {
-          d.history.beginPixels(cel); ctx.putImageData(image,0,0); d.history.endPixels(rect);
+          d.history.beginPixels(cel); ctx.putImageData(image,bounds.x,bounds.y); d.history.endPixels({x:rect.x+bounds.x,y:rect.y+bounds.y,w:rect.w,h:rect.h});
           App.view.dirty=true; App.markDirty();
         }
         Q.UI.endProgress(); Q.toast(rect ? 'Filled · Undo to revert' : 'Nothing to fill');
@@ -442,17 +482,19 @@
   App.applyEffect = function (kind, amount) {
     const d = App.doc, cel = d && d.activeCel(false);
     if (!cel) { Q.toast('Draw on this layer first'); return; }
+    if (d.layer().locked) { Q.toast('This layer is locked'); return; }
+    const bounds=App.view.selection ? {...App.view.selection} : {x:0,y:0,w:d.width,h:d.height};
     if (amount <= 0) { Q.toast('Choose an effect strength'); return; }
     Q.UI.progress('Applying effect', 'Processing the current layer…', 0);
     setTimeout(function () {
       try {
         if (App.doc !== d || d.activeCel(false) !== cel) { Q.UI.endProgress(); Q.toast('Effect cancelled'); return; }
         const ctx = cel.getContext('2d');
-        const image = ctx.getImageData(0, 0, d.width, d.height);
+        const image = ctx.getImageData(bounds.x, bounds.y, bounds.w, bounds.h);
         Q.applyPixelEffect(image, kind, amount);
         d.history.beginPixels(cel);
-        ctx.putImageData(image, 0, 0);
-        d.history.endPixels({x:0,y:0,w:d.width,h:d.height});
+        ctx.putImageData(image, bounds.x, bounds.y);
+        d.history.endPixels(bounds);
         App.view.dirty = true; App.markDirty();
         Q.UI.endProgress(); Q.toast('Effect applied · Undo to revert');
       } catch (err) {

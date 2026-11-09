@@ -175,13 +175,14 @@
 
   /* ── stroke ─────────────────────────────────────────────── */
 
-  function Stroke(doc, brush, rgb, size, opacity) {
+  function Stroke(doc, brush, rgb, size, opacity, selection) {
     this.doc = doc;
     this.brush = brush;
     this.rgb = rgb;
     this.size = Math.max(0.7, size);
     this.opacity = Q.clamp(opacity, 0.01, 1);
     this.eraser = !!brush.eraser;
+    this.selection = selection ? {x:selection.x,y:selection.y,w:selection.w,h:selection.h} : null;
     this.ctx = null;
     this.cel = null;
     this.dirty = null;
@@ -341,6 +342,7 @@
 
     const target = this.wet ? this.bufCtx : this.ctx;
     target.save();
+    if (this.selection) { const r=this.selection; target.beginPath(); target.rect(r.x,r.y,r.w,r.h); target.clip(); }
     if (this.eraser) {
       target.globalCompositeOperation = 'destination-out';
       target.globalAlpha = Q.clamp(alpha, 0.01, 1);
@@ -401,6 +403,7 @@
     const ctx = this.ctx;
     const snap = doc.history.snap;
     ctx.save();
+    if (this.selection) { const s=this.selection; ctx.beginPath(); ctx.rect(s.x,s.y,s.w,s.h); ctx.clip(); }
     ctx.globalAlpha = 1;
     ctx.globalCompositeOperation = 'source-over';
     ctx.clearRect(x, y, w, h);
@@ -413,7 +416,7 @@
   Stroke.prototype.end = function () {
     if (this.curvePrevious) this._curveTo(this.curvePrevious, this.curvePrevious);
     this._flush();
-    this.doc.history.endPixels(this.dirty);
+    this.doc.history.endPixels(this.selection && this.dirty ? Q.intersectRect(this.dirty, this.selection) : this.dirty);
     return this.dirty;
   };
 
@@ -427,6 +430,7 @@
       const h = Math.min(doc.height - y, Math.ceil(r.h) + 1);
       const ctx = this.ctx;
       ctx.save();
+      if (this.selection) { const s=this.selection; ctx.beginPath(); ctx.rect(s.x,s.y,s.w,s.h); ctx.clip(); }
       ctx.globalCompositeOperation = 'source-over';
       ctx.globalAlpha = 1;
       ctx.clearRect(x, y, w, h);

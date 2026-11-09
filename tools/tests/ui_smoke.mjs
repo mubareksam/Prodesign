@@ -219,6 +219,9 @@ async function run() {
   Q.UI.closeModal();
   const blendSel = doc.querySelectorAll('#trayBody .layer-row select');
   ok(blendSel.length >= 0, 'layer rows built without errors');
+  const mergeChip=Array.from(doc.querySelectorAll('#trayBody .chip')).find(x=>x.textContent.includes('Merge'));
+  mergeChip.click(); ok(App.doc.layers.length===1, 'layer tray merge action works');
+  App.undo(); ok(App.doc.layers.length===2, 'layer tray merge can be undone');
   Q.UI.closeTray();
 
   console.log('colour');
@@ -470,7 +473,7 @@ async function run() {
 
   console.log('selection and transforms');
   Q.UI.selectionDialog();
-  ok(doc.querySelector('#modalBody').textContent.includes('does not clip brush strokes'), 'selection dialog explains scope');
+  ok(doc.querySelector('#modalBody').textContent.includes('clips brushes, erasers, flood fill and effects'), 'selection dialog explains scope');
   function selectionAction(label) {
     const b=Array.from(doc.querySelectorAll('#modalBody button')).find(x=>x.textContent===label);
     if (!b) throw new Error('missing selection action '+label); b.click();
@@ -497,6 +500,35 @@ async function run() {
   Q.UI.selectionDialog(); selectionAction('Select all');
   const id=App.doc.id; App.createDoc(64,64,'next');
   ok(App.doc.id!==id && App.view.selection===null, 'selection is cleared when switching documents');
+
+  console.log('layer lock and transform dialog');
+  Q.UI.layerSheet(0);
+  const lockButton=Array.from(doc.querySelectorAll('#modalBody button')).find(x=>x.textContent==='Lock layer');
+  ok(!!lockButton, 'layer sheet offers locking'); lockButton.click();
+  ok(App.doc.layer().locked===true, 'layer can be locked');
+  const lockedHistory=App.doc.history.undoStack.length, lockedPoint=App.view.toScreen(20,20);
+  pointer(view,'pointerdown',lockedPoint.x,lockedPoint.y,{id:91}); pointer(view,'pointerup',lockedPoint.x,lockedPoint.y,{id:91});
+  App.fillAt(20,20); App.applyEffect('invert',1); App.editSelection('flipH');
+  ok(App.doc.history.undoStack.length===lockedHistory && !App.doc.activeCel(false), 'locked layer blocks painting, fill and effects');
+  await App.saveNow(false); const loaded=await Q.Store.load(App.doc.id);
+  ok(loaded.layer().locked, 'layer lock persists in saved artwork');
+  Q.UI.layerSheet(0); Array.from(doc.querySelectorAll('#modalBody button')).find(x=>x.textContent==='Unlock layer').click();
+  ok(!App.doc.layer().locked, 'layer can be unlocked');
+  App.doc.activeCel(true); App.view.selection={x:5,y:5,w:10,h:10};
+  Q.UI.selectionDialog(); selectionAction('Move / scale');
+  const xInput=doc.querySelector('input[aria-label="Move X (px)"]'), yInput=doc.querySelector('input[aria-label="Move Y (px)"]'), sInput=doc.querySelector('input[aria-label="Scale (%)"]');
+  sInput.value='500'; click('#modalBody .btn.primary');
+  ok(visible(doc.querySelector('#modal')) && doc.querySelector('.canvas-error').textContent, 'invalid scale is rejected');
+  xInput.value='3'; yInput.value='-2'; sInput.value='200'; const beforeMove=App.doc.history.undoStack.length;
+  click('#modalBody .btn.primary');
+  ok(App.doc.history.undoStack.length===beforeMove+1 && App.view.selection.x===8 && App.view.selection.y===3 && App.view.selection.w===20, 'move and scale updates selection and creates one undo step');
+
+  Q.UI.selectionDialog(); selectionAction('Copy to layer');
+  ok(App.doc.layers.length===2 && App.doc.layer().name==='Selection copy', 'copy selection adds a new layer');
+  App.undo(); ok(App.doc.layers.length===1, 'copy to layer can be undone');
+  App.redo(); ok(App.doc.layers.length===2, 'copy to layer can be redone');
+
+
 
   await App.saveNow(false);
   console.log(failures ? `\n${failures} check(s) FAILED` : '\nall UI checks passed');
