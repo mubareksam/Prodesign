@@ -1155,13 +1155,38 @@
   UI.motionGuideDialog = function () {
     app().stopPlay(); const d=app().doc, v=app().view; if (!d) return;
     const card=Q.crel('div'); card.appendChild(Q.crel('h2',null,'Animation motion guide'));
-    card.appendChild(Q.crel('p','sub','Draw one visual path as a guide across frames. It does not move artwork, create keyframes or appear in exports. The path is saved and can be undone.'));
+    card.appendChild(Q.crel('p','sub','Draw one saved path as a guide, then optionally generate translated cels along it. The guide itself does not appear in exports.'));
     const actions=Q.crel('div','menu-grid');
     function button(label,fn) { const b=Q.crel('button','menu-item',label); b.addEventListener('click',function () { UI.closeModal(); fn(); }); actions.appendChild(b); }
     button('Draw or replace guide',function () { v.tool='motionGuide'; v.motionDraft=null; Q.el('#btnFill').classList.remove('on'); Q.el('#btnEyedrop').classList.remove('on'); Q.hint('Draw a motion guide on the canvas',3000); });
     button(d.motionGuideVisible ? 'Hide guide' : 'Show guide',function () { d.setMotionGuideVisible(!d.motionGuideVisible); v.dirty=true; app().markDirty(); });
     button('Clear guide',function () { if (d.motionGuide.length) d.setMotionGuide([]); v.dirty=true; app().markDirty(); });
+    button('Generate motion along guide',function () { UI.motionBakeDialog(); });
     card.appendChild(actions); const close=Q.crel('button','btn ghost','Close'); close.addEventListener('click',function () { UI.closeModal(); }); card.appendChild(close); UI.openModal(card);
+  };
+
+  UI.motionBakeDialog = function () {
+    app().stopPlay(); const d=app().doc; if (!d) return;
+    const card=Q.crel('div'); card.appendChild(Q.crel('h2',null,'Generate path motion'));
+    card.appendChild(Q.crel('p','sub','Copies the source cel on the current layer into every frame of the range, translating it along the guide in the selected direction. Existing cels in the range are replaced, including the source if it is in range and skipped frames. Positions use frame numbers, not holds or playback timing. Pixels outside the canvas are cropped. Undo restores all replaced cels.'));
+    function field(label,value) { const row=Q.crel('div','field'); row.appendChild(Q.crel('label',null,label)); const input=Q.crel('input','select'); input.type='number'; input.min=1; input.max=d.frames.length; input.value=value; input.setAttribute('aria-label',label); row.appendChild(input); card.appendChild(row); return input; }
+    const source=field('Motion source frame',d.activeFrame+1), first=field('Motion first frame',1), last=field('Motion last frame',d.frames.length);
+    const row=Q.crel('div','field'); row.appendChild(Q.crel('label',null,'Easing')); const easing=Q.crel('select'); easing.setAttribute('aria-label','Motion easing');
+    [['linear','Linear'],['in','Ease in'],['out','Ease out'],['inout','Ease in and out']].forEach(function (choice) { const option=Q.crel('option'); option.value=choice[0]; option.textContent=choice[1]; easing.appendChild(option); }); row.appendChild(easing); card.appendChild(row);
+    const directionRow=Q.crel('div','field'); directionRow.appendChild(Q.crel('label',null,'Path direction')); const direction=Q.crel('select'); direction.setAttribute('aria-label','Motion direction');
+    [['forward','Start to end'],['reverse','End to start']].forEach(function (choice) { const option=Q.crel('option'); option.value=choice[0]; option.textContent=choice[1]; direction.appendChild(option); }); directionRow.appendChild(direction); card.appendChild(directionRow);
+    const error=Q.crel('p','canvas-error'); error.setAttribute('role','alert'); card.appendChild(error);
+    const actions=Q.crel('div','modal-actions'), cancel=Q.crel('button','btn ghost','Cancel'), review=Q.crel('button','btn primary','Review replacement');
+    cancel.addEventListener('click',function () { UI.closeModal(); }); review.addEventListener('click',function () {
+      if (!source.value.trim() || !first.value.trim() || !last.value.trim()) { error.textContent='Enter a source and destination range.'; return; }
+      const src=Number(source.value)-1, start=Number(first.value)-1, end=Number(last.value)-1, mode=easing.value, reverse=direction.value==='reverse';
+      const msg=d.validateMotionBake(src,start,end,mode,reverse); if (msg) { error.textContent=msg; return; }
+      const layer=d.layer(), cel=d.cel(src,d.activeLayer,false), guide=d.motionGuide;
+      UI.confirm('Replace '+(end-start+1)+' cels?', 'This replaces the current layer in every frame of the range, including skipped frames. The change is undoable.',function () {
+        if (app().doc!==d || d.layer()!==layer || d.cel(src,d.activeLayer,false)!==cel || d.motionGuide!==guide) { Q.toast('Motion cancelled because the artwork changed',4000); return; }
+        const result=app().bakeMotionPath(src,start,end,mode,reverse); if (result) Q.toast(result,4000);
+      },'Generate');
+    }); actions.appendChild(cancel); actions.appendChild(review); card.appendChild(actions); UI.openModal(card);
   };
 
   UI.copyCelDialog = function () {

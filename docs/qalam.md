@@ -8,11 +8,11 @@ brushes, layers with blend modes, a colour wheel, a frame timeline with onion sk
 Procreate's gesture vocabulary, PNG/GIF export and device-dependent MP4 export — all offline, with no account and
 no network permissions at all.
 
-- Package: `com.qalam.studio` · version 2.6 (versionCode 17)
+- Package: `com.qalam.studio` · version 2.7 (versionCode 18)
 - minSdk 26 (Android 8.0) · targetSdk 33 · armeabi-v7a/arm64/x86/x86_64 independent
   (everything is HTML/JS running inside the app's own `WebView`, so the APK has no
   native code)
-- APK: **`artifacts/Qalam-2.6.apk`** (~270 KB), signed with a v1+v2 scheme
+- APK: **`artifacts/Qalam-2.7.apk`** (~272 KB), signed with a v1+v2 scheme
 - The written analysis of Procreate that this app was specified from:
   [`docs/procreate-analysis.md`](procreate-analysis.md)
 
@@ -20,7 +20,7 @@ no network permissions at all.
 
 ## 1. Install
 
-1. Copy `artifacts/Qalam-2.6.apk` to the phone (USB, Drive, chat to yourself — anything).
+1. Copy `artifacts/Qalam-2.7.apk` to the phone (USB, Drive, chat to yourself — anything).
 2. Open it with the phone's file manager. Android will ask to allow installs from
    that app the first time ("Install unknown apps").
 3. Install and open **Qalam**. If an earlier Qalam version is already installed, Android should offer an update that preserves its data. Back up important artwork first. Android does not allow this app to silently uninstall itself; do not uninstall it unless you have backed up its local artwork.
@@ -147,11 +147,24 @@ Bottom bar: **Gallery · Layer · Brush · Colour · Timeline · Menu** (plus **
   storage fallback may run out of space sooner when audio is saved; export and back
   up work regularly. The picker and audio playback have not been tested on a
   physical Android device.
-- **Timeline → Motion guide** — draw or replace one freehand path, show/hide it,
-  or clear it. The guide is shared across frames, is saved with the project and its
-  edits can be undone. It is an editor overlay only and is excluded from exports.
-  It is not a motion path that animates artwork, a snapping guide or a keyframe
-  system. The path is limited to 512 sampled points.
+- **Timeline → Guides & audio category → Motion guide** — draw or replace one
+  freehand path (up to 512 points), show/hide it, or clear it. The guide is saved,
+  undoable and editor-only. To animate, choose **Generate motion along guide**:
+  select a source frame on the active layer, an existing inclusive frame range,
+  forward/reverse direction and linear, ease-in, ease-out or ease-in-out timing.
+  The source drawing begins at its original position and moves by the path's change
+  in position; draw the guide in the desired direction, independently of where the
+  drawing sits. Path positions are sampled by distance. Destination cels on the
+  current layer, including the source if in the range and skipped frames, are
+  **replaced after confirmation**; all other layers and frame settings remain as
+  they were. Undo restores the previous cels in one step. Locked or alpha-locked
+  layers are rejected. The operation allocates at most 64 MiB in new cel pixels;
+  undo, existing cels and canvas overhead use additional memory. Use a smaller
+  range or canvas if necessary. Generated frames are normal saved raster cels and
+  appear in exports, but the guide overlay does not. Movement outside the canvas is
+  cropped and fractional movement may soften pixels. Spacing uses frame numbers,
+  not holds, skipped-frame playback or real time. This is baked translation only,
+  not editable keyframes, rotation, scale, snapping, rigging or IK.
 - **Fill tool** — tap the bucket on the right rail, then tap an area. It fills the
   connected pixels on the current layer with the selected colour at full opacity;
   undo reverses the fill. **Menu → Fill settings** adjusts colour tolerance. It
@@ -274,7 +287,7 @@ tools/
   tests/pixel_integration.mjs real raster and animation export checks
   tests/gif_roundtrip.mjs    encodes a GIF and decodes it with an independent decoder
   tests/ui_smoke.mjs         jsdom boot + full UI drive (gallery -> export)
-artifacts/Qalam-2.6.apk           the signed, installable artefact
+artifacts/Qalam-2.7.apk           the signed, installable artefact
 docs/procreate-analysis.md   the Procreate study this app was built from
 docs/qalam.md                this file
 ```
@@ -304,7 +317,7 @@ Design notes worth knowing before changing code:
 
 ```bash
 bash tools/fetch-toolchain.sh     # once per machine: JVM, apktool, aapt2, jars, npm
-bash tools/build.sh               # -> artifacts/Qalam-2.6.apk (signed + verified)
+bash tools/build.sh               # -> artifacts/Qalam-2.7.apk (signed + verified)
 bash tools/check_reference.sh     # optional: javac-check the Java mirrors
 ```
 
@@ -339,7 +352,7 @@ install, not merely that a build command exited 0.
 
 ## 7. Known limits & roadmap
 
-This is not a full Procreate replacement. Canvas sizes are finite (up to 4096 px per side), and artwork is raster: magnification up to 64× reveals pixels rather than creating infinite detail. Layer groups, audio export/mixing, automated motion paths, keyframes/easing, IK, camera animation, morphing and particles are not implemented. Onion skins provide ghost frames. Brush Studio edits existing presets only;
+This is not a full Procreate replacement. Canvas sizes are finite (up to 4096 px per side), and artwork is raster: magnification up to 64× reveals pixels rather than creating infinite detail. Layer groups, audio export/mixing, editable keyframe tracks, IK, camera animation, morphing and particles are not implemented. Path animation generates raster cels rather than live keyframes. Onion skins provide ghost frames. Brush Studio edits existing presets only;
 custom tips/grains, dual brushes and import/export are not implemented. Guide
 snapping, adjustable vanishing-point placement, rectangle/arc QuickShape, imported
 image references, automatic selection, feathered masks, interactive

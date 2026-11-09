@@ -13,6 +13,27 @@
       track.data.length<=Math.ceil((2*1024*1024)/3)*4+64 &&
       /^data:audio\/(mpeg|mp4|wav|ogg|webm);base64,[A-Za-z0-9+/]+={0,2}$/.test(track.data);
   };
+  // Sample a polyline by distance rather than by point count; duplicate points are safe.
+  Q.motionPathSampler = function (points) {
+    const segments=[]; let total=0;
+    for (let i=1;i<points.length;i++) {
+      const a=points[i-1], b=points[i], length=Math.hypot(b.x-a.x,b.y-a.y);
+      if (length>0) { segments.push({a,b,start:total,length}); total+=length; }
+    }
+    if (!total) return null;
+    return function (fraction) {
+      const distance=Q.clamp(fraction,0,1)*total;
+      const segment=segments.find(s=>distance<=s.start+s.length) || segments[segments.length-1];
+      const u=Q.clamp((distance-segment.start)/segment.length,0,1);
+      return {x:segment.a.x+(segment.b.x-segment.a.x)*u,y:segment.a.y+(segment.b.y-segment.a.y)*u};
+    };
+  };
+  Q.motionEase = function (t,mode) {
+    if (mode==='in') return t*t;
+    if (mode==='out') return 1-(1-t)*(1-t);
+    if (mode==='inout') return t*t*(3-2*t);
+    return t;
+  };
   let seq = 1;
   function makeLayer(name) { return { id: Q.uid(), name: name || `Layer ${++seq}`, visible: true, opacity: 1, blend: 'source-over' }; }
   class History {
@@ -199,6 +220,27 @@
       if (this.width*this.height*4*targets.length>64*1024*1024) return 'Too many pixels to copy at once; use a smaller range';
       const copies=targets.map(()=>Q.copyCanvas(src)), li=this.activeLayer;
       this.history.struct(function () { targets.forEach((frame,i)=>{ this.frames[frame].cels[li]=copies[i]; }); });
+      return null;
+    }
+    // Validation is shared by the confirmation UI and the actual atomic operation.
+    validateMotionBake(source,start,end,easing,reverse) {
+      if (!Number.isInteger(source) || !Number.isInteger(start) || !Number.isInteger(end) || source<0 || source>=this.frames.length || start<0 || end<=start || end>=this.frames.length) return 'Choose a valid source and at least two destination frames';
+      if (!['linear','in','out','inout'].includes(easing) || (reverse !== undefined && typeof reverse !== 'boolean')) return 'Choose a valid easing and direction';
+      if (this.layer().locked || this.layer().alphaLocked) return 'Unlock the layer and alpha first';
+      if (!this.cel(source,this.activeLayer,false)) return 'Source cel is empty';
+      if (!Q.motionPathSampler(this.motionGuide)) return 'Draw a motion guide with at least two different points';
+      if (this.width*this.height*4*(end-start+1)>64*1024*1024) return 'Too many pixels to generate at once; use a smaller range';
+      return null;
+    }
+    bakeMotionPath(source,start,end,easing,reverse) {
+      const error=this.validateMotionBake(source,start,end,easing,reverse); if (error) return error;
+      const sampler=Q.motionPathSampler(this.motionGuide), origin=sampler(reverse ? 1 : 0), src=this.cel(source,this.activeLayer,false), li=this.activeLayer;
+      const copies=[];
+      for (let frame=start;frame<=end;frame++) {
+        const t=Q.motionEase((frame-start)/(end-start),easing), p=sampler(reverse ? 1-t : t), cv=Q.canvas(this.width,this.height);
+        cv.getContext('2d').drawImage(src,p.x-origin.x,p.y-origin.y); copies.push(cv);
+      }
+      this.history.struct(function () { copies.forEach((cel,i)=>{ this.frames[start+i].cels[li]=cel; }); });
       return null;
     }
     deleteFrameRange(start,end) {

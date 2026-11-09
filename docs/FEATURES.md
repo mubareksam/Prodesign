@@ -42,9 +42,15 @@ The supplied feature inventory is a roadmap, not a list of completed work.
   skips and playback range. Ping-pong is silent; synchronization is approximate.
   There is no waveform, trimming, offsets, multiple tracks or audio in any export.
   Actual format support and picker/playback behaviour need physical-device testing.
-- One freehand visual motion guide can be drawn, hidden, cleared, saved and undone;
-  it is shared across frames and is not exported. It does not animate or snap
-  artwork and does not provide keyframes.
+- One saved freehand motion guide can generate translated raster cels along its
+  path in forward or reverse direction, with linear, ease-in, ease-out and in-out
+  easing. A chosen source cel is copied into an existing range on the current layer,
+  replacing destination cels after confirmation; one undo restores them. Sampling is
+  by path distance and frame index, ignoring frame holds and skips. Moving off-canvas
+  crops pixels; subpixel movement may soften them. The guide itself is editor-only;
+  generated cels are saved and exported. Allocation is capped at 64 MiB per operation,
+  but history and existing cels consume more memory. This is destructive baking,
+  not a live transform track or editable keyframes; no rotation, scaling or IK.
 - Temporary rectangular and freehand lasso selections clip brushes, erasers, flood
   fill and effects. Both support fill/clear and copy to a new layer. Rectangle-only
   flips, 180° rotation and numeric move/scale are undoable; lasso transforms are
@@ -99,4 +105,4 @@ Apple Pencil-specific controls are not applicable on Android. See the original
 [Procreate analysis](procreate-analysis.md) for background; its feature matrix
 predates version 2.5.
 
-Automated animation motion paths, keyframes/easing, IK, camera animation, morphing, particle animation and audio export or mixing are not implemented. Onion skins are available as ghost frames. The canvas is finite raster, not infinite or resolution-independent.
+Editable keyframe tracks, IK, camera animation, morphing, particle animation and audio export or mixing are not implemented. Path-based cel generation and easing are available as a limited baked translation tool. Onion skins are available as ghost frames. The canvas is finite raster, not infinite or resolution-independent.

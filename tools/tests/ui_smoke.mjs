@@ -796,6 +796,24 @@ async function run() {
   ok(sections.length===5 && sections[0].open && !sections[3].open, 'actions use expandable categories'); sections[3].open=true;
   ok(sections[3].open && sections[3].textContent.includes('Export GIF'), 'export category expands to reveal export actions'); Q.UI.closeTray();
 
+  console.log('2.7 motion path generation');
+  App.createDoc(64,64,'Motion bake'); App.doc.activeCel(true); App.addFrame(false); App.addFrame(false);
+  App.doc.setMotionGuide([{x:4,y:4},{x:20,y:4}]); App.doc.history.clear();
+  Q.UI.motionGuideDialog(); ok(doc.querySelector('#modalBody').textContent.includes('Generate motion along guide'), 'motion generation is accessible from guide controls');
+  Array.from(doc.querySelectorAll('#modalBody button')).find(x=>x.textContent==='Generate motion along guide').click();
+  click('#modalBody .btn.primary'); ok(doc.querySelector('.canvas-error').textContent.includes('empty'), 'empty motion source is rejected');
+  doc.querySelector('[aria-label="Motion source frame"]').value='1'; doc.querySelector('[aria-label="Motion last frame"]').value='1'; click('#modalBody .btn.primary');
+  ok(doc.querySelector('.canvas-error').textContent.includes('two destination'), 'invalid motion range is rejected');
+  doc.querySelector('[aria-label="Motion last frame"]').value='3'; doc.querySelector('[aria-label="Motion easing"]').value='inout'; click('#modalBody .btn.primary');
+  ok(doc.querySelector('#modalBody').textContent.includes('Replace 3 cels') && App.doc.history.undoStack.length===0, 'motion replacement requires confirmation');
+  click('#modalBody .btn.ghost'); ok(!App.doc.cel(1,0,false), 'cancelling motion does not change cels');
+  Q.UI.motionBakeDialog(); doc.querySelector('[aria-label="Motion source frame"]').value='1'; doc.querySelector('[aria-label="Motion direction"]').value='reverse'; click('#modalBody .btn.primary'); click('#modalBody .btn.danger');
+  ok(!!App.doc.cel(1,0,false) && !!App.doc.cel(2,0,false) && App.doc.history.undoStack.length===1, 'confirmed motion generates cels in one step');
+  App.undo(); ok(!App.doc.cel(1,0,false), 'motion generation undo restores cels'); App.redo();
+  await App.saveNow(false); const motionReload=await Q.Store.load(App.doc.id); ok(!!motionReload.cel(1,0,false) && !!motionReload.cel(2,0,false) && motionReload.motionGuide.length===2, 'generated motion and path survive save and reopen');
+  Q.UI.motionBakeDialog(); doc.querySelector('[aria-label="Motion source frame"]').value='1'; click('#modalBody .btn.primary'); App.doc.setMotionGuide([{x:1,y:1},{x:2,y:2}]); const hist=App.doc.history.undoStack.length; click('#modalBody .btn.danger');
+  ok(App.doc.history.undoStack.length===hist && doc.querySelector('#toast').textContent.includes('cancelled'), 'motion confirmation cancels if guide changes');
+
   await App.saveNow(false);
   console.log(failures ? `\n${failures} check(s) FAILED` : '\nall UI checks passed');
   process.exit(failures ? 1 : 0);

@@ -498,6 +498,13 @@
       App.view.dirty=true; Q.UI.syncDoc(); Q.UI.refreshTimeline(); App.markDirty(); Q.toast('Cels copied · Undo to revert'); return null;
     } catch (err) { return 'Could not copy cels on this device'; }
   };
+  App.bakeMotionPath = function (source,start,end,easing,reverse) {
+    App.stopPlay(); const d=App.doc; if (!d) return 'No document';
+    try {
+      const error=d.bakeMotionPath(source,start,end,easing,reverse); if (error) return error;
+      App.view.dirty=true; Q.UI.syncDoc(); Q.UI.refreshTimeline(); App.markDirty(); Q.toast('Motion generated · Undo to restore'); return null;
+    } catch (err) { return 'Could not generate motion on this device'; }
+  };
   App.deleteFrameRange = function (start,end) {
     App.stopPlay(); const d=App.doc; if (!d || !d.deleteFrameRange(start,end)) return false;
     App.view.dirty=true; Q.UI.syncDoc(); Q.UI.refreshTimeline(); App.markDirty(); Q.toast('Frames deleted · Undo to restore'); return true;

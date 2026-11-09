@@ -363,4 +363,45 @@ for (const dir of ['horizontal','vertical','diagonal','radial']) {
  }
 }
 
+
+{
+ const sample=Q.motionPathSampler([{x:0,y:0},{x:2,y:0},{x:2,y:0},{x:2,y:6}]);
+ ok(sample(0.5).x===2 && sample(0.5).y===2 && sample(1).y===6, 'path samples are distance based and tolerate duplicate points');
+ ok(Q.motionPathSampler([{x:1,y:1},{x:1,y:1}])===null, 'zero-length path is rejected');
+ ok(Q.motionEase(0.25,'linear')===0.25 && Q.motionEase(0.25,'in')===0.0625 && Q.motionEase(0.25,'out')===0.4375 && Q.motionEase(0.25,'inout')===0.15625, 'all easing modes interpolate correctly');
+}
+for (const mode of ['linear','in','out','inout']) {
+ const d=setup(); const src=d.activeCel(true), ctx=src.getContext('2d'); ctx.fillStyle='#ff0000'; ctx.fillRect(1,1,1,1);
+ for(let i=1;i<5;i++) d.addFrame(false);
+ d.cel(2,0,true).getContext('2d').fillRect(10,10,1,1); d.frames[3].skipped=true; d.frames[2].duration=5;
+ d.setMotionGuide([{x:1,y:1},{x:13,y:1}]); d.history.clear();
+ ok(d.bakeMotionPath(0,0,4,mode)===null, mode+' motion bake succeeds');
+ const expect=mode==='linear' ? 4 : mode==='in' ? 2 : mode==='out' ? 6 : 3;
+ ok(pixel(d.cel(1,0,false),expect,1)[3]>0 && pixel(d.cel(0,0,false),1,1)[0]===255 && pixel(d.cel(4,0,false),13,1)[0]===255, mode+' motion places start, eased intermediate and end pixels');
+ ok(pixel(d.cel(2,0,false),10,10)[3]===0 && d.frames[3].skipped && d.frames[2].duration===5 && !!d.cel(3,0,false), mode+' motion replaces skipped cels without changing timing');
+ ok(d.history.undoStack.length===1, mode+' motion is one history step'); d.history.undo();
+ ok(d.cel(1,0,false)===null && pixel(d.cel(2,0,false),10,10)[3]===255 && d.cel(0,0,false)===src, mode+' undo restores all source and destination cels');
+ d.history.redo(); ok(pixel(d.cel(4,0,false),13,1)[0]===255, mode+' redo restores generated pixels');
+ const rendered=d.flatten(4,{background:false}); ok(pixel(rendered,13,1)[0]===255, mode+' generated cels render for exports');
+}
+{
+ const d=setup(); d.activeCel(true).getContext('2d').fillRect(10,4,1,1); d.addFrame(false); d.addFrame(false); d.setMotionGuide([{x:1,y:1},{x:7,y:1}]);
+ ok(d.bakeMotionPath(0,0,2,'linear',true)===null && pixel(d.cel(0,0,false),10,4)[3]===255 && pixel(d.cel(1,0,false),7,4)[3]===255 && pixel(d.cel(2,0,false),4,4)[3]===255, 'reverse path motion follows the guide backwards from source position');
+}
+{
+ const d=setup(); d.activeCel(true).getContext('2d').fillRect(15,15,1,1); d.addFrame(false); d.addFrame(false); d.setMotionGuide([{x:2,y:2},{x:7,y:2},{x:7,y:7}]); d.history.clear();
+ ok(d.bakeMotionPath(0,1,2,'linear')===null && pixel(d.cel(1,0,false),15,15)[3]===255 && pixel(d.cel(2,0,false),15,15)[3]===0, 'out of range source is preserved and moving beyond canvas crops pixels');
+ d.history.undo(); d.layer().locked=true; ok(!!d.bakeMotionPath(0,0,2,'linear') && !d.cel(1,0,false) && d.history.undoStack.length===0, 'locked layer refuses motion without changes');
+ d.layer().locked=false; d.layer().alphaLocked=true; ok(!!d.bakeMotionPath(0,0,2,'linear'), 'alpha-locked layer refuses motion'); d.layer().alphaLocked=false;
+ ok(!!d.bakeMotionPath(0,0,0,'linear') && !!d.bakeMotionPath(0,0,2,'bad') && !!d.bakeMotionPath(1,0,2,'linear'), 'invalid range, easing and empty source are rejected');
+ d.motionGuide=[{x:1,y:1},{x:1,y:1}]; ok(!!d.bakeMotionPath(0,0,2,'linear'), 'zero-length guide refuses motion');
+ d.motionGuide=[{x:1,y:1},{x:2,y:1}]; d.width=4096; d.height=4096; ok(!!d.bakeMotionPath(0,0,2,'linear'), 'motion allocation cap prevents oversized operations');
+}
+{
+ const d=setup(); d.activeCel(true).getContext('2d').fillRect(1,1,1,1); d.addFrame(false); d.setMotionGuide([{x:0,y:0},{x:5,y:0}]); d.history.clear();
+ const originalCanvas=Q.canvas; let count=0; Q.canvas=function (...args) { if (++count===2) throw Error('allocation failed'); return originalCanvas(...args); };
+ let failed=false; try { d.bakeMotionPath(0,0,1,'linear'); } catch(e) { failed=true; } finally { Q.canvas=originalCanvas; }
+ ok(failed && d.cel(1,0,false)===null && d.history.undoStack.length===0 && pixel(d.cel(0,0,false),1,1)[3]===255, 'allocation failure leaves every cel and history untouched');
+}
+
 console.log(`all ${n} raster integration checks passed`);

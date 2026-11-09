@@ -4,20 +4,20 @@ Developed by **Qmer**. An offline painting and frame-animation studio for Androi
 brushes, layers, a colour wheel, a frame timeline with onion skin, Procreate's gesture
 vocabulary, and PNG/GIF export. No account, no ads, no network permission.
 
-**Download:** [`Qalam-2.6.apk`](../artifacts/Qalam-2.6.apk) (~270 KB)
+**Download:** [`Qalam-2.7.apk`](../artifacts/Qalam-2.7.apk) (~272 KB)
 
 | | |
 |---|---|
 | Package | `com.qalam.studio` |
-| Version | 2.6 (versionCode 17) |
+| Version | 2.7 (versionCode 18) |
 | Requires | Android 8.0+ (minSdk 26), built for targetSdk 33 |
 | Permissions | `VIBRATE` only — no internet, no storage, no location |
 | Signing | APK Signature Scheme v1 + v2, self-signed with a public test key |
-| SHA-256 | `db44bb5880b2af9ad40974a73054a9cbb4ebde41d4a1c5f3076abfd53341f354` |
+| SHA-256 | `9514a6e9dab36ca45a720146ada05c494b68b706fb16b0be286a6aebd9e857e6` |
 
 ## Install
 
-1. Download `Qalam-2.6.apk` to the phone (or copy it over USB).
+1. Download `Qalam-2.7.apk` to the phone (or copy it over USB).
 2. Open it from the file manager. Android will ask you to allow installs from that
    app the first time ("Install unknown apps") — allow it, then install.
 3. Open **Qalam**.
@@ -68,7 +68,7 @@ timeline, play at 1–30 fps with frame holds, and configurable onion skins.
 label, hold, reverse, duplicate, skip or include a frame range with undo. Onion skins
 have independent directional counts, colour, layer and stacking options. Skipped frames
 are omitted from playback and GIF/MP4, but retained in PNG sequences and sprite sheets.
-Labels are not nested groups. A saved visual motion guide can be drawn across frames; it does not animate artwork or appear in exports. A single imported audio track can be used for forward preview only (2 MiB limit; ping-pong and exports are silent). Cycle timing is displayed on the timeline. Copy a cel
+Labels are not nested groups. A saved motion guide can generate translated raster cels along its path with easing; the guide overlay itself does not appear in exports. Generated cels replace the current layer within a chosen range after confirmation and can be undone. A single imported audio track can be used for forward preview only (2 MiB limit; ping-pong and exports are silent). Cycle timing is displayed on the timeline. Copy a cel
 across frames or delete a frame range with confirmation and undo; cel copying is
 limited to 64 MiB of new pixel data per operation.
 PNG sprite sheets include every frame once, without timing metadata.
