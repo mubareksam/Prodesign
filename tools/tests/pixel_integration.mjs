@@ -295,4 +295,49 @@ for (const [name,brush,opacity] of [['dry',pen,1],['wet',{...pen,flow:0.5},0.6],
  view.render(); ok(pixel(canvas,3,3)[0]>200 && pixel(canvas,3,3)[1]<200, 'motion guide is visible in editor overlay');
 }
 
+
+{
+ const d=setup(), base=d.activeCel(true), b=base.getContext('2d'); b.fillStyle='rgba(0,0,255,0.5)'; b.fillRect(2,2,6,6);
+ d.addLayer(); let top=d.activeCel(true), t=top.getContext('2d'); t.fillStyle='#ff0000'; t.fillRect(0,0,16,16); d.setLayerClipped(1,true);
+ let flat=d.flatten(0,{background:false}); let p=pixel(flat,4,4);
+ ok(p[0]>250 && p[2]===0 && Math.abs(p[3]-128)<=1, 'clipped layer preserves semi-transparent base alpha');
+ ok(pixel(flat,10,10)[3]===0, 'clipped layer does not draw outside base');
+ d.layers[1].opacity=0.5; flat=d.flatten(0,{background:false}); p=pixel(flat,4,4);
+ ok(Math.abs(p[0]-128)<=3 && Math.abs(p[2]-127)<=3 && Math.abs(p[3]-128)<=1, 'clip opacity blends colour without increasing base alpha');
+ d.layers[0].opacity=0.5; p=pixel(d.flatten(0,{background:false}),4,4); ok(Math.abs(p[3]-64)<=1, 'base opacity applies once to clipped stack');
+ d.layers[0].visible=false; ok(pixel(d.flatten(0,{background:false}),4,4)[3]===0, 'hidden base hides its clipping stack');
+ d.layers[0].visible=true; d.layers[0].opacity=1; d.layers[1].opacity=1;
+ const only=createCanvas(16,16); d.composite(only.getContext('2d'),0,{onlyLayer:1});
+ ok(pixel(only,4,4)[0]>250 && Math.abs(pixel(only,4,4)[3]-128)<=1 && pixel(only,10,10)[3]===0, 'single-layer onion composite respects base mask');
+ const screen=createCanvas(16,16), view=Object.create(Q.View.prototype); Object.assign(view,{doc:d,canvas:screen,ctx:screen.getContext('2d'),dpr:1,scale:1,rot:0,tx:0,ty:0,stroke:null});
+ App.playing=false; view.render(); ok(pixel(screen,4,4)[0]>250 && pixel(screen,10,10)[1]>240, 'canvas preview displays clipping inside and background outside base');
+ const buffer=d._clipBuffer; d.flatten(0,{background:false}); ok(buffer===d._clipBuffer, 'clipping buffer is reused across renders');
+ d.layers[1].blend='multiply'; p=pixel(d.flatten(0,{background:false}),4,4); ok(p[0]>250 && p[2]===0, 'clipped layer uses Normal even when a stored blend mode exists');
+ d.addLayer(); const third=d.activeCel(true), c=third.getContext('2d'); c.fillStyle='#00ff00'; c.fillRect(3,3,2,2); d.setLayerClipped(2,true);
+ flat=d.flatten(0,{background:false}); ok(pixel(flat,3,3)[1]>250 && pixel(flat,6,6)[0]>250 && pixel(flat,10,10)[3]===0, 'multiple clipped layers stack within the same base');
+ const sheet=Q.renderSpriteSheet(d,1,1,true); ok(pixel(sheet,3,3)[1]>250 && pixel(sheet,10,10)[3]===0, 'transparent sprite sheet respects clipping');
+ d.addFrame(false); d.cel(1,1,true).getContext('2d').fillRect(0,0,16,16); ok(pixel(d.flatten(1,{background:false}),4,4)[3]===0, 'missing base cel hides clipped artwork in that frame');
+ d.activeFrame=0; d.moveLayer(0,1); flat=d.flatten(0,{background:false}); ok(pixel(flat,6,6)[2]>250 && pixel(flat,3,3)[1]>250 && pixel(flat,10,10)[3]===0, 'orphan clipping is hidden and upper layers rebind after reorder');
+}
+
+
+{
+ const d=setup(), bg=d.activeCel(true).getContext('2d'); bg.fillStyle='#808080'; bg.fillRect(0,0,16,16);
+ d.addLayer(); const base=d.activeCel(true).getContext('2d'); base.fillStyle='rgba(0,0,255,0.5)'; base.fillRect(0,0,8,8); d.layers[1].blend='multiply';
+ d.addLayer(); const clip=d.activeCel(true).getContext('2d'); clip.fillStyle='#ff0000'; clip.fillRect(0,0,16,16); d.setLayerClipped(2,true);
+ const expected=createCanvas(16,16), e=expected.getContext('2d'); e.fillStyle='#808080'; e.fillRect(0,0,16,16); e.globalCompositeOperation='multiply'; e.fillStyle='rgba(255,0,0,0.5)'; e.fillRect(0,0,8,8);
+ const out=d.flatten(0,{background:false}); ok(same(pixel(out,4,4),pixel(expected,4,4)) && same(pixel(out,12,12),[128,128,128,255]), 'base blend mode applies to completed clipped stack over lower artwork');
+ d.setLayerClipped(2,false); const released=d.flatten(0,{background:false}); ok(same(pixel(released,12,12),[255,0,0,255]), 'releasing mask reveals intact pixels outside base');
+ d.history.undo(); ok(same(pixel(d.flatten(0,{background:false}),12,12),[128,128,128,255]), 'undo release restores clipping without changing pixels');
+}
+
+
+{
+ const d=setup(), base=d.activeCel(true).getContext('2d'); base.fillStyle='#0000ff'; base.fillRect(0,0,8,8);
+ d.addLayer(); const upper=d.activeCel(true).getContext('2d'); upper.fillStyle='#ff0000'; upper.fillRect(0,0,16,16); d.setLayerClipped(1,true); d.addFrame(true);
+ let result=null; Q.saveBytes=(url,mime)=>{if(mime==='image/gif') result=url;return true;}; App.exportGif({}); await new Promise(r=>setTimeout(r,100));
+ const image=await loadImage(Buffer.from(result.split(',')[1],'base64')), canvas=createCanvas(16,16); canvas.getContext('2d').drawImage(image,0,0);
+ ok(pixel(canvas,3,3)[0]>240 && pixel(canvas,12,12)[0]>240 && pixel(canvas,12,12)[1]>240, 'real GIF export includes masked pixels and canvas background outside base');
+}
+
 console.log(`all ${n} raster integration checks passed`);

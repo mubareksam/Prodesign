@@ -18,6 +18,12 @@ The supplied feature inventory is a roadmap, not a list of completed work.
   with adjustable tolerance and undo; it does not sample other layers.
 - A movable, zoomable reference window showing the current canvas. Importing an
   external reference image or using a camera is not implemented.
+- Non-destructive clipping masks constrain a layer to the alpha of the nearest
+  unclipped layer below. Consecutive clips share that base. The clipped layer uses
+  Normal blend, and the base blend applies to the completed stack. Hidden or empty
+  base cels hide the clipped stack; reordering can change or remove its base. The
+  setting is saved, undoable, and included in preview and exports. Merge is blocked
+  while any clip exists. Clipping needs an additional full-size rendering buffer.
 - PNG, JPEG, WebP and first-frame GIF import through the Android document picker
   into a new layer on the current frame. Imports are centred, downscaled to fit,
   undoable and saved. Files are limited to 16 MiB, decoded images to 8192 pixels
@@ -71,12 +77,12 @@ The supplied feature inventory is a roadmap, not a list of completed work.
 
 ## Not yet implemented
 
-Snapping/drawing assist for grids and perspective, camera references, layer masks/groups/clipping, automatic selection,
+Snapping/drawing assist for grids and perspective, camera references, layer masks/groups, automatic selection,
 feathered selection, interactive transforms and free rotation, cross-layer ColorDrop/reference fill, smudge, advanced filters and liquify, typography,
 DPI settings, timelapse, gallery stacks, PSD/Procreate/PDF/TIFF compatibility, brush
 import/export, and most advanced colour-management and accessibility features.
 Apple Pencil-specific controls are not applicable on Android. See the original
 [Procreate analysis](procreate-analysis.md) for background; its feature matrix
-predates version 2.3.
+predates version 2.4.
 
 Automated animation motion paths, keyframes/easing, IK, camera animation, morphing, particle animation and audio tracks are not implemented. Onion skins are available as ghost frames. The canvas is finite raster, not infinite or resolution-independent.

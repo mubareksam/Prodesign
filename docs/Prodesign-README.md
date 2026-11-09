@@ -4,20 +4,20 @@ Developed by **Qmer**. An offline painting and frame-animation studio for Androi
 brushes, layers, a colour wheel, a frame timeline with onion skin, Procreate's gesture
 vocabulary, and PNG/GIF export. No account, no ads, no network permission.
 
-**Download:** [`Qalam-2.3.apk`](../artifacts/Qalam-2.3.apk) (~265 KB)
+**Download:** [`Qalam-2.4.apk`](../artifacts/Qalam-2.4.apk) (~265 KB)
 
 | | |
 |---|---|
 | Package | `com.qalam.studio` |
-| Version | 2.3 (versionCode 14) |
+| Version | 2.4 (versionCode 15) |
 | Requires | Android 8.0+ (minSdk 26), built for targetSdk 33 |
 | Permissions | `VIBRATE` only — no internet, no storage, no location |
 | Signing | APK Signature Scheme v1 + v2, self-signed with a public test key |
-| SHA-256 | `ab3b42d57c8850136a0939610752479f279c4447a194d1d74ceae9d3434af2db` |
+| SHA-256 | `3b6f2a33f877e917d82b65952ec1bba2f14d022011fed29de413db4b54cbc452` |
 
 ## Install
 
-1. Download `Qalam-2.3.apk` to the phone (or copy it over USB).
+1. Download `Qalam-2.4.apk` to the phone (or copy it over USB).
 2. Open it from the file manager. Android will ask you to allow installs from that
    app the first time ("Install unknown apps") — allow it, then install.
 3. Open **Qalam**.
@@ -43,7 +43,7 @@ stroke never darkens where it crosses itself.
 **Layers** — add, duplicate, reorder, merge down, clear, delete, rename; per-layer
 opacity and 16 blend modes (Normal, Multiply, Screen, Overlay, Darken, Lighten, Color
 dodge/burn, Hard/Soft light, Difference, Exclusion, Hue, Saturation, Color, Luminosity);
-live thumbnails, visibility toggles, per-layer edit locking and alpha lock. Import PNG, JPEG, WebP or first-frame GIF as a new layer in the current frame (file and decoded-size limits apply). The Android picker still needs device testing.
+live thumbnails, visibility toggles, per-layer edit locking, alpha lock and non-destructive clipping masks. Clipped layers use Normal blend and share the nearest unclipped base. Merge is blocked until clipping is disabled. Import PNG, JPEG, WebP or first-frame GIF as a new layer in the current frame (file and decoded-size limits apply). The Android picker still needs device testing.
 
 **Colour** — HSB wheel with value/saturation square, HEX entry, 24 swatches and the
 12 most recent colours.

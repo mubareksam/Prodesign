@@ -80,7 +80,7 @@
     addLayer(copyFrom) {
       return this.history.struct(function () {
         const at = this.activeLayer + 1, src = this.layers[copyFrom], layer = makeLayer(src ? src.name + ' copy' : null);
-        if (src) { layer.opacity = src.opacity; layer.blend = src.blend; layer.alphaLocked = !!src.alphaLocked; }
+        if (src) { layer.opacity = src.opacity; layer.blend = src.blend; layer.alphaLocked = !!src.alphaLocked; layer.clipped = !!src.clipped; }
         this.layers.splice(at,0,layer);
         for (const f of this.frames) { const c = src && f.cels[copyFrom]; f.cels.splice(at,0,c ? Q.copyCanvas(c) : null); }
         this.activeLayer = at; return at;
@@ -121,6 +121,7 @@
     mergeDown(i) {
       if (i <= 0 || i >= this.layers.length) { Q.toast('Nothing below to merge into'); return; }
       if (this.layers[i].locked || this.layers[i-1].locked || this.layers[i].alphaLocked || this.layers[i-1].alphaLocked) { Q.toast('Unlock both layers and alpha first'); return; }
+      if (this.layers.some(l=>l.clipped)) { Q.toast('Turn off clipping masks before merging layers',4000); return; }
       return this.history.struct(function () {
         const lower = this.layers[i-1], upper = this.layers[i];
         for (const f of this.frames) {
@@ -214,11 +215,59 @@
       this.history.struct(function () { this.motionGuideVisible=visible; });
     }
     setBackground(color) { if (this.bg === color) return; return this.history.struct(function () { this.bg=color; }); }
+    setLayerClipped(i, value) {
+      if (!Number.isInteger(i) || !this.layers[i] || (value && !this.layers.slice(0,i).some(l=>!l.clipped))) return false;
+      if (!!this.layers[i].clipped !== !!value) this.history.struct(function () { this.layers[i].clipped=!!value; });
+      return true;
+    }
+    clipBase(i) {
+      if (!this.layers[i] || !this.layers[i].clipped) return -1;
+      for (let n=i-1;n>=0;n--) if (!this.layers[n].clipped) return n;
+      return -1;
+    }
+    clipBuffer() {
+      if (!this._clipBuffer || this._clipBuffer.width!==this.width || this._clipBuffer.height!==this.height) this._clipBuffer=Q.canvas(this.width,this.height);
+      const g=this._clipBuffer.getContext('2d'); g.setTransform(1,0,0,1,0,0); g.globalAlpha=1; g.globalCompositeOperation='source-over'; g.clearRect(0,0,this.width,this.height);
+      return g;
+    }
     setLayerProp(i,key,value) { if (this.layers[i]) return this.history.struct(function () { this.layers[i][key]=value; }); }
     setLayerPropLive(i,key,value) { if (this.layers[i]) this.layers[i][key]=value; }
     composite(ctx,frameIdx,opts = {}) {
-      const f = this.frames[frameIdx]; if (!f) return;
-      this.layers.forEach((l,i) => { if ((opts.onlyLayer != null && i !== opts.onlyLayer) || (!l.visible && !opts.includeHidden) || !f.cels[i]) return; ctx.save(); ctx.globalAlpha=(opts.alpha == null ? 1 : opts.alpha)*(opts.ignoreOpacity ? 1 : l.opacity); ctx.globalCompositeOperation=l.blend || 'source-over'; ctx.drawImage(f.cels[i],0,0); ctx.restore(); });
+      const f=this.frames[frameIdx]; if (!f) return;
+      const visible=i=>this.layers[i] && (this.layers[i].visible || opts.includeHidden);
+      const opacity=i=>opts.ignoreOpacity ? 1 : this.layers[i].opacity;
+      const outer=opts.alpha == null ? 1 : opts.alpha;
+      const draw=(image,alpha,blend)=>{ ctx.save(); ctx.globalAlpha=outer*alpha; ctx.globalCompositeOperation=blend || 'source-over'; ctx.drawImage(image,0,0); ctx.restore(); };
+      if (opts.onlyLayer != null) {
+        const i=opts.onlyLayer, layer=this.layers[i];
+        if (!layer || !visible(i) || !f.cels[i]) return;
+        if (!layer.clipped) { draw(f.cels[i],opacity(i),layer.blend); return; }
+        const base=this.clipBase(i);
+        if (base<0 || !visible(base) || !f.cels[base]) return;
+        const g=this.clipBuffer(); g.globalAlpha=opacity(i); g.drawImage(f.cels[i],0,0);
+        g.globalAlpha=opacity(base); g.globalCompositeOperation='destination-in'; g.drawImage(f.cels[base],0,0);
+        draw(this._clipBuffer,1,'source-over'); return;
+      }
+      for (let i=0;i<this.layers.length;) {
+        const layer=this.layers[i];
+        // An orphaned clipped layer has no base and is not rendered.
+        if (layer.clipped) { i++; continue; }
+        let end=i+1; while (end<this.layers.length && this.layers[end].clipped) end++;
+        if (visible(i) && f.cels[i]) {
+          let hasVisibleClip=false;
+          for (let j=i+1;j<end;j++) if (visible(j) && f.cels[j] && opacity(j)>0) { hasVisibleClip=true; break; }
+          if (!hasVisibleClip) draw(f.cels[i],opacity(i),layer.blend);
+          else {
+            // Build one clipped stack, preserving the base's alpha. Clipped layers
+            // use Normal; the base blend mode applies to the completed stack.
+            const g=this.clipBuffer(); g.globalAlpha=opacity(i); g.drawImage(f.cels[i],0,0);
+            g.globalCompositeOperation='source-atop';
+            for (let j=i+1;j<end;j++) if (visible(j) && f.cels[j]) { g.globalAlpha=opacity(j); g.drawImage(f.cels[j],0,0); }
+            draw(this._clipBuffer,1,layer.blend);
+          }
+        }
+        i=end;
+      }
     }
     renderFrame(canvas,frameIdx,opts = {}) {
       const c = canvas.getContext('2d'); c.setTransform(1,0,0,1,0,0); c.globalAlpha=1; c.globalCompositeOperation='source-over'; c.clearRect(0,0,canvas.width,canvas.height);

@@ -197,6 +197,11 @@
     Q.UI.syncDoc();
   };
 
+  App.setLayerClipped = function (i,value) {
+    if (!App.doc || !App.doc.setLayerClipped(i,value)) { Q.toast('Add a layer below before enabling clipping',4000); return; }
+    App.view.dirty=true; Q.UI.syncDoc(); App.markDirty();
+  };
+
   App.commitLayerOpacity = function (i, before) {
     const d = App.doc;
     if (!d) return;

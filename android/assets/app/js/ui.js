@@ -414,7 +414,7 @@
 
       const meta = Q.crel('div', 'layer-meta');
       meta.appendChild(Q.crel('div', 'layer-name', escapeHtml(layer.name)));
-      const sub = Q.crel('div', 'layer-sub', Math.round(layer.opacity * 100) + '% · ' + blendLabel(layer.blend) + (layer.locked ? ' · Locked' : '') + (layer.alphaLocked ? ' · Alpha locked' : ''));
+      const sub = Q.crel('div', 'layer-sub', Math.round(layer.opacity * 100) + '% · ' + (layer.clipped ? 'Normal (clipped)' : blendLabel(layer.blend)) + (layer.locked ? ' · Locked' : '') + (layer.alphaLocked ? ' · Alpha locked' : ''));
       meta.appendChild(sub);
       row.appendChild(meta);
 
@@ -471,7 +471,7 @@
       app().view.doc.layers[idx].opacity = val;
       app().view.dirty = true;
       const sub = row.querySelector('.layer-sub');
-      if (sub) sub.textContent = Math.round(val * 100) + '% · ' + blendLabel(app().doc.layers[idx].blend);
+      if (sub) { const layer=app().doc.layers[idx]; sub.textContent=Math.round(val*100)+'% · '+(layer.clipped ? 'Normal (clipped)' : blendLabel(layer.blend))+(layer.locked ? ' · Locked' : '')+(layer.alphaLocked ? ' · Alpha locked' : ''); }
     });
     row.addEventListener('pointerup', function () {
       if (!dragging) return;
@@ -488,7 +488,9 @@
     if (!layer) return;
     const card = Q.crel('div');
     card.appendChild(Q.crel('h2', null, 'Layer'));
-    card.appendChild(Q.crel('p', 'sub', 'Row ' + (i + 1) + ' of ' + d.layers.length + '. Alpha lock keeps existing transparency; turn it off to erase, transform, clear or merge.'));
+    card.appendChild(Q.crel('p', 'sub', 'Row ' + (i + 1) + ' of ' + d.layers.length + '. Alpha lock preserves transparency. Clipping uses the nearest unclipped layer below as its base; clipped layers use Normal blend.'));
+    if (layer.clipped && d.clipBase(i)<0) card.appendChild(Q.crel('p','sub','This clipped layer has no base and is hidden until you move it above an unclipped layer or turn clipping off.'));
+    else if (layer.clipped) card.appendChild(Q.crel('p','sub','Clipped to: '+d.layers[d.clipBase(i)].name));
 
     const nameField = Q.crel('div', 'field');
     nameField.innerHTML = '<label>Name</label>';
@@ -509,6 +511,7 @@
       if (m[0] === layer.blend) o.selected = true;
       sel.appendChild(o);
     });
+    if (layer.clipped) { sel.disabled=true; sel.setAttribute('aria-label','Blend unavailable while clipped'); }
     blendField.appendChild(sel);
     card.appendChild(blendField);
 
@@ -522,6 +525,7 @@
     };
     actions.appendChild(mk(layer.locked ? 'Unlock layer' : 'Lock layer', ICON.sparkle, function () { app().setLayerProp(i, 'locked', !layer.locked); }));
     actions.appendChild(mk(layer.alphaLocked ? 'Unlock alpha' : 'Alpha lock', ICON.sparkle, function () { app().setLayerProp(i, 'alphaLocked', !layer.alphaLocked); }));
+    actions.appendChild(mk(layer.clipped ? 'Release clipping mask' : 'Clipping mask', ICON.layers, function () { app().setLayerClipped(i,!layer.clipped); }));
     actions.appendChild(mk('Move up', ICON.up, function () { app().moveLayer(i, 1); }));
     actions.appendChild(mk('Move down', ICON.down, function () { app().moveLayer(i, -1); }));
     actions.appendChild(mk('Duplicate', ICON.copy, function () { app().duplicateLayer(i); }));

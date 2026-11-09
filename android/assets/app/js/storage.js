@@ -179,7 +179,7 @@
       motionGuide:doc.motionGuide, motionGuideVisible:doc.motionGuideVisible,
       frameCount: doc.frames.length,
       layers: doc.layers.map(function (l) {
-        return { id: l.id, name: l.name, visible: l.visible, opacity: l.opacity, blend: l.blend, assisted: !!l.assisted, locked: !!l.locked, alphaLocked: !!l.alphaLocked };
+        return { id: l.id, name: l.name, visible: l.visible, opacity: l.opacity, blend: l.blend, assisted: !!l.assisted, locked: !!l.locked, alphaLocked: !!l.alphaLocked, clipped: !!l.clipped };
       }),
       activeFrame: doc.activeFrame,
       activeLayer: doc.activeLayer,
@@ -217,7 +217,7 @@
   function deserialize(rec) {
     const doc = new Q.Doc({ id: rec.id, name: rec.name, width: rec.w, height: rec.h, fps: rec.fps, bg: rec.bg, onion: rec.onion, onionAlpha: rec.onionAlpha, onionFrames: rec.onionFrames, onionPrevFrames: rec.onionPrevFrames, onionNextFrames: rec.onionNextFrames, onionIncludeSkipped: rec.onionIncludeSkipped, onionLayerOnly: rec.onionLayerOnly, onionOriginalColor: rec.onionOriginalColor, onionAbove: rec.onionAbove, onionPrevColor: rec.onionPrevColor, onionNextColor: rec.onionNextColor, playMode: rec.playMode, playRange: rec.playRange, guide: rec.guide, motionGuide:rec.motionGuide, motionGuideVisible:rec.motionGuideVisible });
     doc.layers = (rec.layers || []).map(function (l) {
-      return { id: l.id || Q.uid(), name: l.name || 'Layer', visible: l.visible !== false, opacity: l.opacity == null ? 1 : l.opacity, blend: l.blend || 'source-over', assisted: !!l.assisted, locked: !!l.locked, alphaLocked: !!l.alphaLocked };
+      return { id: l.id || Q.uid(), name: l.name || 'Layer', visible: l.visible !== false, opacity: l.opacity == null ? 1 : l.opacity, blend: l.blend || 'source-over', assisted: !!l.assisted, locked: !!l.locked, alphaLocked: !!l.alphaLocked, clipped: !!l.clipped };
     });
     if (!doc.layers.length) doc.layers = [Q.makeLayer('Layer 1')];
 

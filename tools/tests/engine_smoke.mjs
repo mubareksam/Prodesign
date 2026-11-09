@@ -378,4 +378,17 @@ const imported=Q.canvas(100,100); guided.addFrame(false); ok(guided.insertImageL
 guided.history.undo(); ok(guided.layers.length===1 && guided.motionGuide.length===2, 'undo import removes image layer without deleting guide');
 guided.history.redo(); ok(guided.cel(1,1,false)===imported, 'redo restores imported cel');
 
+
+console.log('2.4 layer clipping');
+const clips=new Q.Doc({width:16,height:16});
+ok(!clips.setLayerClipped(0,true) && !clips.history.canUndo(), 'bottom layer cannot be clipped');
+clips.addLayer(); clips.setLayerClipped(1,true); ok(clips.layers[1].clipped && clips.clipBase(1)===0, 'clipped layer targets the nearest base below');
+clips.history.undo(); ok(!clips.layers[1].clipped, 'clipping toggle can be undone'); clips.history.redo();
+clips.addLayer(1); ok(clips.layers[2].clipped && clips.clipBase(2)===0, 'duplicate keeps clipping and joins same stack');
+const oldCount=clips.layers.length, oldUndo=clips.history.undoStack.length; clips.mergeDown(2);
+ok(clips.layers.length===oldCount && clips.history.undoStack.length===oldUndo, 'merge is refused while clipping is enabled');
+clips.moveLayer(0,1); ok(clips.layers[0].clipped && clips.clipBase(0)===-1 && clips.clipBase(2)===1, 'reorder can orphan and rebind clipped layers');
+ok(clips.setLayerClipped(0,false) && !clips.layers[0].clipped, 'orphan clipped layer can be released');
+clips.history.undo(); ok(clips.layers[0].clipped, 'undo restores orphan state');
+
 console.log(`\nall ${checks} engine checks passed`);

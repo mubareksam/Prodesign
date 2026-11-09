@@ -706,6 +706,23 @@ async function run() {
   await App.saveNow(false); const imageReload=await Q.Store.load(App.doc.id); ok(imageReload.layers.length===2 && !!imageReload.activeCel(false), 'imported layer survives save and reopen');
   input.click=oldClick; win.FileReader=oldReader; win.Image=oldImage;
 
+
+  console.log('2.4 clipping masks');
+  App.createDoc(64,64,'Clipping'); App.addLayer();
+  Q.UI.layerSheet(0); let chooseClip=Array.from(doc.querySelectorAll('#modalBody button')).find(x=>x.textContent==='Clipping mask'); chooseClip.click();
+  ok(!App.doc.layers[0].clipped && doc.querySelector('#toast').textContent.includes('layer below'), 'bottom layer refuses clipping with an explanation');
+  Q.UI.layerSheet(1); chooseClip=Array.from(doc.querySelectorAll('#modalBody button')).find(x=>x.textContent==='Clipping mask'); chooseClip.click();
+  ok(App.doc.layers[1].clipped, 'layer sheet enables clipping');
+  App.undo(); ok(!App.doc.layers[1].clipped, 'undo removes clipping'); App.redo(); ok(App.doc.layers[1].clipped, 'redo restores clipping');
+  Q.UI.layerSheet(1); ok(doc.querySelector('select[aria-label="Blend unavailable while clipped"]').disabled && doc.querySelector('#modalBody').textContent.includes('Release clipping mask'), 'clipped layer explains Normal-only blend and offers release'); Q.UI.closeModal();
+  await App.saveNow(false); const clipsReload=await Q.Store.load(App.doc.id); ok(clipsReload.layers[1].clipped && !clipsReload.layers[0].clipped, 'clipping survives save and reopen');
+  const oldRaw=JSON.parse(win.localStorage.getItem('qalam-projects')); for(const layer of oldRaw[App.doc.id].layers) delete layer.clipped; win.localStorage.setItem('qalam-projects',JSON.stringify(oldRaw));
+  const oldReload=await Q.Store.load(App.doc.id); ok(oldReload.layers.every(l=>!l.clipped), 'older projects load with clipping off');
+  App.duplicateLayer(1); ok(App.doc.layers[2].clipped && App.doc.clipBase(2)===0, 'layer duplication preserves clipping');
+  const num=App.doc.layers.length; App.mergeDownLayer(2); ok(App.doc.layers.length===num && doc.querySelector('#toast').textContent.includes('clipping'), 'merge is safely blocked while clipping is enabled');
+  Q.UI.layerSheet(2); Array.from(doc.querySelectorAll('#modalBody button')).find(x=>x.textContent==='Release clipping mask').click();
+  ok(!App.doc.layers[2].clipped, 'clipping can be released without destroying layer');
+
   await App.saveNow(false);
   console.log(failures ? `\n${failures} check(s) FAILED` : '\nall UI checks passed');
   process.exit(failures ? 1 : 0);
