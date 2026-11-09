@@ -6,11 +6,11 @@ brushes, layers with blend modes, a colour wheel, a frame timeline with onion sk
 Procreate's gesture vocabulary, and PNG/GIF export — all offline, with no account and
 no network permissions at all.
 
-- Package: `com.qalam.studio` · version 1.0 (versionCode 1)
+- Package: `com.qalam.studio` · version 1.1 (versionCode 2)
 - minSdk 26 (Android 8.0) · targetSdk 33 · armeabi-v7a/arm64/x86/x86_64 independent
   (everything is HTML/JS running inside the app's own `WebView`, so the APK has no
   native code)
-- APK: **`artifacts/Qalam-1.0.apk`** (~200 KB), signed with a v1+v2 scheme
+- APK: **`artifacts/Qalam-1.1.apk`** (~200 KB), signed with a v1+v2 scheme
 - The written analysis of Procreate that this app was specified from:
   [`docs/procreate-analysis.md`](procreate-analysis.md)
 
@@ -18,10 +18,10 @@ no network permissions at all.
 
 ## 1. Install
 
-1. Copy `artifacts/Qalam-1.0.apk` to the phone (USB, Drive, chat to yourself — anything).
+1. Copy `artifacts/Qalam-1.1.apk` to the phone (USB, Drive, chat to yourself — anything).
 2. Open it with the phone's file manager. Android will ask to allow installs from
    that app the first time ("Install unknown apps").
-3. Install and open **Qalam**.
+3. Install and open **Qalam**. If version 1.0 is already installed, Android should offer an update that preserves its data. Back up important artwork first. Android does not allow this app to silently uninstall itself; do not uninstall it unless you have backed up its local artwork.
 
 No permissions are requested except `VIBRATE` (haptic ticks). There is no internet
 permission, so nothing can phone home.
@@ -132,7 +132,7 @@ tools/
   tests/engine_smoke.mjs     37 engine checks (history, brushes, doc, GIF, …)
   tests/gif_roundtrip.mjs    encodes a GIF and decodes it with an independent decoder
   tests/ui_smoke.mjs         jsdom boot + full UI drive (gallery -> export)
-artifacts/Qalam-1.0.apk           the signed, installable artefact
+artifacts/Qalam-1.1.apk           the signed, installable artefact
 docs/procreate-analysis.md   the Procreate study this app was built from
 docs/qalam.md                this file
 ```
@@ -162,7 +162,7 @@ Design notes worth knowing before changing code:
 
 ```bash
 bash tools/fetch-toolchain.sh     # once per machine: JVM, apktool, aapt2, jars, npm
-bash tools/build.sh               # -> artifacts/Qalam-1.0.apk (signed + verified)
+bash tools/build.sh               # -> artifacts/Qalam-1.1.apk (signed + verified)
 bash tools/check_reference.sh     # optional: javac-check the Java mirrors
 ```
 

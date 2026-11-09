@@ -14,7 +14,7 @@ APKTOOL="$TC/apktool_2.4.1.jar"
 ANDROID_JAR="$TC/android-33.jar"
 BUILD="$ROOT/build"
 DIST="$ROOT/artifacts"
-VERSION="${QALAM_VERSION:-1.0}"
+VERSION="${QALAM_VERSION:-1.1}"
 
 for f in "$JAVA" "$APKTOOL" "$TC/aapt2"; do
   [ -e "$f" ] || { echo "missing toolchain file: $f (run tools/fetch-toolchain.sh)" >&2; exit 1; }
@@ -37,7 +37,7 @@ OUT="$DIST/Qalam-$VERSION.apk"
 ( cd "$ROOT/tools/apksign" && node sign.mjs "$UNSIGNED" "$OUT" )
 
 echo "== 4/4 verifying"
-"$TC/aapt2" dump badging "$OUT" | head -6
+"$TC/aapt2" dump badging "$OUT" | sed -n '1,6p'
 python3 "$ROOT/tools/verify_apk.py" "$OUT"
 
 echo

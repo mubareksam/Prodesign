@@ -786,7 +786,7 @@
     card.appendChild(Q.crel('h2', null, 'Qalam'));
     card.appendChild(Q.crel('p', 'sub', 'A paint, sketch and frame-by-frame animation studio for Android. Built from scratch: brush engine, layer compositor, GIF encoder and UI. Artwork is stored on this device only — nothing is uploaded.'));
     card.appendChild(Q.crel('p', 'sub', 'ቀለም (qalam) means “pen” or “ink”.'));
-    card.appendChild(Q.crel('p', 'sub', 'Version 1.0'));
+    card.appendChild(Q.crel('p', 'sub', 'Version 1.1'));
     const actions = Q.crel('div', 'modal-actions');
     const close = Q.crel('button', 'btn primary', 'Close');
     close.addEventListener('click', function () { UI.closeModal(); });

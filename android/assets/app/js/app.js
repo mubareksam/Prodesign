@@ -35,6 +35,8 @@
     };
 
     Q.UI.init();
+    // Do not let a slow storage provider keep the launch screen on top forever.
+    setTimeout(function () { Q.el('#splash').classList.add('hidden'); }, 400);
 
     const savedBrush = Q.Store.meta('brush');
     const savedRecent = Q.Store.meta('recent');
