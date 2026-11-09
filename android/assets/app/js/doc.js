@@ -8,6 +8,11 @@
     ['hard-light','Hard light'], ['soft-light','Soft light'], ['difference','Difference'], ['exclusion','Exclusion'],
     ['hue','Hue'], ['saturation','Saturation'], ['color','Colour'], ['luminosity','Luminosity']
   ];
+  Q.validAudioTrack = function (track) {
+    return !!track && typeof track.name==='string' && track.name.length<=100 && typeof track.data==='string' &&
+      track.data.length<=Math.ceil((2*1024*1024)/3)*4+64 &&
+      /^data:audio\/(mpeg|mp4|wav|ogg|webm);base64,[A-Za-z0-9+/]+={0,2}$/.test(track.data);
+  };
   let seq = 1;
   function makeLayer(name) { return { id: Q.uid(), name: name || `Layer ${++seq}`, visible: true, opacity: 1, blend: 'source-over' }; }
   class History {
@@ -15,13 +20,14 @@
     notify() { if (this.onchange) this.onchange(); }
     structSnapshot() {
       const d = this.doc;
-      return { layers: d.layers.map(l => ({ ...l })), frames: d.frames.map(f => ({cels: f.cels.slice(), duration: f.duration || 1, group: f.group || '', skipped: !!f.skipped})), activeLayer: d.activeLayer, activeFrame: d.activeFrame, bg: d.bg, playRange: d.playRange ? {...d.playRange} : null, motionGuide:d.motionGuide.map(p=>({...p})), motionGuideVisible:d.motionGuideVisible };
+      return { layers: d.layers.map(l => ({ ...l })), frames: d.frames.map(f => ({cels: f.cels.slice(), duration: f.duration || 1, group: f.group || '', skipped: !!f.skipped})), activeLayer: d.activeLayer, activeFrame: d.activeFrame, bg: d.bg, playRange: d.playRange ? {...d.playRange} : null, motionGuide:d.motionGuide.map(p=>({...p})), motionGuideVisible:d.motionGuideVisible, audioTrack:d.audioTrack ? {...d.audioTrack} : null };
     }
     applyStruct(s) {
       const d = this.doc;
       d.layers = s.layers.map(l => ({ ...l })); d.frames = s.frames.map(f => ({ cels: f.cels.slice(), duration: f.duration || 1, group: f.group || '', skipped: !!f.skipped }));
       d.bg = s.bg || '#ffffff'; d.playRange = s.playRange ? {...s.playRange} : null;
       d.motionGuide = (s.motionGuide || []).map(p=>({...p})); d.motionGuideVisible=!!s.motionGuideVisible;
+      d.audioTrack = s.audioTrack ? {...s.audioTrack} : null;
       d.activeLayer = Q.clamp(s.activeLayer, 0, d.layers.length - 1); d.activeFrame = Q.clamp(s.activeFrame, 0, d.frames.length - 1);
     }
     struct(fn) { const before = this.structSnapshot(), result = fn.call(this.doc); this.push({ type:'struct', before, after:this.structSnapshot() }); return result; }
@@ -62,6 +68,7 @@
       this.playRange = opts.playRange && Number.isInteger(opts.playRange.start) && Number.isInteger(opts.playRange.end) ? {start:opts.playRange.start,end:opts.playRange.end} : null;
       this.motionGuide=Array.isArray(opts.motionGuide) ? opts.motionGuide.slice(0,512).filter(p=>p && Number.isFinite(p.x) && Number.isFinite(p.y)).map(p=>({x:Q.clamp(p.x,0,this.width),y:Q.clamp(p.y,0,this.height)})) : [];
       this.motionGuideVisible=opts.motionGuideVisible !== false;
+      this.audioTrack=Q.validAudioTrack(opts.audioTrack) ? {name:opts.audioTrack.name,data:opts.audioTrack.data,muted:!!opts.audioTrack.muted} : null;
       this.playMode = opts.playMode || 'loop'; this.onionFrames = Q.clamp(opts.onionFrames || 1, 1, 4);
       this.onionPrevFrames = Q.clamp(opts.onionPrevFrames == null ? this.onionFrames : Math.round(opts.onionPrevFrames),0,4);
       this.onionNextFrames = Q.clamp(opts.onionNextFrames == null ? this.onionFrames : Math.round(opts.onionNextFrames),0,4);
@@ -203,6 +210,15 @@
         this.normalizePlayRange();
       });
       return true;
+    }
+    setAudioTrack(track) {
+      if (track !== null && !Q.validAudioTrack(track)) return false;
+      const clean=track ? {name:track.name,data:track.data,muted:!!track.muted} : null;
+      this.history.struct(function () { this.audioTrack=clean; }); return true;
+    }
+    setAudioMuted(muted) {
+      if (!this.audioTrack || this.audioTrack.muted===!!muted) return false;
+      this.history.struct(function () { this.audioTrack={...this.audioTrack,muted:!!muted}; }); return true;
     }
     setMotionGuide(points) {
       if (!Array.isArray(points) || (points.length!==0 && (points.length<2 || points.length>512))) return false;

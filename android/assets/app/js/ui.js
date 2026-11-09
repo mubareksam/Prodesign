@@ -86,6 +86,11 @@
     el('#btnTimeline').addEventListener('click', function () { UI.toggleTimeline(); });
     el('#btnMenu').addEventListener('click', function () { UI.toggleTray('menu'); });
     el('#btnEffects').addEventListener('click', function () { UI.closeTray(); UI.effectsDialog(); });
+    el('#audioImport').addEventListener('change', function () {
+      const file=this.files && this.files[0], target=UI.audioTarget;
+      this.value=''; UI.audioTarget=null;
+      if (file && target) app().importAudioFile(file,target);
+    });
     el('#imageImport').addEventListener('change', function () {
       const file=this.files && this.files[0], target=UI.imageTarget;
       this.value=''; UI.imageTarget=null;
@@ -971,6 +976,7 @@
     more.appendChild(chip('Batch frames', false, function () { UI.batchFramesDialog(); }, null));
     more.appendChild(chip('Copy cel', false, function () { UI.copyCelDialog(); }, null));
     more.appendChild(chip('Motion guide', false, function () { UI.motionGuideDialog(); }, null));
+    more.appendChild(chip('Audio', false, function () { UI.audioDialog(); }, null));
     more.appendChild(chip('Blank frame', false, function () { app().addFrame(false); }, null));
     more.appendChild(chip('◀ Frame', false, function () { app().selectFrame(Math.max(0,d.activeFrame-1)); }, null));
     more.appendChild(chip('Frame ▶', false, function () { app().selectFrame(Math.min(d.frames.length-1,d.activeFrame+1)); }, null));
@@ -983,6 +989,8 @@
     const play=chip('', false, function () { app().togglePlay(); }, app().playing ? ICON.pause : ICON.play); play.setAttribute('aria-label',app().playing ? 'Stop playback' : 'Play animation'); head.appendChild(play);
     const duplicate=chip('', false, function () { app().addFrame(true); }, ICON.plus); duplicate.setAttribute('aria-label','Duplicate frame'); head.appendChild(duplicate);
     el.appendChild(head); el.appendChild(more);
+    const track=Q.crel('button','tl-audio',d.audioTrack ? ('Audio · '+d.audioTrack.name+(d.audioTrack.muted ? ' · muted' : '')) : 'Audio · Add track');
+    track.setAttribute('aria-label','Manage animation audio'); track.addEventListener('click',function () { UI.audioDialog(); }); el.appendChild(track);
 
     const strip = Q.crel('div', 'tl-frames'), bounds=Q.playbackBounds(d);
     d.frames.forEach(function (fr, i) {
@@ -1078,6 +1086,21 @@
       UI.confirm('Delete frames '+first+'–'+last+'?', 'This removes all layers in these frames. You can undo this action.', function () { app().deleteFrameRange(first-1,last-1); });
     }); card.appendChild(del);
     const close=Q.crel('button','btn ghost','Close'); close.addEventListener('click',function () { UI.closeModal(); }); card.appendChild(close); UI.openModal(card);
+  };
+
+  UI.audioDialog = function () {
+    app().stopPlay(); const d=app().doc; if (!d) return;
+    const card=Q.crel('div'); card.appendChild(Q.crel('h2',null,'Animation audio'));
+    card.appendChild(Q.crel('p','sub',d.audioTrack ? 'Track: '+d.audioTrack.name+(d.audioTrack.muted ? ' (muted)' : '') : 'No audio track added.'));
+    card.appendChild(Q.crel('p','sub','Choose one MP3, M4A, WAV, OGG or WebM file up to 2 MiB. Audio is for forward preview only, begins at the first included frame, and is muted during ping-pong. GIF, PNG and MP4 exports remain silent. Playback and format support depend on the device.'));
+    const actions=Q.crel('div','menu-grid');
+    function action(label,fn) { const b=Q.crel('button','menu-item',label); b.addEventListener('click',fn); actions.appendChild(b); }
+    action(d.audioTrack ? 'Replace audio' : 'Choose audio',function () { UI.closeModal(); UI.audioTarget={doc:d,track:d.audioTrack}; Q.el('#audioImport').value=''; Q.el('#audioImport').click(); });
+    if (d.audioTrack) {
+      action(d.audioTrack.muted ? 'Unmute audio' : 'Mute audio',function () { d.setAudioMuted(!d.audioTrack.muted); app().markDirty(); UI.closeModal(); UI.refreshTimeline(); });
+      action('Remove audio',function () { UI.confirm('Remove audio?', 'The audio track can be restored with Undo.',function () { d.setAudioTrack(null); app().markDirty(); UI.refreshTimeline(); }); });
+    }
+    card.appendChild(actions); const close=Q.crel('button','btn ghost','Close'); close.addEventListener('click',function () { UI.closeModal(); }); card.appendChild(close); UI.openModal(card);
   };
 
   UI.motionGuideDialog = function () {

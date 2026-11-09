@@ -64,7 +64,7 @@
     });
 
     document.addEventListener('visibilitychange', function () {
-      if (document.visibilityState === 'hidden') App.saveNow(false);
+      if (document.visibilityState === 'hidden') { App.stopPlay(); App.saveNow(false); }
     });
 
     // 0 = the app handled the back gesture, 1 = nothing left to close
@@ -135,6 +135,7 @@
   /* ── editing ────────────────────────────────────────────── */
 
   App.undo = function () {
+    App.stopPlay();
     if (!App.doc) return;
     if (App.doc.history.undo()) {
       App.view.dirty = true;
@@ -145,6 +146,7 @@
   };
 
   App.redo = function () {
+    App.stopPlay();
     if (!App.doc) return;
     if (App.doc.history.redo()) {
       App.view.dirty = true;
@@ -362,6 +364,57 @@
     return 1000 * (doc.frames[index].duration || 1) / Q.clamp(doc.fps, 1, 30);
   };
 
+  // Audio is anchored at the first included timeline frame, not the playback range.
+  Q.audioFrameTime = function (doc,index) {
+    let ticks=0; for (let i=0;i<index && i<doc.frames.length;i++) if (!doc.frames[i].skipped) ticks+=doc.frames[i].duration || 1;
+    return ticks / Q.clamp(doc.fps,1,30);
+  };
+  App.syncPreviewAudio = function (d,frame,restart,forceSeek) {
+    const audio=App.previewAudio; if (!audio || !App.playing || App.doc!==d) return;
+    const time=Q.audioFrameTime(d,frame);
+    if (Number.isFinite(audio.duration) && time>=audio.duration) { audio.pause(); return; }
+    try { if (restart || forceSeek || Math.abs(audio.currentTime-time)>0.2) audio.currentTime=time; }
+    catch(e) { /* Metadata may not be ready; loadedmetadata will retry. */ }
+    if (restart) try {
+      const p=audio.play();
+      if (p && p.catch) p.catch(function () { if (App.previewAudio===audio && App.playing) Q.toast('Audio playback is unavailable on this device',4000); });
+    } catch(e) { if (App.previewAudio===audio && App.playing) Q.toast('Audio playback is unavailable on this device',4000); }
+  };
+  App.startPreviewAudio = function (d,frame) {
+    if (!d.audioTrack || d.audioTrack.muted || d.playMode==='pingpong') return;
+    try {
+      const audio=new Audio(); App.previewAudio=audio;
+      audio.preload='auto'; audio.src=d.audioTrack.data;
+      audio.addEventListener('loadedmetadata',function () { if (App.previewAudio===audio && App.playing) App.syncPreviewAudio(d,d.activeFrame,false,true); });
+      audio.addEventListener('error',function () { if (App.previewAudio===audio && App.playing) Q.toast('Audio format is not supported on this device',4000); });
+      App.syncPreviewAudio(d,frame,true);
+    } catch(e) { App.previewAudio=null; Q.toast('Audio playback is unavailable on this device',4000); }
+  };
+
+  App.importAudioFile = function (file,target) {
+    if (!file || !target || !target.doc) return;
+    const ext=String(file.name || '').toLowerCase().split('.').pop();
+    const types={mp3:'mpeg',m4a:'mp4',mp4:'mp4',wav:'wav',ogg:'ogg',oga:'ogg',webm:'webm'};
+    const mimes={'audio/mpeg':'mpeg','audio/mp3':'mpeg','audio/mp4':'mp4','audio/x-m4a':'mp4','audio/wav':'wav','audio/x-wav':'wav','audio/ogg':'ogg','audio/webm':'webm'};
+    const declared=String(file.type || '').toLowerCase();
+    const type=mimes[declared] || ((!declared || declared==='application/octet-stream') ? types[ext] : null);
+    if (!type) { Q.toast('Choose an MP3, M4A, WAV, OGG or WebM audio file',4000); return; }
+    if (!Number.isFinite(file.size) || file.size<=0 || file.size>2*1024*1024) { Q.toast('Audio file must be 2 MiB or smaller',4000); return; }
+    function valid() { return App.doc===target.doc && App.doc.audioTrack===target.track && !App.playing; }
+    if (!valid()) { Q.toast('Audio import cancelled because the project changed',4000); return; }
+    const reader=new FileReader();
+    reader.onerror=function () { Q.toast('Could not read the audio file',4000); };
+    reader.onload=function () {
+      if (!valid()) { Q.toast('Audio import cancelled because the project changed',4000); return; }
+      const value=String(reader.result || ''), prefix=value.indexOf(',');
+      if (prefix<0 || !/;base64$/i.test(value.slice(0,prefix))) { Q.toast('Could not read the audio file',4000); return; }
+      const track={name:String(file.name || 'Audio').slice(0,100),data:'data:audio/'+type+';base64,'+value.slice(prefix+1),muted:false};
+      if (!target.doc.setAudioTrack(track)) { Q.toast('Invalid audio file',4000); return; }
+      Q.UI.refreshTimeline(); App.markDirty(); Q.toast('Audio track added · Undo to remove',4000);
+    };
+    try { reader.readAsDataURL(file); } catch(e) { Q.toast('Could not read the audio file',4000); }
+  };
+
   App.togglePlay = function () {
     const d = App.doc;
     if (!d) return;
@@ -373,25 +426,30 @@
     let position=frames.indexOf(d.activeFrame), direction=1;
     if (position<0) position=0;
     d.activeFrame=frames[position]; App.view.dirty=true;
+    App.startPreviewAudio(d,d.activeFrame);
     const step=function () {
       if (!App.playing) return;
       if (d.playMode === 'once' && position === frames.length-1) { App.stopPlay(); return; }
+      let wrapped=false;
       if (d.playMode === 'pingpong') {
         if (frames.length>1) {
           if (position+direction>=frames.length || position+direction<0) direction*=-1;
           position+=direction;
         }
-      } else position=position>=frames.length-1 ? 0 : position+1;
+      } else { wrapped=position>=frames.length-1; position=wrapped ? 0 : position+1; }
       d.activeFrame=frames[position]; App.view.dirty=true; Q.UI.highlightFrame(d.activeFrame);
+      App.syncPreviewAudio(d,d.activeFrame,wrapped);
       App.playTimer=setTimeout(step,Q.frameDelayMs(d,d.activeFrame));
     };
     App.playTimer=setTimeout(step,Q.frameDelayMs(d,d.activeFrame));
-    Q.UI.refreshTimeline(); Q.toast('Playing '+d.fps+' fps');
+    Q.UI.refreshTimeline(); Q.toast(d.audioTrack && !d.audioTrack.muted && d.playMode==='pingpong' ? 'Playing · audio muted in ping-pong mode' : 'Playing '+d.fps+' fps',4000);
   };
 
   App.stopPlay = function () {
     if (!App.playing) return;
     App.playing = false;
+    const audio=App.previewAudio; App.previewAudio=null;
+    if (audio) { try { audio.pause(); audio.removeAttribute('src'); audio.load(); } catch(e) {} }
     clearTimeout(App.playTimer);
     App.playTimer = 0;
     if (App.view) App.view.locked = false;

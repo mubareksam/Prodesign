@@ -4,20 +4,20 @@ Developed by **Qmer**. An offline painting and frame-animation studio for Androi
 brushes, layers, a colour wheel, a frame timeline with onion skin, Procreate's gesture
 vocabulary, and PNG/GIF export. No account, no ads, no network permission.
 
-**Download:** [`Qalam-2.4.apk`](../artifacts/Qalam-2.4.apk) (~265 KB)
+**Download:** [`Qalam-2.5.apk`](../artifacts/Qalam-2.5.apk) (~268 KB)
 
 | | |
 |---|---|
 | Package | `com.qalam.studio` |
-| Version | 2.4 (versionCode 15) |
+| Version | 2.5 (versionCode 16) |
 | Requires | Android 8.0+ (minSdk 26), built for targetSdk 33 |
 | Permissions | `VIBRATE` only — no internet, no storage, no location |
 | Signing | APK Signature Scheme v1 + v2, self-signed with a public test key |
-| SHA-256 | `3b6f2a33f877e917d82b65952ec1bba2f14d022011fed29de413db4b54cbc452` |
+| SHA-256 | `eb1ac460af1c1415a8bc3c5bb3d7d11faf7a70e7c607955f43515b2046d5f8cf` |
 
 ## Install
 
-1. Download `Qalam-2.4.apk` to the phone (or copy it over USB).
+1. Download `Qalam-2.5.apk` to the phone (or copy it over USB).
 2. Open it from the file manager. Android will ask you to allow installs from that
    app the first time ("Install unknown apps") — allow it, then install.
 3. Open **Qalam**.
@@ -68,7 +68,7 @@ timeline, play at 1–30 fps with frame holds, and configurable onion skins.
 label, hold, reverse, duplicate, skip or include a frame range with undo. Onion skins
 have independent directional counts, colour, layer and stacking options. Skipped frames
 are omitted from playback and GIF/MP4, but retained in PNG sequences and sprite sheets.
-Labels are not nested groups. A saved visual motion guide can be drawn across frames; it does not animate artwork or appear in exports. Cycle timing is displayed on the timeline. Copy a cel
+Labels are not nested groups. A saved visual motion guide can be drawn across frames; it does not animate artwork or appear in exports. A single imported audio track can be used for forward preview only (2 MiB limit; ping-pong and exports are silent). Cycle timing is displayed on the timeline. Copy a cel
 across frames or delete a frame range with confirmation and undo; cel copying is
 limited to 64 MiB of new pixel data per operation.
 PNG sprite sheets include every frame once, without timing metadata.

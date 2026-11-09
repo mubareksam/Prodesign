@@ -166,7 +166,7 @@
     return-void
 .end method
 
-.method public chooseImage(Landroid/webkit/ValueCallback;)Z
+.method public chooseFile(Landroid/webkit/ValueCallback;Ljava/lang/String;)Z
     .locals 3
     iget-object v0, p0, Lcom/qalam/studio/MainActivity;->imageCallback:Landroid/webkit/ValueCallback;
     if-eqz v0, :no_old_callback
@@ -180,8 +180,7 @@
     invoke-direct {v0, v1}, Landroid/content/Intent;-><init>(Ljava/lang/String;)V
     const-string v1, "android.intent.category.OPENABLE"
     invoke-virtual {v0, v1}, Landroid/content/Intent;->addCategory(Ljava/lang/String;)Landroid/content/Intent;
-    const-string v1, "image/*"
-    invoke-virtual {v0, v1}, Landroid/content/Intent;->setType(Ljava/lang/String;)Landroid/content/Intent;
+    invoke-virtual {v0, p2}, Landroid/content/Intent;->setType(Ljava/lang/String;)Landroid/content/Intent;
     const/16 v1, 0x1069
     invoke-virtual {p0, v0, v1}, Lcom/qalam/studio/MainActivity;->startActivityForResult(Landroid/content/Intent;I)V
     :try_end_picker

@@ -82,13 +82,13 @@ public class MainActivity extends Activity {
         }
     }
 
-    public boolean chooseImage(ValueCallback<Uri[]> callback) {
+    public boolean chooseFile(ValueCallback<Uri[]> callback, String type) {
         if (imageCallback != null) imageCallback.onReceiveValue(null);
         imageCallback = callback;
         try {
             Intent intent = new Intent(Intent.ACTION_OPEN_DOCUMENT);
             intent.addCategory(Intent.CATEGORY_OPENABLE);
-            intent.setType("image/*");
+            intent.setType(type);
             startActivityForResult(intent, IMAGE_REQUEST);
         } catch (Exception e) {
             imageCallback = null;

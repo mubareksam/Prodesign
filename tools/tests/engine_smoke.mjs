@@ -391,4 +391,17 @@ clips.moveLayer(0,1); ok(clips.layers[0].clipped && clips.clipBase(0)===-1 && cl
 ok(clips.setLayerClipped(0,false) && !clips.layers[0].clipped, 'orphan clipped layer can be released');
 clips.history.undo(); ok(clips.layers[0].clipped, 'undo restores orphan state');
 
+
+console.log('2.5 audio track');
+const soundDoc=new Q.Doc({width:16,height:16});
+ok(soundDoc.audioTrack===null, 'legacy projects start without an audio track');
+ok(!soundDoc.setAudioTrack({name:'remote',data:'https://example.com/a.mp3'}), 'audio track rejects remote URLs');
+ok(!soundDoc.setAudioTrack({name:'bad',data:'data:text/html;base64,AAAA'}), 'audio track rejects non-audio data URLs');
+ok(!soundDoc.setAudioTrack({name:'empty',data:'data:audio/wav;base64,'}), 'audio track rejects empty audio data');
+const audioTrack={name:'beat.mp3',data:'data:audio/mpeg;base64,AAAA',muted:false};
+ok(soundDoc.setAudioTrack(audioTrack) && soundDoc.audioTrack.name==='beat.mp3', 'audio track is added');
+soundDoc.setAudioMuted(true); ok(soundDoc.audioTrack.muted, 'audio track can be muted'); soundDoc.history.undo(); ok(!soundDoc.audioTrack.muted, 'mute is undoable');
+soundDoc.history.undo(); ok(soundDoc.audioTrack===null, 'import undo removes track'); soundDoc.history.redo(); ok(soundDoc.audioTrack.name==='beat.mp3', 'import redo restores track');
+soundDoc.addLayer(); soundDoc.history.undo(); ok(soundDoc.audioTrack.name==='beat.mp3', 'unrelated structural undo preserves the track');
+
 console.log(`\nall ${checks} engine checks passed`);

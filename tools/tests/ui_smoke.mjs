@@ -723,6 +723,47 @@ async function run() {
   Q.UI.layerSheet(2); Array.from(doc.querySelectorAll('#modalBody button')).find(x=>x.textContent==='Release clipping mask').click();
   ok(!App.doc.layers[2].clipped, 'clipping can be released without destroying layer');
 
+
+  console.log('2.5 animation audio');
+  App.createDoc(64,64,'Audio test'); for(let i=1;i<4;i++) App.addFrame(false);
+  if (doc.querySelector('#timeline').classList.contains('hidden')) Q.UI.toggleTimeline();
+  ok(doc.querySelector('#timeline .tl-audio').textContent.includes('Add track'), 'timeline shows an audio track control');
+  click('#timeline .tl-audio'); ok(doc.querySelector('#modalBody').textContent.includes('MP4 exports remain silent'), 'audio dialog explains preview and silent exports');
+  const audioInput=doc.querySelector('#audioImport'), originalAudioClick=audioInput.click, oldReader2=win.FileReader, oldAudio=win.Audio; let audioPicked=0;
+  audioInput.click=()=>audioPicked++; Array.from(doc.querySelectorAll('#modalBody button')).find(x=>x.textContent==='Choose audio').click();
+  ok(audioPicked===1 && Q.UI.audioTarget.doc===App.doc, 'audio file picker is opened from the timeline');
+  win.FileReader=class {readAsDataURL() {this.result='data:audio/wav;base64,AAAA'; setTimeout(()=>this.onload(),0);}};
+  Object.defineProperty(audioInput,'files',{value:[{name:'beat.wav',type:'audio/wav',size:4}],configurable:true}); audioInput.dispatchEvent(new win.Event('change',{bubbles:true})); await wait(40);
+  ok(App.doc.audioTrack && App.doc.audioTrack.name==='beat.wav' && doc.querySelector('#timeline .tl-audio').textContent.includes('beat.wav'), 'chosen audio is stored and displayed');
+  await App.saveNow(false); let savedAudio=await Q.Store.load(App.doc.id); ok(savedAudio.audioTrack && savedAudio.audioTrack.data==='data:audio/wav;base64,AAAA', 'audio survives save and reopen');
+  App.undo(); ok(!App.doc.audioTrack, 'undo removes imported audio'); App.redo(); ok(!!App.doc.audioTrack, 'redo restores audio');
+  click('#timeline .tl-audio'); Array.from(doc.querySelectorAll('#modalBody button')).find(x=>x.textContent==='Mute audio').click(); ok(App.doc.audioTrack.muted, 'mute is available on the audio track');
+  App.undo(); ok(!App.doc.audioTrack.muted, 'audio mute can be undone');
+  App.doc.fps=30; App.doc.playMode='loop'; App.doc.frames[0].duration=2; App.doc.frames[1].skipped=true; App.doc.frames[2].duration=1; App.doc.frames[3].duration=1; App.selectFrame(2);
+  ok(Math.abs(Q.audioFrameTime(App.doc,2)-2/30)<0.001 && Math.abs(Q.audioFrameTime(App.doc,3)-3/30)<0.001, 'audio offset accounts for holds and skipped frames');
+  const players=[]; win.Audio=class { constructor(){this.duration=5;this.currentTime=0;this.plays=0;this.pauses=0;this.events={};players.push(this);} addEventListener(k,f){this.events[k]=f;} play(){this.plays++;return Promise.resolve();} pause(){this.pauses++;} removeAttribute(){} load(){} };
+  App.togglePlay(); ok(players.length===1 && Math.abs(players[0].currentTime-2/30)<0.001 && players[0].plays===1, 'forward playback starts audio at the selected frame offset');
+  await wait(125); ok(players[0].plays>=2, 'audio restarts at loop boundary'); App.stopPlay(); ok(players[0].pauses>0 && !App.previewAudio, 'stopping playback releases the audio player');
+  App.doc.setPlayRange(2,3); App.selectFrame(3); App.togglePlay();
+  ok(Math.abs(players.at(-1).currentTime-3/30)<0.001, 'audio uses absolute timeline offset inside a custom playback range'); App.stopPlay(); App.doc.setPlayRange(null,null);
+  App.doc.playMode='loop'; App.selectFrame(2); App.togglePlay(); const metadataAudio=players.at(-1); metadataAudio.currentTime=0; metadataAudio.events.loadedmetadata();
+  ok(Math.abs(metadataAudio.currentTime-2/30)<0.001, 'audio retries synchronization when metadata loads');
+  metadataAudio.duration=0.01; App.syncPreviewAudio(App.doc,App.doc.activeFrame,false); ok(metadataAudio.pauses>0, 'short audio stops once the animation is beyond its duration'); App.stopPlay();
+  App.doc.playMode='pingpong'; const countPlayers=players.length; App.togglePlay(); ok(players.length===countPlayers && doc.querySelector('#toast').textContent.includes('audio muted'), 'ping-pong playback explicitly mutes audio'); App.stopPlay();
+  App.doc.playMode='once'; App.selectFrame(2); App.togglePlay(); const onceAudio=players.at(-1); await wait(85); ok(!App.playing && onceAudio.pauses>0, 'one-shot completion stops audio');
+  click('#timeline .tl-audio'); Array.from(doc.querySelectorAll('#modalBody button')).find(x=>x.textContent==='Remove audio').click(); ok(doc.querySelector('#modalBody h2').textContent==='Remove audio?', 'removing audio asks for confirmation'); click('#modalBody .btn.danger');
+  ok(!App.doc.audioTrack, 'confirmed remove deletes the audio track'); App.undo(); ok(!!App.doc.audioTrack, 'undo restores removed audio');
+  win.Audio=class {constructor(){this.duration=5;this.currentTime=0;} addEventListener(){} play(){return Promise.reject(new Error('blocked'));} pause(){} removeAttribute(){} load(){} };
+  App.doc.playMode='loop'; App.togglePlay(); await wait(10); ok(doc.querySelector('#toast').textContent.includes('Audio playback is unavailable'), 'playback rejection reports audio failure'); App.stopPlay();
+  const beforeName=App.doc.audioTrack.name; App.importAudioFile({name:'wrong.pdf',type:'application/pdf',size:40},{doc:App.doc,track:App.doc.audioTrack}); ok(App.doc.audioTrack.name===beforeName, 'audio import rejects unsupported types');
+  App.importAudioFile({name:'large.mp3',type:'audio/mpeg',size:3*1024*1024},{doc:App.doc,track:App.doc.audioTrack}); ok(App.doc.audioTrack.name===beforeName, 'audio import rejects files over size limit');
+  const originalDoc=App.doc, targetOld={doc:originalDoc,track:originalDoc.audioTrack}; win.FileReader=class {readAsDataURL(){this.result='data:audio/wav;base64,AAAA'; setTimeout(()=>this.onload(),25);}};
+  App.importAudioFile({name:'late.wav',type:'audio/wav',size:4},targetOld); App.createDoc(64,64,'New project'); await wait(50);
+  ok(!App.doc.audioTrack && originalDoc.audioTrack.name===beforeName, 'switching projects cancels an in-flight audio import');
+  const migrated=JSON.parse(win.localStorage.getItem('qalam-projects')); delete migrated[originalDoc.id].audioTrack; win.localStorage.setItem('qalam-projects',JSON.stringify(migrated));
+  const withoutAudio=await Q.Store.load(originalDoc.id); ok(withoutAudio && withoutAudio.audioTrack===null, 'older saved projects open without an audio track');
+  audioInput.click=originalAudioClick; win.FileReader=oldReader2; win.Audio=oldAudio;
+
   await App.saveNow(false);
   console.log(failures ? `\n${failures} check(s) FAILED` : '\nall UI checks passed');
   process.exit(failures ? 1 : 0);

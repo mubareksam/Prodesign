@@ -28,6 +28,12 @@ The supplied feature inventory is a roadmap, not a list of completed work.
   into a new layer on the current frame. Imports are centred, downscaled to fit,
   undoable and saved. Files are limited to 16 MiB, decoded images to 8192 pixels
   per side and 16,777,216 pixels. Real-device picker/decoder testing is still needed.
+- One saved audio track (MP3/M4A/WAV/OGG/WebM, max 2 MiB) can be previewed with
+  forward loop or one-shot animation, muted, replaced and removed with undo.
+  Audio time is anchored at the first included timeline frame and follows holds,
+  skips and playback range. Ping-pong is silent; synchronization is approximate.
+  There is no waveform, trimming, offsets, multiple tracks or audio in any export.
+  Actual format support and picker/playback behaviour need physical-device testing.
 - One freehand visual motion guide can be drawn, hidden, cleared, saved and undone;
   it is shared across frames and is not exported. It does not animate or snap
   artwork and does not provide keyframes.
@@ -83,6 +89,6 @@ DPI settings, timelapse, gallery stacks, PSD/Procreate/PDF/TIFF compatibility, b
 import/export, and most advanced colour-management and accessibility features.
 Apple Pencil-specific controls are not applicable on Android. See the original
 [Procreate analysis](procreate-analysis.md) for background; its feature matrix
-predates version 2.4.
+predates version 2.5.
 
-Automated animation motion paths, keyframes/easing, IK, camera animation, morphing, particle animation and audio tracks are not implemented. Onion skins are available as ghost frames. The canvas is finite raster, not infinite or resolution-independent.
+Automated animation motion paths, keyframes/easing, IK, camera animation, morphing, particle animation and audio export or mixing are not implemented. Onion skins are available as ghost frames. The canvas is finite raster, not infinite or resolution-independent.

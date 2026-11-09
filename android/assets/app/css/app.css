@@ -410,3 +410,5 @@ select, .select {
 .tl-head .tl-title { flex: 1 1 auto; }
 .action-group { margin: 14px 0; }
 .action-heading { color: var(--txt-2); font-size: 12px; font-weight: 700; margin: 0 0 8px; }
+
+.tl-audio { display: block; width: 100%; margin: 0 0 6px; padding: 7px 10px; border-radius: 9px; border: 1px solid #565661; background: #292932; color: #f4f4f8; text-align: left; overflow: hidden; white-space: nowrap; text-overflow: ellipsis; }
