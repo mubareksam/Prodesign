@@ -86,11 +86,11 @@ The supplied feature inventory is a roadmap, not a list of completed work.
   tracks. Frame holds/skips do not change interpolation, out-of-canvas pixels are
   cropped and resampling can soften artwork. New allocation is capped at 64 MiB per
   operation; history and existing cels consume additional memory.
-- Temporary rectangular and freehand lasso selections clip brushes, erasers, flood
-  fill and effects. Both support fill/clear and copy to a new layer. Rectangle-only
-  flips, 180° rotation and numeric move/scale are undoable; lasso transforms are
+- Temporary rectangular, freehand lasso and connected-colour magic-wand selections clip brushes, erasers, flood
+  fill and effects. All support fill/clear and copy to a new layer. Rectangle-only
+  flips, 180° rotation and numeric move/scale are undoable; lasso and wand transforms are
   refused. Effects calculate within the bounding rectangle then mask output, so
-  blur can sample outside a lasso. Selections are not saved or feathered and the
+  blur can sample outside a lasso or wand mask. Selections are not saved or feathered and the
   outline is not restored by pixel undo. No live transform preview.
 - Alpha lock lets brush painting, fill and effects recolour existing layer pixels
   without changing their alpha. It is saved per layer and copied on duplication.
@@ -101,7 +101,7 @@ The supplied feature inventory is a roadmap, not a list of completed work.
 - Per-layer lock prevents painting, fill, effects, selection edits, clearing, deleting
   and merging the layer, and persists with the artwork. It does not block visibility,
   reordering, undo/redo or frame deletion.
-- Hold-to-snap QuickShape for lines and ellipses. Rectangles, arcs and shape editing
+- Hold-to-snap QuickShape for lines, circles and ellipses; a second finger moves the temporary shape until the drawing pointer is released. Rectangles, arcs and resizing/rotation handles
   are not implemented.
 - Frame timeline and scrubber, 1–30 fps, loop, ping-pong and one-shot playback,
   holds of 1–60 ticks and independent 0–4 previous/next onions. Onion settings cover
@@ -115,7 +115,9 @@ The supplied feature inventory is a roadmap, not a list of completed work.
   frame. Copy one non-empty current-layer cel to a range of frames with confirmation
   and undo; allocation is capped at 64 MiB per operation and locked/alpha-locked
   layers are protected. Other layers and frame metadata are unchanged.
-- Undoable per-frame layer effects: soft box blur, horizontal motion blur, sharpen,
+- The top colour swatch supports drag-and-drop flood fill on the active cel. Magic wand uses fill tolerance and a connected pixel mask, limited to 4096 horizontal runs; the dashed indicator shows only its bounds. It does not sample merged layers.
+- Effects have a small approximate, downsampled current-cel preview that updates with the strength slider; applying edits pixels, not a persistent live effect.
+- Undoable per-frame layer effects: Gaussian-like blur (three box passes), horizontal motion blur, sharpen,
   bloom, glitch, pixelate, posterize, solarize, grayscale, invert, sepia,
   brightness, saturation, contrast, hue shift, noise, chromatic shift, halftone
   dither and threshold. These are destructive pixel effects, not a full Procreate

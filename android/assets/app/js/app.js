@@ -23,6 +23,7 @@
     const v = App.view;
     v.onDocChange = function () { App.markDirty(); };
     v.onFill = function (x, y) { App.fillAt(x, y); };
+    v.onWand = function (x, y) { App.wandAt(x, y); };
     v.onStrokeEnd = function () { App.markDirty(); App.pushRecentColor(); };
     v.onUndo = function () { App.undo(); };
     v.onRedo = function () { App.redo(); };
@@ -101,6 +102,7 @@
   App.adoptDoc = function (doc, isNew) {
     if (App.cancelAudioExport) App.cancelAudioExport();
     App.stopPlay();
+    if (App.view) App.view.cancelActiveInput();
     // Serialize the previous artwork before switching documents, including when
     // New canvas is opened from the studio before the autosave timer fires.
     if (App.doc && App.doc.id !== doc.id) { clearTimeout(App.autosaveTimer); App.saveNow(false); }
@@ -129,6 +131,7 @@
 
   App.backToGallery = function () {
     App.stopPlay();
+    if (App.view) App.view.cancelActiveInput();
     App.saveNow(false);
     if (App.doc) Q.Store.meta('lastDoc', App.doc.id);
     Q.UI.showGallery();
@@ -594,7 +597,7 @@
     if (layer.locked) { Q.toast('This layer is locked'); return; }
     if (layer.alphaLocked && operation !== 'fill') { Q.toast('Turn off alpha lock for this edit'); return; }
     const sel=v.selection;
-    if (sel && sel.points && (operation === 'flipH' || operation === 'flipV' || operation === 'rotate180')) { Q.toast('Lasso transforms are not yet supported; use a rectangle'); return; }
+    if (sel && (sel.points || sel.runs) && (operation === 'flipH' || operation === 'flipV' || operation === 'rotate180')) { Q.toast('Non-rectangular transforms are not yet supported; use a rectangle'); return; }
     if (!sel && (operation === 'clear' || operation === 'fill')) { Q.toast('Draw a rectangle or select all first'); return; }
     const r=sel || {x:0,y:0,w:d.width,h:d.height};
     const cel=d.activeCel(operation === 'fill');
@@ -637,7 +640,7 @@
     if (layer.alphaLocked) { Q.toast('Turn off alpha lock to transform'); return; }
     if (!cel) { Q.toast('Draw on this layer first'); return; }
     if (!Number.isInteger(dx) || !Number.isInteger(dy) || Math.abs(dx)>d.width*2 || Math.abs(dy)>d.height*2 || !Number.isFinite(scale) || scale<0.25 || scale>4) { Q.toast('Invalid transform'); return; }
-    if (v.selection && v.selection.points) { Q.toast('Lasso transforms are not yet supported; use a rectangle'); return; }
+    if (v.selection && (v.selection.points || v.selection.runs)) { Q.toast('Non-rectangular transforms are not yet supported; use a rectangle'); return; }
     const src=v.selection || {x:0,y:0,w:d.width,h:d.height};
     const dst={x:src.x+dx,y:src.y+dy,w:Math.max(1,Math.round(src.w*scale)),h:Math.max(1,Math.round(src.h*scale))};
     if (dx===0 && dy===0 && dst.w===src.w && dst.h===src.h) { Q.toast('Nothing changed'); return; }
@@ -657,7 +660,20 @@
     } catch (err) { Q.toast('Could not transform this area on this device',4000); }
   };
 
-  App.fillAt = function (x, y) {
+  App.wandAt = function (x,y) {
+    const d=App.doc, v=App.view; if(!d || v.locked || x<0 || y<0 || x>=d.width || y>=d.height) return;
+    const layer=d.layer(), cel=d.activeCel(false), frame=d.activeFrame, layerIndex=d.activeLayer;
+    if(!layer || !layer.visible) { Q.toast('This layer is hidden'); return; }
+    v.locked=true; Q.UI.progress('Selecting','Finding connected pixels on the current layer…',0);
+    setTimeout(function () { try {
+      if(App.doc!==d || d.activeFrame!==frame || d.activeLayer!==layerIndex || d.activeCel(false)!==cel) { Q.toast('Selection cancelled'); return; }
+      const image=cel ? cel.getContext('2d').getImageData(0,0,d.width,d.height) : Q.canvas(d.width,d.height).getContext('2d').getImageData(0,0,d.width,d.height);
+      const result=Q.floodSelect(image,x,y,App.fillThreshold); if(result && result.error) { Q.toast(result.error,4000); return; }
+      if(result) { v.selection=result; v.dirty=true; Q.toast('Connected area selected · Menu → Selection & transform',3000); }
+    } catch(e) { Q.toast('Could not select this area',4000); } finally { Q.UI.endProgress(); v.locked=false; } },40);
+  };
+
+  App.fillAt = function (x, y, droppedColor) {
     const d = App.doc;
     if (!d || x < 0 || y < 0 || x >= d.width || y >= d.height) return;
     const layer = d.layer();
@@ -665,7 +681,7 @@
     if (layer.locked) { Q.toast('This layer is locked'); return; }
     const bounds=App.view.selection ? {...App.view.selection} : {x:0,y:0,w:d.width,h:d.height};
     if (x < bounds.x || y < bounds.y || x >= bounds.x+bounds.w || y >= bounds.y+bounds.h) { Q.toast('Tap inside the selection'); return; }
-    const cel = d.activeCel(true), color = App.view.color.slice(), tolerance = App.fillThreshold, alphaLocked=!!layer.alphaLocked;
+    const cel = d.activeCel(true), color = (droppedColor || App.view.color).slice(), tolerance = App.fillThreshold, alphaLocked=!!layer.alphaLocked;
     App.view.locked = true;
     Q.UI.progress('Filling', 'Processing the current layer…', 0);
     setTimeout(function () {

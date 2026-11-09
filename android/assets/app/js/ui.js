@@ -116,7 +116,30 @@
 
     el('#btnBrush').addEventListener('click', function () { UI.toggleTray('brushes'); });
     el('#btnLayers').addEventListener('click', function () { UI.toggleTray('layers'); });
-    el('#btnColor').addEventListener('click', function () { UI.toggleTray('color'); });
+    // A tap opens the picker; a drag from the swatch drops the captured colour
+    // on the raw canvas. Pointer capture also handles dragging outside the button.
+    const swatch=el('#btnColor'); let colorDrag=null, suppressColorClick=false;
+    swatch.addEventListener('pointerdown',function (e) {
+      if (!app().doc || !app().view || app().view.locked || (e.button!=null && e.button!==0)) return;
+      colorDrag={id:e.pointerId,x:e.clientX,y:e.clientY,moved:false,color:app().view.color.slice(),doc:app().doc};
+      try { swatch.setPointerCapture(e.pointerId); } catch(err) {}
+    });
+    swatch.addEventListener('pointermove',function (e) {
+      if(!colorDrag || colorDrag.id!==e.pointerId) return;
+      if(Math.hypot(e.clientX-colorDrag.x,e.clientY-colorDrag.y)>8) colorDrag.moved=true;
+      if(colorDrag.moved) { e.preventDefault(); let dot=document.getElementById('colorDropGhost'); if(!dot) { dot=Q.crel('div','color-drop-ghost'); dot.id='colorDropGhost'; document.body.appendChild(dot); } dot.style.background=Q.rgbToHex(colorDrag.color); dot.style.left=e.clientX+'px'; dot.style.top=e.clientY+'px'; }
+    });
+    function finishColorDrag(e) {
+      if(!colorDrag || colorDrag.id!==e.pointerId) return; const drag=colorDrag; colorDrag=null;
+      const ghost=document.getElementById('colorDropGhost'); if(ghost) ghost.remove();
+      if(!drag.moved) return; suppressColorClick=true; setTimeout(function(){ suppressColorClick=false; },500);
+      if(e.type==='pointercancel' || app().doc!==drag.doc || app().view.locked) return;
+      const cv=app().view.canvas, r=cv.getBoundingClientRect(), hit=document.elementFromPoint(e.clientX,e.clientY);
+      if(e.clientX<r.left || e.clientX>=r.right || e.clientY<r.top || e.clientY>=r.bottom || hit!==cv) { Q.toast('Drop on the canvas to fill'); return; }
+      const p=app().view.toDoc(e.clientX-r.left,e.clientY-r.top); app().fillAt(p.x,p.y,drag.color);
+    }
+    swatch.addEventListener('pointerup',finishColorDrag); swatch.addEventListener('pointercancel',finishColorDrag);
+    swatch.addEventListener('click', function () { if(suppressColorClick) { suppressColorClick=false; return; } UI.toggleTray('color'); });
     el('#btnEyedrop').addEventListener('click', function () {
       const v = app().view;
       v.tool = v.tool === 'eyedrop' ? 'brush' : 'eyedrop';
@@ -848,7 +871,7 @@
   UI.selectionDialog = function () {
     const v=app().view, d=app().doc; if (!d) return;
     const card=Q.crel('div'); card.appendChild(Q.crel('h2',null,'Selection & transform'));
-    card.appendChild(Q.crel('p','sub', v.selection ? (v.selection.points ? 'Lasso selected. Transforms currently require a rectangle.' : 'Rectangle selected. Edits affect the current layer and frame.') : 'No selection. Flips and rotation use the whole current layer and frame.'));
+    card.appendChild(Q.crel('p','sub', v.selection ? ((v.selection.points || v.selection.runs) ? (v.selection.runs ? 'Magic wand selected. The dashed box shows bounds, not the exact selected pixels. Transforms require a rectangle.' : 'Lasso selected. Transforms currently require a rectangle.') : 'Rectangle selected. Edits affect the current layer and frame.') : 'No selection. Flips and rotation use the whole current layer and frame.'));
     card.appendChild(Q.crel('p','sub','The selection clips brushes, erasers, flood fill and effects. It is temporary and applies to the current layer and frame.'));
     const actions=Q.crel('div','menu-grid');
     function action(label, fn) { const b=Q.crel('button','menu-item',label); b.addEventListener('click',function () { UI.closeModal(); UI.closeTray(); fn(); }); actions.appendChild(b); }
@@ -857,10 +880,11 @@
       Q.hint('Drag on the canvas to select a rectangle',3000);
     });
     action('Draw lasso',function () { v.tool='lasso'; v.selectionDraft=null; Q.el('#btnFill').classList.remove('on'); Q.el('#btnEyedrop').classList.remove('on'); Q.hint('Draw a closed selection around an area',3000); });
+    action('Magic wand',function () { v.tool='wand'; v.selectionDraft=null; Q.el('#btnFill').classList.remove('on'); Q.el('#btnEyedrop').classList.remove('on'); Q.hint('Tap connected pixels on the active layer · tolerance in Fill settings',3500); });
     action('Select all',function () { v.selection={x:0,y:0,w:d.width,h:d.height}; v.dirty=true; Q.hint('Entire canvas selected',1600); });
-    action('Deselect',function () { v.selection=null; v.selectionDraft=null; if (v.tool === 'select' || v.tool === 'lasso') v.tool='brush'; v.dirty=true; });
-    action(v.selection && v.selection.points ? 'Fill selection' : 'Fill rectangle',function () { app().editSelection('fill'); });
-    action(v.selection && v.selection.points ? 'Clear selection' : 'Clear rectangle',function () { app().editSelection('clear'); });
+    action('Deselect',function () { v.selection=null; v.selectionDraft=null; if (v.tool === 'select' || v.tool === 'lasso' || v.tool === 'wand') v.tool='brush'; v.dirty=true; });
+    action(v.selection && (v.selection.points || v.selection.runs) ? 'Fill selection' : 'Fill rectangle',function () { app().editSelection('fill'); });
+    action(v.selection && (v.selection.points || v.selection.runs) ? 'Clear selection' : 'Clear rectangle',function () { app().editSelection('clear'); });
     action('Copy to layer',function () { app().copySelectionToLayer(); });
     action('Flip horizontal',function () { app().editSelection('flipH'); });
     action('Flip vertical',function () { app().editSelection('flipV'); });
@@ -893,7 +917,7 @@
 
   UI.fillSettings = function () {
     const card=Q.crel('div'); card.appendChild(Q.crel('h2',null,'Fill settings'));
-    card.appendChild(Q.crel('p','sub','Fill uses the selected colour on the active layer. Higher tolerance includes similar colours.'));
+    card.appendChild(Q.crel('p','sub','Fill and Magic wand use connected pixels on the active layer. Higher tolerance includes similar colours. Drag the top colour swatch onto the canvas to fill.'));
     const row=Q.crel('div','field studio-field'); row.appendChild(Q.crel('label',null,'Tolerance'));
     const slider=Q.crel('input'); slider.type='range'; slider.min=0; slider.max=128; slider.value=app().fillThreshold; slider.setAttribute('aria-label','Fill tolerance');
     const val=Q.crel('div','val',slider.value); slider.addEventListener('input',function () { app().fillThreshold=Number(slider.value); Q.Store.meta('fillThreshold',app().fillThreshold); val.textContent=slider.value; });
@@ -904,23 +928,41 @@
   UI.effectsDialog = function () {
     const card = Q.crel('div'); card.appendChild(Q.crel('h2', null, 'Effects'));
     card.appendChild(Q.crel('p', 'sub', 'Applies to the selected layer and current frame. The change can be undone.'));
-    card.appendChild(Q.crel('p','sub','Thumbnails use an offline sample, not a live preview of your artwork.'));
-    const options=[['blur','Soft blur'],['motion','Motion blur'],['sharpen','Sharpen'],['bloom','Bloom'],['glitch','Glitch'],['pixelate','Pixelate'],['posterize','Posterize'],['solarize','Solarize'],['grayscale','Grayscale'],['invert','Invert'],['sepia','Sepia'],['brightness','Brightness'],['saturation','Saturation'],['contrast','Contrast'],['hue','Hue shift'],['noise','Noise'],['chromatic','Chromatic shift'],['halftone','Halftone'],['threshold','Threshold']];
+    card.appendChild(Q.crel('p','sub','Adjust strength to preview the current cel below. The small preview is approximate; Apply processes the original pixels. Thumbnails use an offline sample.'));
+    const options=[['blur','Gaussian-like blur'],['motion','Motion blur'],['sharpen','Sharpen'],['bloom','Bloom'],['glitch','Glitch'],['pixelate','Pixelate'],['posterize','Posterize'],['solarize','Solarize'],['grayscale','Grayscale'],['invert','Invert'],['sepia','Sepia'],['brightness','Brightness'],['saturation','Saturation'],['contrast','Contrast'],['hue','Hue shift'],['noise','Noise'],['chromatic','Chromatic shift'],['halftone','Halftone'],['threshold','Threshold']];
     let selected='blur';
-    const selectedName=Q.crel('div','effect-selected','Selected: Soft blur'); card.appendChild(selectedName);
+    const selectedName=Q.crel('div','effect-selected','Selected: Gaussian-like blur'); card.appendChild(selectedName);
     const grid=Q.crel('div','effects-grid'); grid.setAttribute('role','group'); grid.setAttribute('aria-label','Choose effect');
     options.forEach(function (option) {
       const b=Q.crel('button','effect-card'+(option[0]===selected ? ' on' : '')); b.setAttribute('data-effect',option[0]); b.setAttribute('aria-label',option[1]); b.setAttribute('aria-pressed',option[0]===selected ? 'true' : 'false');
       try { b.appendChild(Q.effectPreviewCanvas(option[0])); } catch(e) { b.appendChild(Q.crel('div','effect-fallback')); }
       b.appendChild(Q.crel('span',null,option[1])); b.addEventListener('click',function () {
-        selected=option[0]; selectedName.textContent='Selected: '+option[1];
+        selected=option[0]; selectedName.textContent='Selected: '+option[1]; refreshEffectPreview();
         grid.querySelectorAll('.effect-card').forEach(function (item) { const active=item===b; item.classList.toggle('on',active); item.setAttribute('aria-pressed',active ? 'true' : 'false'); });
       }); grid.appendChild(b);
     }); card.appendChild(grid);
+    const preview=Q.canvas(192,192); preview.className='effect-live-preview'; preview.setAttribute('aria-label','Current layer effect preview'); card.appendChild(preview);
+    const previewStatus=Q.crel('p','sub',''); card.appendChild(previewStatus);
+    const effectDoc=app().doc, effectLayer=effectDoc && effectDoc.layer(), effectCel=effectDoc && effectDoc.activeCel(false), selection=app().view.selection;
+    const original=Q.canvas(192,192); let previewReady=false;
+    try { if(effectCel) { const factor=Math.min(192/effectDoc.width,192/effectDoc.height); preview.width=original.width=Math.max(1,Math.round(effectDoc.width*factor)); preview.height=original.height=Math.max(1,Math.round(effectDoc.height*factor)); original.getContext('2d').drawImage(effectCel,0,0,original.width,original.height); previewReady=true; } else previewStatus.textContent='Draw on this layer to preview an effect.'; } catch(e) { previewStatus.textContent='Preview is unavailable on this device.'; }
+    function refreshEffectPreview() {
+      if(!previewReady) return;
+      try {
+        const context=preview.getContext('2d'), scratch=Q.canvas(preview.width,preview.height), sc=scratch.getContext('2d'); sc.drawImage(original,0,0);
+        const image=sc.getImageData(0,0,scratch.width,scratch.height), alpha=effectLayer.alphaLocked ? new Uint8Array(scratch.width*scratch.height) : null;
+        if(alpha) for(let i=0;i<alpha.length;i++) alpha[i]=image.data[i*4+3];
+        Q.applyPixelEffect(image,selected,Number(amount.value)/100);
+        if(alpha) for(let i=0;i<alpha.length;i++) image.data[i*4+3]=alpha[i]; sc.putImageData(image,0,0);
+        context.clearRect(0,0,preview.width,preview.height); context.drawImage(original,0,0);
+        context.save(); if(selection) { context.scale(preview.width/effectDoc.width,preview.height/effectDoc.height); Q.selectionPath(context,selection); context.clip(); context.setTransform(1,0,0,1,0,0); } context.clearRect(0,0,preview.width,preview.height); context.drawImage(scratch,0,0); context.restore();
+        previewStatus.textContent='Approximate preview of this cel; blur radius is shown at preview scale.';
+      } catch(e) { previewStatus.textContent='Preview is unavailable on this device.'; }
+    }
     const amountRow=Q.crel('div','field studio-field'); amountRow.appendChild(Q.crel('label',null,'Strength'));
     const amount=Q.crel('input'); amount.type='range'; amount.min=0; amount.max=100; amount.value=50; amount.setAttribute('aria-label','Effect strength');
-    const value=Q.crel('div','val','50%'); amount.addEventListener('input',function () { value.textContent=amount.value+'%'; });
-    amountRow.appendChild(amount); amountRow.appendChild(value); card.appendChild(amountRow);
+    const value=Q.crel('div','val','50%'); amount.addEventListener('input',function () { value.textContent=amount.value+'%'; refreshEffectPreview(); });
+    amountRow.appendChild(amount); amountRow.appendChild(value); card.appendChild(amountRow); refreshEffectPreview();
     const actions=Q.crel('div','modal-actions'), cancel=Q.crel('button','btn ghost','Cancel'), apply=Q.crel('button','btn primary','Apply');
     cancel.addEventListener('click',function () { UI.closeModal(); });
     apply.addEventListener('click',function () { UI.closeModal(); UI.closeTray(); app().applyEffect(selected,Number(amount.value)/100); });
@@ -1439,7 +1481,9 @@
       ['Three-finger tap', 'Undo'],
       ['Four-finger tap', 'Redo'],
       ['Long press', 'Pick a colour (eyedropper)'],
-      ['Hold at the end of a stroke', 'Snap to a straight line or ellipse'],
+      ['Hold at the end of a stroke', 'Snap a line, circle or ellipse; drag another finger to move, then lift the first to commit'],
+      ['Drag the colour swatch', 'Drop on the active layer to flood fill'],
+      ['Magic wand', 'Select connected pixels via Selection & transform'],
       ['Drag a layer row sideways', 'Change layer opacity'],
       ['Double-tap a frame', 'Duplicate, reorder or delete it']
     ];

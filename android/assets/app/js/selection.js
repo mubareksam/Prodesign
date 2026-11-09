@@ -18,13 +18,15 @@
   };
   Q.selectionPath = function (ctx,selection) {
     ctx.beginPath();
-    if (selection.points && selection.points.length>=3) {
+    if (selection.runs) { for (const run of selection.runs) ctx.rect(run.x,run.y,run.w,1); }
+    else if (selection.points && selection.points.length>=3) {
       ctx.moveTo(selection.points[0].x,selection.points[0].y);
       for (let i=1;i<selection.points.length;i++) ctx.lineTo(selection.points[i].x,selection.points[i].y);
       ctx.closePath();
     } else ctx.rect(selection.x,selection.y,selection.w,selection.h);
   };
   Q.selectionMask = function (selection) {
+    if (selection.runs) { const mask=new Uint8Array(selection.w*selection.h); for (const run of selection.runs) mask.fill(1,(run.y-selection.y)*selection.w+run.x-selection.x,(run.y-selection.y)*selection.w+run.x-selection.x+run.w); return mask; }
     if (!selection.points) return null;
     const canvas=Q.canvas(selection.w,selection.h), ctx=canvas.getContext('2d');
     ctx.translate(-selection.x,-selection.y); Q.selectionPath(ctx,selection); ctx.fillStyle='#000'; ctx.fill();

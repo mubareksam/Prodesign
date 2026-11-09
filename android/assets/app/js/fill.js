@@ -36,4 +36,23 @@
     }
     return maxX<0 ? null : {x:minX,y:minY,w:maxX-minX+1,h:maxY-minY+1};
   };
+  // Connected-colour selection on the active cel. Run-length geometry keeps
+  // clipping compatible with brushes; reject pathological complex boundaries.
+  Q.floodSelect = function (image, sx, sy, threshold) {
+    const w=image.width,h=image.height,data=image.data; sx=Math.floor(sx); sy=Math.floor(sy);
+    if (sx<0 || sy<0 || sx>=w || sy>=h) return null;
+    const start=(sy*w+sx)*4, original=[data[start],data[start+1],data[start+2],data[start+3]], tol=Q.clamp(Number(threshold)||0,0,128);
+    const visited=new Uint8Array(w*h),stack=[sy*w+sx],runs=[]; let minX=w,minY=h,maxX=-1,maxY=-1;
+    function matches(n) { if(visited[n]) return false; const i=n*4,a=data[i+3]; if(Math.abs(a-original[3])>tol) return false; if(a===0 && original[3]===0) return true; return Math.abs(data[i]-original[0])<=tol && Math.abs(data[i+1]-original[1])<=tol && Math.abs(data[i+2]-original[2])<=tol; }
+    while(stack.length) {
+      const n=stack.pop(),y=Math.floor(n/w),x=n%w; if(!matches(n)) continue;
+      let left=x,right=x; while(left>0 && matches(y*w+left-1)) left--; while(right+1<w && matches(y*w+right+1)) right++;
+      if (runs.length>=4096) return {error:'Selection is too complex; lower tolerance or use lasso'};
+      runs.push({x:left,y:y,w:right-left+1}); let up=false,down=false;
+      for(let xx=left;xx<=right;xx++) { const pos=y*w+xx; visited[pos]=1; if(y>0) { const can=matches(pos-w); if(can&&!up) stack.push(pos-w); up=can; } if(y+1<h) { const can=matches(pos+w); if(can&&!down) stack.push(pos+w); down=can; } }
+      minX=Math.min(minX,left);maxX=Math.max(maxX,right);minY=Math.min(minY,y);maxY=Math.max(maxY,y);
+    }
+    if(maxX<0) return null;
+    return {x:minX,y:minY,w:maxX-minX+1,h:maxY-minY+1,runs:runs};
+  };
 })();

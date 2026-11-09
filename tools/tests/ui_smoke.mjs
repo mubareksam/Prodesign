@@ -1021,6 +1021,25 @@ async function run() {
   App.doc.setLayerProp(1,'locked',true); Q.UI.twoBoneIKDialog(); get('IK upper layer').value='0'; get('IK lower layer').value='1'; btn('Review keys'); ok(doc.querySelector('.canvas-error').textContent.includes('Unlock'), 'IK rejects locked layers in the dialog'); Q.UI.closeModal();
   }
 
+  {
+  console.log('3.4 painting workflow');
+  App.createDoc(64,64,'Painting'); App.doc.activeCel(true); const view=doc.querySelector('#view'), sw=doc.querySelector('#btnColor'); App.view.fit();
+  Q.UI.selectionDialog(); let action=Array.from(doc.querySelectorAll('#modalBody button')).find(b=>b.textContent==='Magic wand'); ok(!!action,'magic wand is available in Selection & transform'); action.click();
+  const point=App.view.toScreen(20,20); let wand=null; const oldWand=App.view.onWand; App.view.onWand=(x,y)=>{wand=[x,y];};
+  pointer(view,'pointerdown',point.x,point.y,{id:301}); pointer(view,'pointerup',point.x,point.y,{id:301}); App.view.onWand=oldWand;
+  ok(wand && Math.abs(wand[0]-20)<0.1 && App.view.tool==='brush','magic wand maps tap through canvas transform and returns to brush');
+  const oldFill=App.fillAt, oldHit=doc.elementFromPoint; let fills=[]; App.fillAt=(x,y,c)=>fills.push([x,y,c]); doc.elementFromPoint=()=>view;
+  pointer(sw,'pointerdown',10,10,{id:302}); pointer(sw,'pointermove',point.x,point.y,{id:302}); ok(!!doc.querySelector('#colorDropGhost'), 'colour drag shows a visible pointer indicator'); pointer(sw,'pointerup',point.x,point.y,{id:302}); click('#btnColor');
+  ok(fills.length===1 && Math.abs(fills[0][0]-20)<0.1 && !!fills[0][2] && !doc.querySelector('#colorDropGhost'), 'dropping swatch on canvas calls fill with the captured colour');
+  pointer(sw,'pointerdown',10,10,{id:303}); pointer(sw,'pointermove',point.x,point.y,{id:303}); pointer(sw,'pointercancel',point.x,point.y,{id:303}); click('#btnColor'); ok(fills.length===1 && !doc.querySelector('#colorDropGhost'), 'cancelled colour drag does not fill');
+  doc.elementFromPoint=()=>sw; pointer(sw,'pointerdown',10,10,{id:304}); pointer(sw,'pointermove',point.x,point.y,{id:304}); pointer(sw,'pointerup',point.x,point.y,{id:304}); click('#btnColor'); ok(fills.length===1,'colour drop ignores UI overlays');
+  App.fillAt=oldFill; doc.elementFromPoint=oldHit;
+  const before=App.doc.history.undoStack.length; Q.UI.effectsDialog(); const slider=doc.querySelector('[aria-label="Effect strength"]'); const samples=counts.getImageData;
+  slider.value='15'; slider.dispatchEvent(new win.Event('input',{bubbles:true})); slider.value='85'; slider.dispatchEvent(new win.Event('input',{bubbles:true}));
+  ok(!!doc.querySelector('canvas[aria-label="Current layer effect preview"]') && counts.getImageData>=samples+2 && doc.querySelector('#modalBody').textContent.includes('85%') && App.doc.history.undoStack.length===before, 'effect slider updates a non-destructive current-layer preview');
+  click('#modalBody .btn.ghost'); ok(App.doc.history.undoStack.length===before, 'cancelling effect preview does not alter history');
+  }
+
   await App.saveNow(false);
   console.log(failures ? `\n${failures} check(s) FAILED` : '\nall UI checks passed');
   process.exit(failures ? 1 : 0);

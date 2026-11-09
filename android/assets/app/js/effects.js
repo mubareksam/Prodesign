@@ -122,7 +122,10 @@
     const strength = Q.clamp(Number(amount) || 0, 0, 1);
     if (!strength) return image;
     if (type === 'blur') {
-      boxBlur(data, w, h, Math.max(1, Math.round(strength * 16)));
+      // Three box passes provide a bounded, Gaussian-like soft blur. This is
+      // an approximation, not an exact Gaussian kernel.
+      const radius=Math.max(1,Math.round(strength*9));
+      boxBlur(data,w,h,radius); boxBlur(data,w,h,radius); boxBlur(data,w,h,radius);
       return image;
     }
     if (type === 'motion') { motionBlur(data, w, h, Math.max(1, Math.round(strength * 32))); return image; }

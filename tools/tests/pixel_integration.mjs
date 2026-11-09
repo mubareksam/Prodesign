@@ -661,4 +661,41 @@ function ikOptions(overrides={}) { return {upper:0,lower:1,start:0,end:2,root:{x
  ok(!p.error && p.upper.every((k,i,arr)=>Number.isFinite(k.angle) && (!i || Math.abs(k.angle-arr[i-1].angle)<=180)) && p.lower.every((k,i,arr)=>Number.isFinite(k.angle) && (!i || Math.abs(k.angle-arr[i-1].angle)<=180)), 'IK angles remain finite and continuous across the 180-degree boundary');
  ok(!q.error && Math.abs(p.upper[1].angle-q.upper[1].angle)>0.01, 'IK target easing changes intermediate generated poses');
 }
+{
+ const d=setup(), cel=d.activeCel(true), c=cel.getContext('2d'); c.fillStyle='#112233'; c.fillRect(0,0,16,16); c.fillStyle='#ffffff'; c.fillRect(2,2,8,8); c.fillStyle='#112233'; c.fillRect(6,4,4,4);
+ App.fillThreshold=0; App.wandAt(3,3); await new Promise(r=>setTimeout(r,75)); const sel=App.view.selection, m=Q.selectionMask(sel);
+ ok(!!sel.runs && m[(3-sel.y)*sel.w+3-sel.x]===1 && m[(5-sel.y)*sel.w+7-sel.x]===0, 'wand selects connected colour and excludes enclosed holes');
+ const st=new Q.Stroke(d,pen,[255,0,0],14,1,sel); st.begin({x:6,y:5,pressure:1,t:1}); st.end();
+ ok(pixel(cel,3,3)[0]===255 && same(pixel(cel,7,5),[17,34,51,255]), 'brush clips to exact wand mask rather than its bounds'); d.history.undo();
+ App.fillAt(3,3,[0,255,0]); await new Promise(r=>setTimeout(r,75)); ok(same(pixel(cel,3,3),[0,255,0,255]) && same(pixel(cel,7,5),[17,34,51,255]), 'colour-drop fill obeys connected wand selection');
+ d.history.undo(); ok(same(pixel(cel,3,3),[255,255,255,255]), 'colour-drop fill is undoable');
+ App.editSelection('flipH'); ok(d.history.undoStack.length===0 && same(pixel(cel,3,3),[255,255,255,255]), 'wand mask blocks unsupported rectangular transforms');
+ App.applyEffect('invert',1); await new Promise(r=>setTimeout(r,75)); ok(same(pixel(cel,3,3),[0,0,0,255]) && same(pixel(cel,7,5),[17,34,51,255]), 'effects use the exact wand mask');
+}
+{
+ const im={width:4,height:1,data:new Uint8ClampedArray([100,100,100,255,108,100,100,255,140,100,100,255,100,100,100,255])};
+ const a=Q.floodSelect(im,0,0,0),b=Q.floodSelect(im,0,0,10); ok(a.w===1 && b.w===2, 'wand tolerance includes similar connected colours, not disconnected matches');
+ const huge={width:2,height:4097,data:new Uint8ClampedArray(2*4097*4)}; ok(!!Q.floodSelect(huge,0,0,0).error, 'wand rejects selections exceeding its complexity cap');
+}
+{
+ const original=createCanvas(32,32); original.getContext('2d').fillStyle='#fff'; original.getContext('2d').fillRect(15,15,2,2);
+ const a=original.getContext('2d').getImageData(0,0,32,32),b=original.getContext('2d').getImageData(0,0,32,32); Q.applyPixelEffect(a,'blur',0.1); Q.applyPixelEffect(b,'blur',0.9);
+ ok(a.data[(15*32+15)*4+3]>b.data[(15*32+15)*4+3] && b.data[(15*32+21)*4+3]>a.data[(15*32+21)*4+3], 'blur strength changes spread and intensity');
+}
+{
+ globalThis.requestAnimationFrame=()=>{}; Q.hint=()=>{}; Q.haptic=()=>{};
+ const cv=createCanvas(100,100); cv.getBoundingClientRect=()=>({left:0,top:0,width:100,height:100}); cv.addEventListener=()=>{}; cv.setPointerCapture=()=>{};
+ const view=new Q.View(cv),d=new Q.Doc({width:100,height:100}); view.doc=d; view.brush=pen; view.size=2; view.color=[255,0,0]; view.onDocChange=()=>{}; view.scale=1;view.tx=0;view.ty=0;
+ const ev=(type,id,x,y,pointerType='pen')=>({type,pointerId:id,clientX:x,clientY:y,pointerType,pressure:1,timeStamp:Date.now()});
+ view._down(ev('pointerdown',1,50,30)); for(let i=1;i<=72;i++) {const a=i*Math.PI*2/72;view._move(ev('pointermove',1,40+10*Math.cos(a),30+10*Math.sin(a)));} view._disarmHold(); view._quickShape();
+ ok(view.quickShape && view.quickShape.closed && view.quickShape.circle && view.quickShape.box.w===view.quickShape.box.h && d.history.undoStack.length===0, 'closed held stroke becomes an uncommitted ellipse preview');
+ view._down(ev('pointerdown',2,50,50,'touch')); view._move(ev('pointermove',2,60,55,'touch'));
+ ok(Math.abs(view.quickShape.box.x-40)<1 && Math.abs(view.quickShape.box.y-25)<1 && !view.g, 'second finger moves snapped stylus ellipse without starting pinch');
+ view._up(ev('pointerup',1,50,30)); view._up(ev('pointerup',2,60,55,'touch'));
+ const cel=d.activeCel(false); ok(!view.quickShape && d.history.undoStack.length===1 && pixel(cel,50,25)[3]>0 && pixel(cel,40,15)[3]===0, 'lifting first pointer commits moved ellipse once at adjusted location');
+ const image=cel.getContext('2d').getImageData(0,0,100,100); Q.floodFill(image,50,35,[0,0,255],0,false); ok(image.data[(35*100+50)*4+2]===255 && image.data[(0*100+0)*4+3]===0, 'snapped ellipse encloses a fillable region');
+ d.history.undo(); ok(pixel(cel,50,25)[3]===0, 'quickshape undo removes the entire committed shape');
+ view._down(ev('pointerdown',3,10,10)); view._move(ev('pointermove',3,40,10)); view._disarmHold(); view._quickShape(); view._up(ev('pointercancel',3,40,10)); ok(!view.quickShape && d.history.undoStack.length===0 && pixel(cel,15,10)[3]===0, 'cancelled quickshape does not commit pixels or history');
+}
+
 console.log(`all ${n} raster integration checks passed`);

@@ -17,6 +17,7 @@
     this.ty = 0;
     this.dirty = true;
     this.stroke = null;
+    this.quickShape = null;
     this.pointers = new Map();
     this.g = null;                 // transform gesture
     this.gestureTap = false;
@@ -169,13 +170,19 @@
     this._drawGuide(c, doc);
     this._drawMotionGuide(c, doc);
 
+    // QuickShape is a temporary outline until the original pointer is lifted.
+    if (this.quickShape) {
+      const q=this.quickShape; c.save(); c.strokeStyle=Q.rgbToHex(q.color); c.globalAlpha=q.opacity; c.lineWidth=Math.max(1,q.size); c.lineCap='round'; c.lineJoin='round'; c.beginPath();
+      if(q.closed) c.ellipse(q.box.x+q.box.w/2,q.box.y+q.box.h/2,q.box.w/2,q.box.h/2,0,0,Math.PI*2);
+      else { c.moveTo(q.start.x,q.start.y); c.lineTo(q.end.x,q.end.y); } c.stroke(); c.restore();
+    }
     // Selection is an editing overlay, never part of the exported artwork.
     const selection = this.selectionDraft || this.selection;
     if (selection) {
       c.save(); c.lineWidth = 2 / this.scale; c.strokeStyle = '#111111';
-      Q.selectionPath(c,selection); c.stroke();
+      if (selection.runs) { c.beginPath(); c.rect(selection.x,selection.y,selection.w,selection.h); } else Q.selectionPath(c,selection); c.stroke();
       c.strokeStyle = '#ffffff'; c.setLineDash([6 / this.scale, 4 / this.scale]);
-      Q.selectionPath(c,selection); c.stroke(); c.restore();
+      if (selection.runs) { c.beginPath(); c.rect(selection.x,selection.y,selection.w,selection.h); } else Q.selectionPath(c,selection); c.stroke(); c.restore();
     }
 
     // Canvas border
@@ -324,6 +331,11 @@
     });
   };
 
+  View.prototype.cancelActiveInput = function () {
+    this._disarmHold(); if (this.stroke) { this.stroke.cancel(); this.stroke=null; }
+    this.quickShape=null; this.pointers.clear(); this.g=null; this.selectionDraft=null; this.motionDraft=null; this.dirty=true;
+  };
+
   View.prototype._pos = function (e) {
     const r = this.canvas.getBoundingClientRect();
     return { x: e.clientX - r.left, y: e.clientY - r.top };
@@ -346,12 +358,15 @@
       pressure: this._pressure(e)
     });
 
+    if (this.quickShape) {
+      const rec=this.pointers.get(e.pointerId); rec.shapeAdjust=true; rec.previousDoc=this.toDoc(pos.x,pos.y); return;
+    }
     if (this.pointers.size === 1) {
       if (this.tool === 'eyedrop') {
         this._eyedropAt(pos.x, pos.y);
         return;
       }
-      if (this.tool === 'fill') { this.pointers.get(e.pointerId).pendingFill = true; return; }
+      if (this.tool === 'fill' || this.tool === 'wand') { this.pointers.get(e.pointerId).pendingFill = this.tool; return; }
       if (this.tool === 'motionGuide') { const rec=this.pointers.get(e.pointerId), p=this.toDoc(pos.x,pos.y); rec.guidePoints=[{x:Q.clamp(p.x,0,this.doc.width),y:Q.clamp(p.y,0,this.doc.height)}]; this.motionDraft=rec.guidePoints; return; }
       if (this.tool === 'select' || this.tool === 'lasso') {
         const rec=this.pointers.get(e.pointerId), p=this.toDoc(pos.x,pos.y);
@@ -377,6 +392,10 @@
     rec.y = pos.y;
     if (this.g && Q.dist(rec.startX,rec.startY,rec.x,rec.y)>10) this.g.moved=true;
 
+    if (this.quickShape) {
+      if (rec.shapeAdjust) { const p=this.toDoc(pos.x,pos.y), q=this.quickShape, dx=p.x-rec.previousDoc.x,dy=p.y-rec.previousDoc.y; q.box.x+=dx; q.box.y+=dy; q.start.x+=dx; q.start.y+=dy; q.end.x+=dx; q.end.y+=dy; rec.previousDoc=p; this.dirty=true; } return;
+    }
+    if (rec.shapeAdjust) return;
     if (this.g) { this._moveGesture(); return; }
     if (rec.guidePoints) {
       const p=this.toDoc(pos.x,pos.y), points=rec.guidePoints, last=points[points.length-1];
@@ -403,6 +422,7 @@
         const pt = this.toDoc(p.x, p.y);
         pt.pressure = this._pressure(ev);
         pt.t = ev.timeStamp || Q.now();
+        const b=this.shapeBounds; if (b) { b.minX=Math.min(b.minX,pt.x); b.minY=Math.min(b.minY,pt.y); b.maxX=Math.max(b.maxX,pt.x); b.maxY=Math.max(b.maxY,pt.y); b.end={x:pt.x,y:pt.y}; }
         this.stroke.add(pt);
       }
       this._lastStampTime = Q.now();
@@ -414,6 +434,11 @@
     const rec = this.pointers.get(e.pointerId);
     if (!rec) return;
     this.pointers.delete(e.pointerId);
+    if (this.quickShape) {
+      if (rec.id===this.quickShape.pointerId) { if(e.type==='pointercancel') { this.quickShape=null; this.dirty=true; } else this._commitQuickShape(); }
+      return;
+    }
+    if (rec.shapeAdjust) return;
 
     if (this.g) {
       if (e.type === 'pointercancel') this.g.cancelled=true;
@@ -444,7 +469,7 @@
       this.selectionDraft=null; this.tool='brush'; this.dirty=true; return;
     }
     if (e.type !== 'pointercancel' && rec.pendingFill && Q.dist(rec.startX, rec.startY, rec.x, rec.y) < 6 && this.onFill) {
-      const point = this.toDoc(rec.x, rec.y); this.onFill(point.x, point.y); return;
+      const point = this.toDoc(rec.x, rec.y); if (rec.pendingFill === 'wand' && this.onWand) { this.onWand(point.x,point.y); this.tool='brush'; } else if (rec.pendingFill === 'fill') this.onFill(point.x, point.y); return;
     }
     if (this.stroke && rec.id === this.strokePointerId) {
       const wasTap = Q.dist(rec.startX, rec.startY, rec.x, rec.y) < 6 && (Q.now() - rec.t) < 320;
@@ -479,6 +504,7 @@
     this.strokeStartScreen = { x: pos.x, y: pos.y };
     if (this.onDrawStart) this.onDrawStart();
     this.strokeStartDoc = p;
+    this.shapeBounds={minX:p.x,minY:p.y,maxX:p.x,maxY:p.y,end:{x:p.x,y:p.y}};
     this.dirty = true;
     this._armHold();
   };
@@ -532,34 +558,24 @@
   };
 
   View.prototype._quickShape = function () {
-    const stroke = this.stroke;
-    const doc = this.doc;
-    if (!stroke || !stroke.cel) return;
-
-    const p0 = this.strokeStartDoc;
-    const p1 = { x: stroke.lx, y: stroke.ly };
-    const w = Q.dist(p0.x, p0.y, p1.x, p1.y);
-    const bbox = stroke.dirty;
-    if (!bbox || w < 8) return;
-
-    const closed = w < Math.max(bbox.w, bbox.h) * 0.55;
-    stroke.cancel();
-    this.stroke = null;
-
-    // replay the idealised shape through a fresh stroke so it picks up brush dynamics
-    const shape = closed ? this._ellipsePoints(bbox) : [p0, p1];
-    const bop = this.opacity * (this.brush.opacity == null ? 1 : this.brush.opacity);
-    const s2 = new Q.Stroke(doc, this.brush, this.color, this.size, bop, this.selection);
-    s2.begin({ x: shape[0].x, y: shape[0].y, pressure: 0.7, t: Q.now() });
-    for (let i = 1; i < shape.length; i++) {
-      s2.add({ x: shape[i].x, y: shape[i].y, pressure: 0.9, t: Q.now() + i });
-    }
-    s2.end();
-    this.stroke = null;
-    this.dirty = true;
-    Q.haptic(12);
-    Q.hint(closed ? 'Quickshape · ellipse' : 'Quickshape · line', 1200);
-    if (this.onDocChange) this.onDocChange();
+    const stroke=this.stroke, b=this.shapeBounds; if (!stroke || !stroke.cel || !b) return;
+    const start=this.strokeStartDoc, end=b.end, width=b.maxX-b.minX, height=b.maxY-b.minY;
+    const closed=width>=8 && height>=8 && Q.dist(start.x,start.y,end.x,end.y)<Math.max(width,height)*0.35 && stroke.len>Math.max(width,height)*1.5;
+    if (!closed && Q.dist(start.x,start.y,end.x,end.y)<8) return;
+    const circle=closed && width/height>=0.8 && width/height<=1.25;
+    const side=(width+height)/2, box=circle ? {x:(b.minX+b.maxX-side)/2,y:(b.minY+b.maxY-side)/2,w:side,h:side} : {x:b.minX,y:b.minY,w:width,h:height};
+    const q={pointerId:this.strokePointerId,doc:this.doc,frame:this.doc.activeFrame,layer:this.doc.activeLayer,closed:closed,circle:circle,box:box,start:{...start},end:{...end},brush:this.brush,color:this.color.slice(),size:this.size,opacity:this.opacity,selection:this.selection};
+    stroke.cancel(); this.stroke=null; this.quickShape=q; this.dirty=true; Q.haptic(12);
+    Q.hint(closed ? (circle ? 'Circle snapped · drag with another finger to move, release to commit' : 'Ellipse snapped · drag with another finger to move, release to commit') : 'Line snapped · drag with another finger to move, release to commit',3000);
+  };
+  View.prototype._commitQuickShape = function () {
+    const q=this.quickShape; this.quickShape=null; this.dirty=true;
+    if (!q || this.doc!==q.doc || q.doc.activeFrame!==q.frame || q.doc.activeLayer!==q.layer || q.doc.layer().locked) { Q.toast('QuickShape cancelled'); return; }
+    const shape=q.closed ? this._ellipsePoints(q.box) : [q.start,q.end], bop=q.opacity*(q.brush.opacity==null ? 1 : q.brush.opacity);
+    const stroke=new Q.Stroke(q.doc,q.brush,q.color,q.size,bop,q.selection);
+    stroke.begin({x:shape[0].x,y:shape[0].y,pressure:0.7,t:Q.now()});
+    for(let i=1;i<shape.length;i++) stroke.add({x:shape[i].x,y:shape[i].y,pressure:0.9,t:Q.now()+i});
+    stroke.end(); if(this.onDocChange) this.onDocChange(); if(this.onStrokeEnd) this.onStrokeEnd(false);
   };
 
   View.prototype._ellipsePoints = function (bbox) {
