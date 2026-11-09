@@ -435,7 +435,9 @@ async function run() {
   click('#modalBody .effect-card[data-effect="invert"]'); ok(doc.querySelector('#modalBody .effect-card[data-effect="invert"]').getAttribute('aria-pressed')==='true' && doc.querySelector('.effect-selected').textContent.includes('Invert'), 'effect thumbnail can be selected accessibly');
   const effectHistory = App.doc.history.undoStack.length;
   App.doc.activeCel(true);
-  click('#modalBody .btn.primary'); await wait(70);
+  const originalApply=App.applyEffect; let applied=null; App.applyEffect=function (type,amount) { applied=[type,amount]; return originalApply(type,amount); };
+  click('#modalBody .btn.primary'); App.applyEffect=originalApply; await wait(70);
+  ok(applied && applied[0]==='invert' && applied[1]===0.5, 'apply uses the selected visual effect and strength');
   ok(App.doc.history.undoStack.length === effectHistory + 1, 'effect creates one undoable edit');
   App.undo();
 
@@ -778,6 +780,9 @@ async function run() {
   click('#timeline [aria-label="Animation guides and audio"]'); ok(!!doc.querySelector('#timeline [aria-label="Motion guide"]') && !!doc.querySelector('#timeline [aria-label="Manage audio"]'), 'assist category reveals guide and audio tools');
   click('#timeline [aria-label="Animation settings tools"]'); ok(!!doc.querySelector('#timeline [aria-label="Toggle onion skin"]'), 'settings category reveals onion tool');
   if (!doc.querySelector('#tray').classList.contains('hidden')) Q.UI.closeTray(); click('#btnLayers');
+  let pickerOpened=false; const picker=doc.querySelector('#imageImport'), originalPickerClick=picker.click; picker.click=()=>{pickerOpened=true;};
+  click('#trayBody [aria-label="Add layer or image"]'); Array.from(doc.querySelectorAll('#modalBody button')).find(x=>x.textContent==='Import image').click(); picker.click=originalPickerClick;
+  ok(pickerOpened && Q.UI.imageTarget.doc===App.doc, 'layer add menu opens the image picker with the current document target');
   click('#trayBody [aria-label="Add layer or image"]'); Array.from(doc.querySelectorAll('#modalBody button')).find(x=>x.textContent==='Gradient').click();
   const start=doc.querySelector('input[aria-label="Start colour"]'), end=doc.querySelector('input[aria-label="End colour"]'); start.value='not-a-colour'; click('#modalBody .btn.primary');
   ok(!!doc.querySelector('.canvas-error').textContent && App.doc.layers.length===1, 'gradient dialog rejects invalid hex without adding layer');
