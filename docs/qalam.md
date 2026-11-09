@@ -8,11 +8,11 @@ brushes, layers with blend modes, a colour wheel, a frame timeline with onion sk
 Procreate's gesture vocabulary, PNG/GIF export and device-dependent MP4 export — all offline, with no account and
 no network permissions at all.
 
-- Package: `com.qalam.studio` · version 2.8 (versionCode 19)
+- Package: `com.qalam.studio` · version 2.9 (versionCode 20)
 - minSdk 26 (Android 8.0) · targetSdk 33 · armeabi-v7a/arm64/x86/x86_64 independent
   (everything is HTML/JS running inside the app's own `WebView`, so the APK has no
   native code)
-- APK: **`artifacts/Qalam-2.8.apk`** (~273 KB), signed with a v1+v2 scheme
+- APK: **`artifacts/Qalam-2.9.apk`** (~276 KB), signed with a v1+v2 scheme
 - The written analysis of Procreate that this app was specified from:
   [`docs/procreate-analysis.md`](procreate-analysis.md)
 
@@ -20,7 +20,7 @@ no network permissions at all.
 
 ## 1. Install
 
-1. Copy `artifacts/Qalam-2.8.apk` to the phone (USB, Drive, chat to yourself — anything).
+1. Copy `artifacts/Qalam-2.9.apk` to the phone (USB, Drive, chat to yourself — anything).
 2. Open it with the phone's file manager. Android will ask to allow installs from
    that app the first time ("Install unknown apps").
 3. Install and open **Qalam**. If an earlier Qalam version is already installed, Android should offer an update that preserves its data. Back up important artwork first. Android does not allow this app to silently uninstall itself; do not uninstall it unless you have backed up its local artwork.
@@ -142,11 +142,11 @@ Bottom bar: **Gallery · Layer · Brush · Colour · Timeline · Menu** (plus **
   track at the range start. Audio stops when its file ends and pauses when animation
   stops. It is muted during ping-pong (reverse audio is not supported). Playback is
   approximate and may drift or be delayed by the device; format and playback support
-  depend on WebView. This is a single preview track: no trimming, waveform, offsets,
-  multiple tracks or export mixing. **MP4, GIF and PNG exports are silent.** Local
-  storage fallback may run out of space sooner when audio is saved; export and back
-  up work regularly. The picker and audio playback have not been tested on a
-  physical Android device.
+  depend on WebView. This is a single track: no trimming, waveform, offsets or
+  multiple tracks. PNG and GIF exports are silent. Optional MP4 export can include
+  this track on a compatible device; see the export instructions below. Local storage
+  fallback may run out of space sooner when audio is saved; export and back up work
+  regularly. The picker, playback and audio export need physical-device testing.
 - **Timeline → Guides & audio category → Motion guide** — draw or replace one
   freehand path (up to 512 points), show/hide it, or clear it. The guide is saved,
   undoable and editor-only. To animate, choose **Generate motion along guide**:
@@ -256,11 +256,23 @@ Bottom bar: **Gallery · Layer · Brush · Colour · Timeline · Menu** (plus **
   Playback range, skips, ping-pong repetitions and frame holds are not included as pixels
   or timing metadata. The output is limited to 8192 pixels per side and 16,777,216
   total pixels; lower the scale or adjust columns if it is too large.
-- **Export MP4** — records one animation loop in real time, up to 1280 pixels on
-  the longest side, using the device WebView's MP4 encoder. On Android 10+ it writes
-  to `Movies/Qalam`; Android 8–9 uses the app's external folder. Some WebViews do not
-  support MP4 recording; the app reports this rather than producing a mislabeled file.
-  This has not been tested on a physical device.
+- **Actions → Export → Export MP4** — choose a silent MP4 or an MP4 with audio.
+  Both record one playback-range cycle in real time, including frame holds and
+  excluding skipped frames, up to 1280 pixels on the longest side. The audio option
+  requires an imported, unmuted track, forward playback (loop or one-shot, not
+  ping-pong), an audio decoder, Web Audio capture and a WebView that advertises
+  H.264/AAC-in-MP4 recording. It is limited to **120 seconds**. Audio begins at the
+  selected range's absolute timeline offset and ends when the track ends; sync is
+  approximate and may drift. If the track ends before the range, choose another
+  range or silent export. Keep the app open; Cancel, Android Back, backgrounding or
+  switching projects cancels the audio export. Decoding long compressed audio and
+  recording/encoding can require substantial memory. The app checks that the resulting
+  MP4 metadata contains video and audio tracks before saving, but cannot prove the
+  audio is audible or correctly synchronized: play back the saved file to verify it.
+  The device may still report support yet fail to record, decode or save. On Android
+  10+ files go to `Movies/Qalam`; Android 8–9 uses the app's external folder. The
+  silent MP4 option retains ping-pong support and is separately device-dependent.
+  Neither path has been tested on a physical Android device.
 
 No storage permission is needed: `MediaStore` inserts as the app on Android 10+.
 
@@ -303,7 +315,7 @@ tools/
   tests/pixel_integration.mjs real raster and animation export checks
   tests/gif_roundtrip.mjs    encodes a GIF and decodes it with an independent decoder
   tests/ui_smoke.mjs         jsdom boot + full UI drive (gallery -> export)
-artifacts/Qalam-2.8.apk           the signed, installable artefact
+artifacts/Qalam-2.9.apk           the signed, installable artefact
 docs/procreate-analysis.md   the Procreate study this app was built from
 docs/qalam.md                this file
 ```
@@ -333,7 +345,7 @@ Design notes worth knowing before changing code:
 
 ```bash
 bash tools/fetch-toolchain.sh     # once per machine: JVM, apktool, aapt2, jars, npm
-bash tools/build.sh               # -> artifacts/Qalam-2.8.apk (signed + verified)
+bash tools/build.sh               # -> artifacts/Qalam-2.9.apk (signed + verified)
 bash tools/check_reference.sh     # optional: javac-check the Java mirrors
 ```
 
@@ -368,7 +380,7 @@ install, not merely that a build command exited 0.
 
 ## 7. Known limits & roadmap
 
-This is not a full Procreate replacement. Canvas sizes are finite (up to 4096 px per side), and artwork is raster: magnification up to 64× reveals pixels rather than creating infinite detail. Layer groups, audio export/mixing, editable keyframe tracks, IK, camera animation, morphing and particles are not implemented. Path and two-pose transform animation generate raster cels rather than live keyframes. Onion skins provide ghost frames. Brush Studio edits existing presets only;
+This is not a full Procreate replacement. Canvas sizes are finite (up to 4096 px per side), and artwork is raster: magnification up to 64× reveals pixels rather than creating infinite detail. Layer groups, multi-track audio mixing, editable keyframe tracks, IK, camera animation, morphing and particles are not implemented. Audio-in-MP4 export is conditional on device support and requires physical-device testing. Path and two-pose transform animation generate raster cels rather than live keyframes. Onion skins provide ghost frames. Brush Studio edits existing presets only;
 custom tips/grains, dual brushes and import/export are not implemented. Guide
 snapping, adjustable vanishing-point placement, rectangle/arc QuickShape, imported
 image references, automatic selection, feathered masks, interactive

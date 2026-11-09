@@ -40,8 +40,12 @@ The supplied feature inventory is a roadmap, not a list of completed work.
   forward loop or one-shot animation, muted, replaced and removed with undo.
   Audio time is anchored at the first included timeline frame and follows holds,
   skips and playback range. Ping-pong is silent; synchronization is approximate.
-  There is no waveform, trimming, offsets, multiple tracks or audio in any export.
-  Actual format support and picker/playback behaviour need physical-device testing.
+  Optional MP4 audio export uses the one unmuted track and a forward range, capped
+  at 120 seconds. It requires H.264/AAC MediaRecorder, canvas capture, Web Audio
+  capture and an audio decoder. It checks MP4 track metadata before saving but cannot
+  confirm audibility or sync; exports need to be checked by the user. PNG and GIF are
+  silent. There is no waveform, trimming, offsets or multiple-track mixing. Actual
+  device format support, picker, playback and audio export need physical-device testing.
 - One saved freehand motion guide can generate translated raster cels along its
   path in forward or reverse direction, with linear, ease-in, ease-out and in-out
   easing. A chosen source cel is copied into an existing range on the current layer,
@@ -112,4 +116,4 @@ Apple Pencil-specific controls are not applicable on Android. See the original
 [Procreate analysis](procreate-analysis.md) for background; its feature matrix
 predates version 2.5.
 
-Editable keyframe tracks, IK, camera animation, morphing, particle animation and audio export or mixing are not implemented. Path-based translation and two-pose transforms are available as limited baked cel-generation tools. Onion skins are available as ghost frames. The canvas is finite raster, not infinite or resolution-independent.
+Editable keyframe tracks, IK, camera animation, morphing, particle animation and multiple-track audio mixing are not implemented. Path-based translation and two-pose transforms are available as limited baked cel-generation tools. Onion skins are available as ghost frames. The canvas is finite raster, not infinite or resolution-independent.

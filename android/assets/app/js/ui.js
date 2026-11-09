@@ -797,7 +797,7 @@
       ['Export PNG',ICON.photo,()=>app().exportPng()], ['Transparent PNG',ICON.photo,()=>app().exportPng(true)],
       ['Export GIF',ICON.film,()=>UI.exportDialog()], ['Export PNG frames',ICON.photo,()=>{UI.closeTray(); app().exportPngSequence();}],
       ['Transparent PNG frames',ICON.photo,()=>{UI.closeTray(); app().exportPngSequence(true);}], ['Export sprite sheet',ICON.photo,()=>UI.spriteSheetDialog()],
-      ['Export MP4',ICON.film,()=>{UI.closeTray(); app().exportMp4();}]
+      ['Export MP4',ICON.film,()=>{UI.closeTray(); UI.mp4Dialog();}]
     ]);
     group('File & help', [ ['Save now',ICON.save,()=>app().saveNow(true)], ['Gestures & help',ICON.sparkle,()=>UI.helpSheet()], ['About Qalam',ICON.layers,()=>UI.aboutSheet()] ]);
 
@@ -1139,11 +1139,23 @@
     const close=Q.crel('button','btn ghost','Close'); close.addEventListener('click',function () { UI.closeModal(); }); card.appendChild(close); UI.openModal(card);
   };
 
+  UI.mp4Dialog = function () {
+    const d=app().doc; if (!d) return; app().stopPlay();
+    const card=Q.crel('div'); card.appendChild(Q.crel('h2',null,'Export MP4'));
+    card.appendChild(Q.crel('p','sub','Records one animation cycle in real time, using playback range, frame holds and skipped frames. Keep the app open during export. MP4 support depends on the Android WebView.'));
+    card.appendChild(Q.crel('p','sub','With audio: uses the unmuted project track, beginning at the playback range’s timeline offset. Requires forward playback and AAC-in-MP4 recording support; audio exports are limited to 120 seconds. Sync may drift and audio ends when the file ends. The app checks for video and audio tracks before saving, but cannot confirm audible sound. Verify the saved file on your device.'));
+    const actions=Q.crel('div','menu-grid');
+    function action(label,fn) { const b=Q.crel('button','menu-item',label); b.addEventListener('click',function () { UI.closeModal(); fn(); }); actions.appendChild(b); }
+    action('Export silent MP4',function () { app().exportMp4(); });
+    action('Export MP4 with audio',function () { app().exportMp4WithAudio(); });
+    card.appendChild(actions); const close=Q.crel('button','btn ghost','Cancel'); close.addEventListener('click',function () { UI.closeModal(); }); card.appendChild(close); UI.openModal(card);
+  };
+
   UI.audioDialog = function () {
     app().stopPlay(); const d=app().doc; if (!d) return;
     const card=Q.crel('div'); card.appendChild(Q.crel('h2',null,'Animation audio'));
     card.appendChild(Q.crel('p','sub',d.audioTrack ? 'Track: '+d.audioTrack.name+(d.audioTrack.muted ? ' (muted)' : '') : 'No audio track added.'));
-    card.appendChild(Q.crel('p','sub','Choose one MP3, M4A, WAV, OGG or WebM file up to 2 MiB. Audio is for forward preview only, begins at the first included frame, and is muted during ping-pong. GIF, PNG and MP4 exports remain silent. Playback and format support depend on the device.'));
+    card.appendChild(Q.crel('p','sub','Choose one MP3, M4A, WAV, OGG or WebM file up to 2 MiB. Audio begins at the first included frame and is muted during ping-pong preview. Optional MP4 audio export requires AAC-capable MP4 recording and forward playback; PNG and GIF are silent. Playback and format support depend on the device.'));
     const actions=Q.crel('div','menu-grid');
     function action(label,fn) { const b=Q.crel('button','menu-item',label); b.addEventListener('click',fn); actions.appendChild(b); }
     action(d.audioTrack ? 'Replace audio' : 'Choose audio',function () { UI.closeModal(); UI.audioTarget={doc:d,track:d.audioTrack}; Q.el('#audioImport').value=''; Q.el('#audioImport').click(); });
@@ -1456,7 +1468,7 @@
     UI.openModal(card);
   };
 
-  UI.progress = function (title, text, value) {
+  UI.progress = function (title, text, value, onCancel) {
     let node = document.getElementById('progressCard');
     if (!node) {
       node = Q.crel('div');
@@ -1473,6 +1485,7 @@
       fill.style.cssText = 'height:100%;width:0%;background:linear-gradient(90deg,#f0b46a,#ffd9a0);transition:width .2s';
       bar.appendChild(fill);
       card.appendChild(bar);
+      if (onCancel) { const cancel=Q.crel('button','btn ghost','Cancel export'); cancel.addEventListener('click',onCancel); card.appendChild(cancel); }
       node.appendChild(card);
       UI.openModal(node);
     }

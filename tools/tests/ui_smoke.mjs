@@ -106,6 +106,7 @@ for (const f of files) {
   win.eval(code);
 }
 
+const nativeFileReader = win.FileReader;
 const Q = win.Q;
 const App = Q.App;
 
@@ -736,7 +737,7 @@ async function run() {
   App.createDoc(64,64,'Audio test'); for(let i=1;i<4;i++) App.addFrame(false);
   if (doc.querySelector('#timeline').classList.contains('hidden')) Q.UI.toggleTimeline();
   ok(doc.querySelector('#timeline .tl-audio').textContent.includes('Add track'), 'timeline shows an audio track control');
-  click('#timeline .tl-audio'); ok(doc.querySelector('#modalBody').textContent.includes('MP4 exports remain silent'), 'audio dialog explains preview and silent exports');
+  click('#timeline .tl-audio'); ok(doc.querySelector('#modalBody').textContent.includes('AAC') && doc.querySelector('#modalBody').textContent.includes('PNG and GIF are silent'), 'audio dialog explains conditional MP4 audio and silent PNG/GIF');
   const audioInput=doc.querySelector('#audioImport'), originalAudioClick=audioInput.click, oldReader2=win.FileReader, oldAudio=win.Audio; let audioPicked=0;
   audioInput.click=()=>audioPicked++; Array.from(doc.querySelectorAll('#modalBody button')).find(x=>x.textContent==='Choose audio').click();
   ok(audioPicked===1 && Q.UI.audioTarget.doc===App.doc, 'audio file picker is opened from the timeline');
@@ -835,6 +836,78 @@ async function run() {
   await App.saveNow(false); const transformReload=await Q.Store.load(App.doc.id); ok(!!transformReload.cel(1,0,false) && !!transformReload.cel(2,0,false), 'generated transform frames survive save and reopen');
   Q.UI.transformBakeDialog(); get('Source frame').value='1'; click('#modalBody .btn.primary'); App.doc.moveFrame(0,1); const currentHistory=App.doc.history.undoStack.length; click('#modalBody .btn.danger');
   ok(App.doc.history.undoStack.length===currentHistory && doc.querySelector('#toast').textContent.includes('cancelled'), 'transform confirmation cancels if frames change');
+
+  {
+  console.log('2.9 optional MP4 audio export');
+  App.createDoc(64,64,'MP4 audio'); for(let i=1;i<4;i++) App.addFrame(false);
+  App.doc.fps=30; App.doc.frames[0].duration=2; App.doc.frames[1].skipped=true; App.doc.frames[2].duration=2; App.doc.setPlayRange(2,3); App.doc.playMode='loop';
+  const oldAudioCtx=win.AudioContext, oldRecorder=win.MediaRecorder, oldCapture=win.HTMLCanvasElement.prototype.captureStream, oldSave=Q.saveBytes, oldFileReader=win.FileReader;
+  let savedAudio=null, startedOffsets=[], stoppedTracks=0, closedContexts=0, recorderTracks=[], paintedAudio=[], exportCtx=null, mode='ok', duration=20, audioSupport=true, decodeWait=0;
+  const originalComposite=App.doc.composite; App.doc.composite=function(ctx,index,opts) { paintedAudio.push({ctx,index}); if (mode==='paintError' && ctx===exportCtx) throw Error('paint'); return originalComposite.call(this,ctx,index,opts); };
+  function fakeTrack(kind) { return {kind,readyState:'live',stop(){if (this.readyState!=='ended') stoppedTracks++; this.readyState='ended';}}; }
+  win.HTMLCanvasElement.prototype.captureStream=function () { exportCtx=this.getContext('2d'); const tracks=[fakeTrack('video')]; return {getTracks(){return tracks;},getVideoTracks(){return tracks.filter(t=>t.kind==='video');},addTrack(t){tracks.push(t);}}; };
+  win.AudioContext=class {
+    constructor(){this.state='running';}
+    resume(){return mode==='resumeError' ? Promise.reject(new Error('resume')) : Promise.resolve();}
+    close(){this.state='closed';closedContexts++;return Promise.resolve();}
+    decodeAudioData(data,yes,no){setTimeout(()=>mode==='decodeError' ? no(new Error('decode')) : yes({duration}),decodeWait);}
+    createMediaStreamDestination(){const tracks=[fakeTrack('audio')];return {stream:{getTracks:()=>tracks,getAudioTracks:()=>tracks}};}
+    createBufferSource(){return {connect(){},disconnect(){},start(when,offset){startedOffsets.push(offset);},stop(){}};}
+  };
+  function box(type,...contents) {
+    const len=8+contents.reduce((sum,part)=>sum+part.length,0), bytes=new Uint8Array(len), dv=new DataView(bytes.buffer);
+    dv.setUint32(0,len); for(let i=0;i<4;i++) bytes[4+i]=type.charCodeAt(i); let at=8;
+    for (const part of contents) { bytes.set(part,at); at+=part.length; } return bytes;
+  }
+  function handler(kind) { const payload=new Uint8Array(12); for(let i=0;i<4;i++) payload[8+i]=kind.charCodeAt(i); return box('trak',box('mdia',box('hdlr',payload))); }
+  const ftyp=box('ftyp',new Uint8Array([105,115,111,109,0,0,0,0]));
+  const muxedMp4=new win.Blob([ftyp,box('mdat',new Uint8Array(12)),box('moov',handler('vide'),handler('soun'))],{type:'video/mp4'});
+  const noAudioMp4=new win.Blob([ftyp,box('moov',handler('vide'))],{type:'video/mp4'});
+  win.MediaRecorder=class {
+    static isTypeSupported(mime){return audioSupport && mime.includes('mp4a.40.2');}
+    constructor(stream,opts){this.state='inactive';this.mimeType=mode==='wrongMime'?'video/webm':opts.mimeType;recorderTracks=stream.getTracks().map(t=>t.kind);}
+    start(){this.state='recording';setTimeout(()=>{if(this.state==='recording' && this.onstart) {this.onstart(); if(mode==='early') this.stop(); if(mode==='error') this.onerror();}},0);}
+    stop(){this.state='inactive';if(this.ondataavailable)this.ondataavailable({data:mode==='noAudio' ? noAudioMp4 : muxedMp4});if(this.onstop)this.onstop();}
+  };
+  win.FileReader=class {
+    readAsDataURL(){this.result='data:video/mp4;base64,AAAA'; this.onload();}
+    readAsArrayBuffer(blob){const r=new nativeFileReader(); r.onload=()=>{this.result=r.result;this.onload();}; r.onerror=()=>this.onerror(); r.readAsArrayBuffer(blob);}
+  };
+  ok(await Q.mp4HasAudioAndVideo(muxedMp4), 'MP4 verifier finds both tracks even after a media payload');
+  ok(!await Q.mp4HasAudioAndVideo(noAudioMp4), 'MP4 verifier rejects a container without audio');
+  const extendedMdat=new Uint8Array(20), extView=new DataView(extendedMdat.buffer); extView.setUint32(0,1); extendedMdat.set([109,100,97,116],4); extView.setUint32(12,20);
+  ok(await Q.mp4HasAudioAndVideo(new win.Blob([ftyp,extendedMdat,box('moov',handler('vide'),handler('soun'))])), 'MP4 verifier handles extended 64-bit box sizes');
+  ok(!await Q.mp4HasAudioAndVideo(new win.Blob([box('moov',handler('vide'),handler('soun'))])), 'MP4 verifier requires file type metadata');
+  let malformed=false; try { await Q.mp4HasAudioAndVideo(new win.Blob([new Uint8Array([0,0,0,100,102,116,121,112])])); } catch(e) { malformed=true; } ok(malformed, 'MP4 verifier rejects truncated or invalid box sizes');
+  Q.saveBytes=(data,mime,name)=>{savedAudio={mime,name};return true;};
+  if (!doc.querySelector('#tray').classList.contains('hidden')) Q.UI.closeTray(); click('#btnMenu');
+  const mp4Item=[...doc.querySelectorAll('#trayBody .menu-item')].find(x=>x.textContent.includes('Export MP4')); mp4Item.click();
+  ok(doc.querySelector('#modalBody').textContent.includes('Export silent MP4') && doc.querySelector('#modalBody').textContent.includes('Export MP4 with audio'), 'Actions export opens dialog with distinct silent and audio choices');
+  Array.from(doc.querySelectorAll('#modalBody button')).find(x=>x.textContent==='Export MP4 with audio').click();
+  ok(doc.querySelector('#toast').textContent.includes('unmute') && !savedAudio, 'audio export requires an unmuted track');
+  App.doc.setAudioTrack({name:'test.wav',data:'data:audio/wav;base64,AAAA',muted:false});
+  App.doc.setAudioMuted(true); App.exportMp4WithAudio(); ok(!savedAudio && doc.querySelector('#toast').textContent.includes('unmute'), 'muted audio must be unmuted before exporting'); App.doc.setAudioMuted(false);
+  App.doc.playMode='pingpong'; App.exportMp4WithAudio(); ok(doc.querySelector('#toast').textContent.includes('ping-pong') && !App.cancelAudioExport, 'audio MP4 rejects ping-pong instead of silently dropping sound');
+  App.doc.playMode='loop'; audioSupport=false; App.exportMp4WithAudio(); ok(doc.querySelector('#toast').textContent.includes('not supported') && !savedAudio, 'audio MP4 requires explicit AAC codec support'); audioSupport=true;
+  paintedAudio=[]; App.exportMp4WithAudio(); await wait(210);
+  ok(savedAudio && savedAudio.mime==='video/mp4' && savedAudio.name.endsWith('-audio.mp4') && recorderTracks.join(',')==='video,audio', 'audio MP4 connects video and audio tracks and saves MP4');
+  ok(startedOffsets.length===1 && Math.abs(startedOffsets[0]-2/30)<0.00001 && paintedAudio.filter(p=>p.ctx===exportCtx).map(p=>p.index).join(',')==='2,3', 'audio MP4 follows playback range, skips, holds and absolute audio offset');
+  ok(stoppedTracks>=2 && closedContexts===1 && !App.cancelAudioExport && !doc.querySelector('#progressCard'), 'completed audio MP4 releases streams and context');
+  savedAudio=null; mode='decodeError'; App.exportMp4WithAudio(); await wait(30); ok(!savedAudio && doc.querySelector('#toast').textContent.includes('decode') && !App.cancelAudioExport, 'audio decode failure is explicit and releases export');
+  mode='ok'; duration=0.01; App.exportMp4WithAudio(); await wait(30); ok(!savedAudio && doc.querySelector('#toast').textContent.includes('ends before') && !App.cancelAudioExport, 'range beyond audio duration does not export silent video'); duration=20;
+  mode='early'; App.exportMp4WithAudio(); await wait(35); ok(!savedAudio && doc.querySelector('#toast').textContent.includes('unexpectedly') && !App.cancelAudioExport, 'premature recorder stop does not save a partial file');
+  mode='wrongMime'; App.exportMp4WithAudio(); await wait(180); ok(!savedAudio && doc.querySelector('#toast').textContent.includes('unexpectedly'), 'non-MP4 recorder output is never labelled MP4');
+  mode='noAudio'; App.exportMp4WithAudio(); await wait(180); ok(!savedAudio && doc.querySelector('#toast').textContent.includes('no video or audio track'), 'encoder output missing an audio track is rejected');
+  mode='error'; App.exportMp4WithAudio(); await wait(35); ok(!savedAudio && doc.querySelector('#toast').textContent.includes('encoding failed'), 'recorder errors never save a file');
+  mode='paintError'; App.exportMp4WithAudio(); await wait(110); ok(!savedAudio && !App.cancelAudioExport && doc.querySelector('#toast').textContent.includes('render'), 'frame rendering failure cancels and releases the audio export');
+  mode='resumeError'; App.exportMp4WithAudio(); await wait(20); ok(!savedAudio && !App.cancelAudioExport && doc.querySelector('#toast').textContent.includes('audio export'), 'audio context start failure is reported');
+  mode='ok'; App.doc.fps=1; App.doc.frames[2].duration=60; App.doc.frames[3].duration=60; App.doc.setPlayRange(0,3); App.exportMp4WithAudio(); ok(!App.cancelAudioExport && doc.querySelector('#toast').textContent.includes('120 seconds'), 'long audio exports are rejected before allocation'); App.doc.fps=30; App.doc.frames[2].duration=2; App.doc.frames[3].duration=1; App.doc.setPlayRange(2,3);
+  mode='ok'; decodeWait=40; App.exportMp4WithAudio(); ok(!!doc.querySelector('#progressCard button'), 'audio export has a cancel button'); click('#progressCard button'); await wait(70); ok(!savedAudio && !App.cancelAudioExport && !doc.querySelector('#progressCard'), 'cancelling while decoding releases resources and ignores late results');
+  App.exportMp4WithAudio(); win.qalamBack(); await wait(70); ok(!savedAudio && !App.cancelAudioExport, 'Android back cancels a pending audio export');
+  App.exportMp4WithAudio(); Object.defineProperty(doc,'visibilityState',{value:'hidden',configurable:true}); doc.dispatchEvent(new win.Event('visibilitychange')); await wait(70); ok(!savedAudio && !App.cancelAudioExport, 'backgrounding cancels an audio export'); Object.defineProperty(doc,'visibilityState',{value:'visible',configurable:true});
+  App.exportMp4WithAudio(); App.createDoc(64,64,'Switched during export'); await wait(70); ok(!savedAudio && !App.cancelAudioExport, 'switching projects cancels a pending audio export');
+  win.AudioContext=oldAudioCtx; win.MediaRecorder=oldRecorder; win.HTMLCanvasElement.prototype.captureStream=oldCapture; Q.saveBytes=oldSave; win.FileReader=oldFileReader;
+  }
 
   await App.saveNow(false);
   console.log(failures ? `\n${failures} check(s) FAILED` : '\nall UI checks passed');

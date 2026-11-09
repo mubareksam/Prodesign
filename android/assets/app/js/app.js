@@ -64,11 +64,12 @@
     });
 
     document.addEventListener('visibilitychange', function () {
-      if (document.visibilityState === 'hidden') { App.stopPlay(); App.saveNow(false); }
+      if (document.visibilityState === 'hidden') { if (App.cancelAudioExport) App.cancelAudioExport(); App.stopPlay(); App.saveNow(false); }
     });
 
     // 0 = the app handled the back gesture, 1 = nothing left to close
     window.qalamBack = function () {
+      if (App.cancelAudioExport) { App.cancelAudioExport(); return 0; }
       if (!Q.el('#modal').classList.contains('hidden')) { Q.UI.closeModal(); return 0; }
       if (!Q.el('#tray').classList.contains('hidden')) { Q.UI.closeTray(); return 0; }
       if (!Q.el('#referenceWindow').classList.contains('hidden')) { Q.UI.closeReference(); return 0; }
@@ -98,6 +99,7 @@
   };
 
   App.adoptDoc = function (doc, isNew) {
+    if (App.cancelAudioExport) App.cancelAudioExport();
     App.stopPlay();
     // Serialize the previous artwork before switching documents, including when
     // New canvas is opened from the studio before the autosave timer fires.
@@ -791,6 +793,162 @@
       }
       timer = setTimeout(next, Q.frameDelayMs(d, order[position]));
     } catch (err) { fail('Could not start MP4 export on this device'); }
+  };
+
+  // Read only MP4 metadata (not the potentially huge media payload), and require
+  // both video and sound handler tracks before presenting the result as audio MP4.
+  Q.mp4HasAudioAndVideo = async function (blob) {
+    function read(start,end) {
+      return new Promise(function (resolve,reject) {
+        const reader=new FileReader(); reader.onload=()=>resolve(reader.result); reader.onerror=()=>reject(new Error('MP4 read failed'));
+        reader.readAsArrayBuffer(blob.slice(start,end));
+      });
+    }
+    function header(view,pos,limit) {
+      if (pos+8>limit) throw Error('Truncated MP4 box');
+      let size=view.getUint32(pos), head=8;
+      const type=String.fromCharCode(view.getUint8(pos+4),view.getUint8(pos+5),view.getUint8(pos+6),view.getUint8(pos+7));
+      if (size===1) { if (pos+16>limit) throw Error('Truncated extended MP4 box'); size=view.getUint32(pos+8)*4294967296+view.getUint32(pos+12); head=16; }
+      else if (size===0) size=limit-pos;
+      if (!Number.isSafeInteger(size) || size<head || pos+size>limit) throw Error('Invalid MP4 box size');
+      return {type,size,head};
+    }
+    function children(view,start,end) {
+      const result=[]; let pos=start;
+      while (pos<end) { if (result.length>=10000) throw Error('Too many MP4 boxes'); const box=header(view,pos,end); result.push({type:box.type,start:pos+box.head,end:pos+box.size}); pos+=box.size; }
+      return result;
+    }
+    let pos=0, count=0, hasFtyp=false, hasTracks=false;
+    while (pos<blob.size && count++<10000) {
+      // A header can be parsed without reading or copying an mdat payload.
+      const hdr=new DataView(await read(pos,Math.min(pos+16,blob.size)));
+      if (hdr.byteLength<8) throw Error('Truncated MP4');
+      let size=hdr.getUint32(0), head=8;
+      const type=String.fromCharCode(hdr.getUint8(4),hdr.getUint8(5),hdr.getUint8(6),hdr.getUint8(7));
+      if (size===1) { if (hdr.byteLength<16) throw Error('Truncated MP4'); size=hdr.getUint32(8)*4294967296+hdr.getUint32(12); head=16; }
+      else if (size===0) size=blob.size-pos;
+      if (!Number.isSafeInteger(size) || size<head || pos+size>blob.size) throw Error('Invalid MP4 size');
+      if (type==='ftyp' && size>=head+8) hasFtyp=true;
+      if (type==='moov') {
+        if (size>16*1024*1024) throw Error('MP4 metadata too large');
+        const view=new DataView(await read(pos+head,pos+size)), handlers=[];
+        children(view,0,view.byteLength).filter(b=>b.type==='trak').forEach(function (trak) {
+          children(view,trak.start,trak.end).filter(b=>b.type==='mdia').forEach(function (mdia) {
+            children(view,mdia.start,mdia.end).filter(b=>b.type==='hdlr').forEach(function (handler) {
+              if (handler.end-handler.start<12) throw Error('Invalid MP4 handler');
+              handlers.push(String.fromCharCode(view.getUint8(handler.start+8),view.getUint8(handler.start+9),view.getUint8(handler.start+10),view.getUint8(handler.start+11)));
+            });
+          });
+        });
+        hasTracks=handlers.includes('vide') && handlers.includes('soun');
+      }
+      pos+=size;
+    }
+    return pos===blob.size && hasFtyp && hasTracks;
+  };
+
+  // Optional AAC-in-MP4 export. The selected forward range is rendered in real
+  // time, while one decoded local track is routed into the recorder, not speakers.
+  // Reject unsupported paths instead of silently exporting a video without audio.
+  App.exportMp4WithAudio = function () {
+    App.stopPlay(); const d=App.doc;
+    if (App.cancelAudioExport) { Q.toast('An audio export is already in progress',4000); return; }
+    if (!d || d.frames.length<2) { Q.toast('Add at least two frames first',4000); return; }
+    if (!d.audioTrack || d.audioTrack.muted) { Q.toast('Add and unmute an audio track first',4000); return; }
+    if (d.playMode==='pingpong') { Q.toast('Audio MP4 export requires forward playback, not ping-pong',4000); return; }
+    const order=Q.playableFrames(d); if (!order.length) { Q.toast('No included frames in the playback range',4000); return; }
+    if (order.reduce((sum,i)=>sum+Q.frameDelayMs(d,i),0)>120000) { Q.toast('Audio MP4 is limited to 120 seconds; shorten the range or holds',4000); return; }
+    if (!window.MediaRecorder || !MediaRecorder.isTypeSupported) { Q.toast('MP4 with AAC audio is not supported on this device',4000); return; }
+    let mime;
+    try { mime=['video/mp4;codecs="avc1.42E01E,mp4a.40.2"','video/mp4;codecs="avc1.4D401F,mp4a.40.2"','video/mp4;codecs="avc1.64001F,mp4a.40.2"'].find(v=>MediaRecorder.isTypeSupported(v)); } catch(e) { Q.toast('MP4 with AAC audio is not supported on this device',4000); return; }
+    const AudioCtx=window.AudioContext || window.webkitAudioContext;
+    if (!mime || !AudioCtx) { Q.toast('MP4 with AAC audio is not supported on this device',4000); return; }
+    const scale=Math.min(1,1280/Math.max(d.width,d.height)), w=Math.max(2,Math.floor(d.width*scale/2)*2), h=Math.max(2,Math.floor(d.height*scale/2)*2);
+    let context,stream,source,destination,recorder,timer,guard,finished=false,started=false,completed=false;
+    const chunks=[], fps=Q.clamp(d.fps,1,30), offset=Q.audioFrameTime(d,order[0]), track=d.audioTrack;
+    function releaseMedia() {
+      if (source) { try { source.stop(); } catch(e) {} try { source.disconnect(); } catch(e) {} source=null; }
+      if (stream) { try { stream.getTracks().forEach(t=>t.stop()); } catch(e) {} stream=null; }
+      if (destination) { try { destination.stream.getTracks().forEach(t=>t.stop()); } catch(e) {} destination=null; }
+      if (context) { try { const p=context.close(); if (p && p.catch) p.catch(()=>{}); } catch(e) {} context=null; }
+    }
+    function cleanup() {
+      clearTimeout(timer); clearTimeout(guard); releaseMedia();
+      App.cancelAudioExport=null; Q.UI.endProgress();
+    }
+    function fail(message) {
+      if (finished) return; finished=true;
+      try { if (recorder && recorder.state!=='inactive') recorder.stop(); } catch(e) {}
+      cleanup(); Q.toast(message,4000);
+    }
+    App.cancelAudioExport=function () { fail('Audio MP4 export cancelled'); };
+    Q.UI.progress('Exporting MP4 with audio','Preparing audio…',0,App.cancelAudioExport);
+    guard=setTimeout(()=>fail('Audio preparation timed out on this device'),15000);
+    try {
+      context=new AudioCtx();
+      if (!context.createMediaStreamDestination || !context.createBufferSource || !context.decodeAudioData) { fail('Audio export is not supported on this device'); return; }
+      const encoded=track.data.slice(track.data.indexOf(',')+1), binary=atob(encoded), bytes=new Uint8Array(binary.length);
+      for (let i=0;i<binary.length;i++) bytes[i]=binary.charCodeAt(i);
+      // Resume synchronously from the export-button gesture, before async decoding.
+      const resume=context.resume ? context.resume() : Promise.resolve();
+      Promise.resolve(resume).then(function () {
+        if (finished) return;
+        if (context.state && context.state!=='running') { fail('Audio export could not start on this device'); return; }
+        context.decodeAudioData(bytes.buffer,function (buffer) {
+          if (finished) return;
+          if (!buffer || !Number.isFinite(buffer.duration) || buffer.duration<=offset) { fail('Audio ends before this playback range; choose silent export or another range'); return; }
+          try {
+            const canvas=Q.canvas(w,h), ctx=canvas.getContext('2d');
+            if (!canvas.captureStream) { fail('Video capture is not supported on this device'); return; }
+            function paint(index) { ctx.fillStyle=d.bg; ctx.fillRect(0,0,w,h); ctx.save(); ctx.scale(w/d.width,h/d.height); d.composite(ctx,index); ctx.restore(); }
+            paint(order[0]); stream=canvas.captureStream(fps);
+            const videoTracks=stream.getVideoTracks ? stream.getVideoTracks() : [];
+            destination=context.createMediaStreamDestination(); const audioTracks=destination.stream.getAudioTracks();
+            if (!stream.addTrack || !videoTracks.length || videoTracks[0].readyState==='ended' || !audioTracks.length || audioTracks[0].readyState==='ended') { fail('Audio capture is not supported on this device'); return; }
+            stream.addTrack(audioTracks[0]); source=context.createBufferSource(); source.buffer=buffer; source.connect(destination);
+            recorder=new MediaRecorder(stream,{mimeType:mime,videoBitsPerSecond:4000000,audioBitsPerSecond:128000});
+            recorder.ondataavailable=function (event) { if (event.data && event.data.size) chunks.push(event.data); };
+            recorder.onerror=function () { fail('MP4 audio encoding failed on this device'); };
+            recorder.onstart=function () {
+              if (finished || started) return; started=true; clearTimeout(guard);
+              try {
+                if (context.state && context.state!=='running') { fail('Audio export was interrupted'); return; }
+                source.start(0,offset); let position=0;
+                Q.UI.progress('Exporting MP4 with audio','Recording one forward animation cycle…',0);
+                function next() {
+                  if (finished) return;
+                  try {
+                    if (App.doc!==d || (context.state && context.state!=='running') || audioTracks[0].readyState==='ended' || videoTracks[0].readyState==='ended') { fail('Audio export was interrupted'); return; }
+                    position++;
+                    if (position>=order.length) { completed=true; guard=setTimeout(()=>fail('MP4 encoder did not finish'),15000); try { recorder.stop(); } catch(e) { fail('MP4 encoder stopped unexpectedly'); } return; }
+                    paint(order[position]); Q.UI.progress('Exporting MP4 with audio','Recording frame '+(position+1)+' / '+order.length,position/order.length);
+                    timer=setTimeout(next,Q.frameDelayMs(d,order[position]));
+                  } catch(e) { fail('Could not render MP4 on this device'); }
+                }
+                timer=setTimeout(next,Q.frameDelayMs(d,order[0]));
+              } catch(e) { fail('Could not start audio in MP4 export'); }
+            };
+            recorder.onstop=function () {
+              if (finished) return;
+              if (!started || !completed || !chunks.length || (recorder.mimeType && !/^video\/mp4(?:;|$)/i.test(recorder.mimeType))) { fail('MP4 encoding ended unexpectedly; no file saved'); return; }
+              clearTimeout(timer); clearTimeout(guard); releaseMedia();
+              const blob=new Blob(chunks,{type:'video/mp4'});
+              Q.UI.progress('Exporting MP4 with audio','Checking video and audio tracks…',1);
+              guard=setTimeout(()=>fail('MP4 track verification timed out; no file saved'),15000);
+              Q.mp4HasAudioAndVideo(blob).then(function (valid) {
+                if (finished) return;
+                if (!valid) { fail('MP4 has no video or audio track; no file saved'); return; }
+                finished=true; cleanup();
+                const reader=new FileReader(); reader.onerror=function () { Q.toast('Could not prepare MP4',4000); };
+                reader.onload=function () { const ok=Q.saveBytes(reader.result,'video/mp4','Qalam-'+Q.stamp()+'-audio.mp4'); Q.toast(ok ? 'MP4 with audio saved (Movies/Qalam on Android 10+)' : 'Could not save MP4',4000); };
+                try { reader.readAsDataURL(blob); } catch(e) { Q.toast('Could not prepare MP4',4000); }
+              }).catch(function () { fail('Could not verify MP4 audio and video tracks; no file saved'); });
+            };
+            clearTimeout(guard); guard=setTimeout(()=>fail('MP4 encoder did not start'),15000); recorder.start();
+          } catch(e) { fail('Could not start MP4 with audio on this device'); }
+        },function () { fail('Could not decode the audio track on this device'); });
+      }).catch(function () { fail('Could not start audio export on this device'); });
+    } catch(e) { fail('Could not prepare MP4 with audio on this device'); }
   };
 
   App.exportGif = function (opts) {
