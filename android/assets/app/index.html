@@ -67,6 +67,9 @@
     <button class="icon-btn" id="btnTimeline" aria-label="Timeline">
       <svg viewBox="0 0 24 24"><path d="M3 9h18M3 15h18"/><circle cx="7" cy="9" r="1.6"/><circle cx="14" cy="15" r="1.6"/></svg>
     </button>
+    <button class="icon-btn" id="btnEffects" aria-label="Effects">
+      <svg viewBox="0 0 24 24"><path d="M12 3l1.8 5.2L19 10l-5.2 1.8L12 17l-1.8-5.2L5 10l5.2-1.8z"/></svg>
+    </button>
     <button class="icon-btn" id="btnMenu" aria-label="Actions">
       <svg viewBox="0 0 24 24"><path d="M4 7h16M4 12h16M4 17h16"/></svg>
     </button>
@@ -78,11 +81,11 @@
     </button>
 
     <div class="vslider" id="sizeWrap">
-      <input id="sizeSlider" type="range" min="1" max="240" value="14">
+      <input id="sizeSlider" aria-label="Brush size" type="range" min="1" max="240" value="14">
       <div class="vslider-val" id="sizeVal">14</div>
     </div>
     <div class="vslider" id="opacityWrap">
-      <input id="opacitySlider" type="range" min="1" max="100" value="100">
+      <input id="opacitySlider" aria-label="Brush opacity" type="range" min="1" max="100" value="100">
       <div class="vslider-val" id="opacityVal">100</div>
     </div>
   </div>

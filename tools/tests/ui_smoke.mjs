@@ -255,6 +255,7 @@ async function run() {
   click('#btnTimeline');
   ok(!doc.querySelector('#timeline').classList.contains('hidden'), 'timeline opens');
   ok(doc.querySelectorAll('#timeline .tl-frame').length === 1, 'one frame thumbnail');
+  ok(!!doc.querySelector('#timeline .tl-head') && !!doc.querySelector('#timeline .tl-more') && doc.querySelector('#timeline .tl-more').textContent.includes('Batch frames'), 'timeline separates main and secondary controls');
   click('#timeline .tl-add');
   ok(App.doc.frames.length === 2, 'frame added');
   ok(App.doc.onion === true, 'onion skin switched on automatically');
@@ -302,6 +303,7 @@ async function run() {
   console.log('menu + save');
   click('#btnMenu');
   ok(doc.querySelectorAll('#trayBody .menu-item').length >= 6, 'action menu populated');
+  ok([...doc.querySelectorAll('#trayBody .action-heading')].map(x=>x.textContent).join(',')==='Create & edit,Canvas & view,Animation,Export,File & help', 'actions are organized into labelled groups');
   ok(Array.from(doc.querySelectorAll('#trayBody .menu-item')).some(x=>x.textContent.includes('Transparent PNG')), 'transparent export is available in actions');
   ok(Array.from(doc.querySelectorAll('#trayBody .menu-item')).some(x=>x.textContent.includes('Canvas background')), 'background settings are available in actions');
   const selectionMenu=Array.from(doc.querySelectorAll('#trayBody .menu-item')).find(el=>el.textContent.includes('Selection & transform'));
@@ -348,6 +350,7 @@ async function run() {
   pointer(view, 'pointerup', 260, 300, { id: 1, pointerType: 'touch' });
   pointer(view, 'pointerup', 560, 300, { id: 2, pointerType: 'touch' });
   ok(App.view.g === null, 'gesture state cleared');
+  App.view.scale=24; App.view.zoomAt(2); ok(App.view.scale===48, 'zoom can exceed the old 24-times limit'); App.view.zoomAt(4); ok(App.view.scale===64, 'zoom is capped at 64 times');
 
   console.log('gesture shortcuts');
   App.view.fit();
@@ -360,23 +363,30 @@ async function run() {
   const undoLen = App.doc.history.undoStack.length;
   ok(undoLen >= 1, 'a stroke to undo exists (' + undoLen + ')');
 
-  // two-finger tap = undo
+  // Two-finger taps and pinches must never undo.
   pointer(view, 'pointerdown', 400, 400, { id: 11, pointerType: 'touch' });
   pointer(view, 'pointerdown', 460, 400, { id: 12, pointerType: 'touch' });
   pointer(view, 'pointerup', 400, 400, { id: 11, pointerType: 'touch' });
   pointer(view, 'pointerup', 460, 400, { id: 12, pointerType: 'touch' });
-  await tick();
-  ok(App.doc.history.undoStack.length === undoLen - 1, 'two-finger tap undid a step');
-
-  // three-finger tap = redo
+  ok(App.doc.history.undoStack.length === undoLen, 'two-finger tap does not undo');
   pointer(view, 'pointerdown', 400, 380, { id: 21, pointerType: 'touch' });
   pointer(view, 'pointerdown', 460, 380, { id: 22, pointerType: 'touch' });
   pointer(view, 'pointerdown', 520, 380, { id: 23, pointerType: 'touch' });
   pointer(view, 'pointerup', 400, 380, { id: 21, pointerType: 'touch' });
   pointer(view, 'pointerup', 460, 380, { id: 22, pointerType: 'touch' });
   pointer(view, 'pointerup', 520, 380, { id: 23, pointerType: 'touch' });
-  await tick();
-  ok(App.doc.history.undoStack.length === undoLen, 'three-finger tap redid the step');
+  ok(App.doc.history.undoStack.length === undoLen - 1, 'three-finger tap undoes a step');
+  for (let i=0;i<4;i++) pointer(view,'pointerdown',400+i*40,380,{id:51+i,pointerType:'touch'});
+  for (let i=0;i<4;i++) pointer(view,'pointerup',400+i*40,380,{id:51+i,pointerType:'touch'});
+  ok(App.doc.history.undoStack.length === undoLen, 'four-finger tap redoes a step');
+  for (let i=0;i<3;i++) pointer(view,'pointerdown',400+i*40,380,{id:61+i,pointerType:'touch'});
+  pointer(view,'pointermove',450,380,{id:61,pointerType:'touch'});
+  for (let i=0;i<3;i++) pointer(view,'pointerup',400+i*40,380,{id:61+i,pointerType:'touch'});
+  ok(App.doc.history.undoStack.length === undoLen, 'moving a three-finger gesture never undoes after a finger lifts');
+  for (let i=0;i<3;i++) pointer(view,'pointerdown',400+i*40,380,{id:65+i,pointerType:'touch'});
+  pointer(view,'pointercancel',400,380,{id:65,pointerType:'touch'});
+  for (let i=1;i<3;i++) pointer(view,'pointerup',400+i*40,380,{id:65+i,pointerType:'touch'});
+  ok(App.doc.history.undoStack.length === undoLen, 'cancelled three-finger gesture never undoes');
 
   console.log('long-press eyedropper');
   const histBefore = App.doc.history.undoStack.length;
@@ -477,13 +487,22 @@ async function run() {
   App.undo(); ok(App.doc.history.canRedo(), 'fill can be undone');
 
 
+  click('#btnEffects'); ok(visible(doc.querySelector('#modal')) && doc.querySelector('#modalBody h2').textContent.includes('Effects'), 'effects open from direct toolbar shortcut'); Q.UI.closeModal();
   console.log('selection and transforms');
   Q.UI.selectionDialog();
   ok(doc.querySelector('#modalBody').textContent.includes('clips brushes, erasers, flood fill and effects'), 'selection dialog explains scope');
+  ok(doc.querySelector('#modalBody').textContent.includes('Draw lasso'), 'lasso tool is offered in selection panel');
   function selectionAction(label) {
     const b=Array.from(doc.querySelectorAll('#modalBody button')).find(x=>x.textContent===label);
     if (!b) throw new Error('missing selection action '+label); b.click();
   }
+  selectionAction('Draw lasso');
+  const l1=App.view.toScreen(5,5), l2=App.view.toScreen(30,5), l3=App.view.toScreen(5,30);
+  pointer(view,'pointerdown',l1.x,l1.y,{id:79}); pointer(view,'pointermove',l2.x,l2.y,{id:79}); pointer(view,'pointermove',l3.x,l3.y,{id:79}); pointer(view,'pointerup',l3.x,l3.y,{id:79});
+  ok(App.view.selection && App.view.selection.points && App.view.selection.points.length===3 && App.view.tool==='brush', 'lasso gesture creates polygon and returns to painting');
+  const lassoHistory=App.doc.history.undoStack.length; App.editSelection('flipH'); ok(App.doc.history.undoStack.length===lassoHistory, 'lasso transform is refused rather than applying to its bounds');
+  Q.UI.selectionDialog(); selectionAction('Deselect');
+  Q.UI.selectionDialog();
   selectionAction('Draw rectangle');
   const a=App.view.toScreen(5,10), b=App.view.toScreen(30,40);
   pointer(view,'pointerdown',a.x,a.y,{id:80}); pointer(view,'pointermove',b.x,b.y,{id:80}); pointer(view,'pointerup',b.x,b.y,{id:80});

@@ -18,11 +18,12 @@ The supplied feature inventory is a roadmap, not a list of completed work.
   with adjustable tolerance and undo; it does not sample other layers.
 - A movable, zoomable reference window showing the current canvas. Importing an
   external reference image or using a camera is not implemented.
-- Temporary rectangular selection clips brushes, erasers, active-cel flood fill and
-  effects. Fill, clear, flips, 180° rotation, numeric move and uniform scale are
-  undoable for the current layer/frame; selected pixels can be copied to a new layer
-  in the current frame. No live transform preview. Pixel undo does not restore the
-  selection outline. Selections are not saved and cannot be feathered or freehand.
+- Temporary rectangular and freehand lasso selections clip brushes, erasers, flood
+  fill and effects. Both support fill/clear and copy to a new layer. Rectangle-only
+  flips, 180° rotation and numeric move/scale are undoable; lasso transforms are
+  refused. Effects calculate within the bounding rectangle then mask output, so
+  blur can sample outside a lasso. Selections are not saved or feathered and the
+  outline is not restored by pixel undo. No live transform preview.
 - Alpha lock lets brush painting, fill and effects recolour existing layer pixels
   without changing their alpha. It is saved per layer and copied on duplication.
   Erasing, clear, flip, move/scale and merge require unlocking alpha first; it does
@@ -63,10 +64,12 @@ The supplied feature inventory is a roadmap, not a list of completed work.
 
 ## Not yet implemented
 
-Snapping/drawing assist for grids and perspective, image import, camera references, layer masks/groups/clipping, freehand/automatic selection,
+Snapping/drawing assist for grids and perspective, image import, camera references, layer masks/groups/clipping, automatic selection,
 feathered selection, interactive transforms and free rotation, cross-layer ColorDrop/reference fill, smudge, advanced filters and liquify, typography,
 DPI settings, timelapse, gallery stacks, PSD/Procreate/PDF/TIFF compatibility, brush
 import/export, and most advanced colour-management and accessibility features.
 Apple Pencil-specific controls are not applicable on Android. See the original
 [Procreate analysis](procreate-analysis.md) for background; its feature matrix
-predates version 2.1.
+predates version 2.2.
+
+Animation motion paths, animation guides, keyframes/easing, IK, camera animation, morphing, particle animation and audio tracks are not implemented. Onion skins are available as ghost frames. The canvas is finite raster, not infinite or resolution-independent.

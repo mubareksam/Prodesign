@@ -87,7 +87,7 @@
       const source = this.activeCel(false); if (!source || !rect) return false;
       // Prepare pixels before changing structure, so allocation errors cannot leave a half-created layer.
       const copied=Q.canvas(this.width,this.height), ctx=copied.getContext('2d');
-      ctx.drawImage(source,rect.x,rect.y,rect.w,rect.h,rect.x,rect.y,rect.w,rect.h);
+      ctx.save(); Q.selectionPath(ctx,rect); ctx.clip(); ctx.drawImage(source,rect.x,rect.y,rect.w,rect.h,rect.x,rect.y,rect.w,rect.h); ctx.restore();
       this.history.struct(function () {
         const at=this.activeLayer+1; this.layers.splice(at,0,makeLayer('Selection copy'));
         this.frames.forEach((frame,idx) => { frame.cels.splice(at,0,idx===this.activeFrame ? copied : null); });

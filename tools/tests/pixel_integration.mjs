@@ -250,4 +250,27 @@ for (const [name,brush,opacity] of [['dry',pen,1],['wet',{...pen,flow:0.5},0.6]]
  d.setPlayRange(1,1); stats=Q.playbackStats(d); ok(stats.frames===0 && stats.ticks===0 && stats.seconds===0, 'timing reports empty when selected range is all skipped');
 }
 
+
+const triangle=()=>Q.lassoSelection([{x:2,y:2},{x:14,y:2},{x:2,y:14}],16,16);
+for (const [name,brush,opacity] of [['dry',pen,1],['wet',{...pen,flow:0.5},0.6],['eraser',{...pen,eraser:true},1]]) {
+ const d=setup(), cel=d.activeCel(true), c=cel.getContext('2d'); if(name==='eraser') {c.fillStyle='#0000ff';c.fillRect(0,0,16,16);}
+ const stroke=new Q.Stroke(d,brush,[255,0,0],20,opacity,triangle()); stroke.begin({x:8,y:8,pressure:1,t:1}); stroke.end();
+ if(name==='eraser') ok(pixel(cel,4,4)[3]===0 && pixel(cel,12,12)[3]===255, 'lasso clips eraser to polygon');
+ else ok(pixel(cel,4,4)[0]>0 && pixel(cel,12,12)[3]===0, 'lasso clips '+name+' brush to polygon');
+ d.history.undo(); ok(name==='eraser' ? pixel(cel,4,4)[3]===255 : pixel(cel,4,4)[3]===0, 'lasso '+name+' stroke is undoable');
+}
+{
+ const d=setup(), cel=d.activeCel(true), c=cel.getContext('2d'); c.fillStyle='#0000ff'; c.fillRect(0,0,16,16); App.view.selection=triangle();
+ App.fillAt(12,12); await new Promise(r=>setTimeout(r,75)); ok(same(pixel(cel,4,4),[0,0,255,255]) && d.history.undoStack.length===0, 'flood fill outside lasso but inside bounds does not fill');
+ App.fillAt(4,4); await new Promise(r=>setTimeout(r,75));
+ ok(pixel(cel,4,4)[0]===255 && same(pixel(cel,12,12),[0,0,255,255]), 'lasso bounds flood fill to polygon');
+ d.history.undo(); ok(same(pixel(cel,4,4),[0,0,255,255]), 'lasso flood fill is undoable');
+ App.applyEffect('invert',1); await new Promise(r=>setTimeout(r,75));
+ ok(same(pixel(cel,4,4),[255,255,0,255]) && same(pixel(cel,12,12),[0,0,255,255]), 'lasso bounds effects to polygon');
+ d.history.undo(); App.editSelection('clear'); ok(pixel(cel,4,4)[3]===0 && pixel(cel,12,12)[3]===255, 'lasso clear protects outside pixels'); d.history.undo();
+ App.editSelection('fill'); ok(pixel(cel,4,4)[0]===255 && same(pixel(cel,12,12),[0,0,255,255]), 'lasso fill protects outside pixels'); d.history.undo();
+ App.copySelectionToLayer(); ok(pixel(d.activeCel(false),4,4)[3]===255 && pixel(d.activeCel(false),12,12)[3]===0, 'copy to layer copies only lasso shape'); d.history.undo();
+ const count=d.history.undoStack.length; App.editSelection('flipH'); App.moveScaleSelection(1,1,1); ok(d.history.undoStack.length===count && same(pixel(cel,12,12),[0,0,255,255]), 'unsupported lasso transforms refuse to modify bounding rectangle');
+}
+
 console.log(`all ${n} raster integration checks passed`);

@@ -2,7 +2,7 @@
 (function () {
   'use strict';
   const Q = window.Q;
-  Q.floodFill = function (image, sx, sy, rgb, threshold, preserveAlpha) {
+  Q.floodFill = function (image, sx, sy, rgb, threshold, preserveAlpha, mask) {
     const w=image.width, h=image.height, data=image.data;
     sx=Math.floor(sx); sy=Math.floor(sy);
     if (sx < 0 || sy < 0 || sx >= w || sy >= h) return null;
@@ -13,7 +13,7 @@
     const visited=new Uint8Array(w*h), stack=[sy*w+sx];
     let minX=w,minY=h,maxX=-1,maxY=-1;
     function matches(index) {
-      if (visited[index]) return false;
+      if (visited[index] || (mask && !mask[index])) return false;
       const i=index*4, a=data[i+3];
       if ((preserveAlpha && a === 0) || Math.abs(a-original[3]) > tol) return false;
       if (a === 0 && original[3] === 0) return true;

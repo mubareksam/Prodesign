@@ -78,7 +78,7 @@
     };
 
     requestAnimationFrame(function () {
-      Q.hint('Two-finger tap undo · pinch & twist to zoom and rotate', 4200);
+      Q.hint('Three-finger tap undo · pinch & twist to zoom and rotate', 4200);
     });
   };
 
@@ -446,6 +446,7 @@
     if (layer.locked) { Q.toast('This layer is locked'); return; }
     if (layer.alphaLocked && operation !== 'fill') { Q.toast('Turn off alpha lock for this edit'); return; }
     const sel=v.selection;
+    if (sel && sel.points && (operation === 'flipH' || operation === 'flipV' || operation === 'rotate180')) { Q.toast('Lasso transforms are not yet supported; use a rectangle'); return; }
     if (!sel && (operation === 'clear' || operation === 'fill')) { Q.toast('Draw a rectangle or select all first'); return; }
     const r=sel || {x:0,y:0,w:d.width,h:d.height};
     const cel=d.activeCel(operation === 'fill');
@@ -461,6 +462,7 @@
       if (image) ctx.putImageData(image,r.x,r.y);
       else {
         ctx.save(); ctx.setTransform(1,0,0,1,0,0); ctx.globalAlpha=1; ctx.globalCompositeOperation=layer.alphaLocked ? 'source-atop' : 'source-over';
+        if (sel) { Q.selectionPath(ctx,sel); ctx.clip(); }
         if (operation === 'clear') ctx.clearRect(r.x,r.y,r.w,r.h);
         else { ctx.fillStyle=Q.rgbToHex(v.color); ctx.fillRect(r.x,r.y,r.w,r.h); }
         ctx.restore();
@@ -487,6 +489,7 @@
     if (layer.alphaLocked) { Q.toast('Turn off alpha lock to transform'); return; }
     if (!cel) { Q.toast('Draw on this layer first'); return; }
     if (!Number.isInteger(dx) || !Number.isInteger(dy) || Math.abs(dx)>d.width*2 || Math.abs(dy)>d.height*2 || !Number.isFinite(scale) || scale<0.25 || scale>4) { Q.toast('Invalid transform'); return; }
+    if (v.selection && v.selection.points) { Q.toast('Lasso transforms are not yet supported; use a rectangle'); return; }
     const src=v.selection || {x:0,y:0,w:d.width,h:d.height};
     const dst={x:src.x+dx,y:src.y+dy,w:Math.max(1,Math.round(src.w*scale)),h:Math.max(1,Math.round(src.h*scale))};
     if (dx===0 && dy===0 && dst.w===src.w && dst.h===src.h) { Q.toast('Nothing changed'); return; }
@@ -521,7 +524,8 @@
       try {
         if (App.doc !== d || d.activeCel(false) !== cel) { Q.UI.endProgress(); return; }
         const ctx=cel.getContext('2d'), image=ctx.getImageData(bounds.x,bounds.y,bounds.w,bounds.h);
-        const rect=Q.floodFill(image,x-bounds.x,y-bounds.y,color,tolerance,alphaLocked);
+        const mask=Q.selectionMask(bounds);
+        const rect=Q.floodFill(image,x-bounds.x,y-bounds.y,color,tolerance,alphaLocked,mask);
         if (rect) {
           d.history.beginPixels(cel); ctx.putImageData(image,bounds.x,bounds.y); d.history.endPixels({x:rect.x+bounds.x,y:rect.y+bounds.y,w:rect.w,h:rect.h});
           App.view.dirty=true; App.markDirty();
@@ -544,10 +548,12 @@
         if (App.doc !== d || d.activeCel(false) !== cel) { Q.UI.endProgress(); Q.toast('Effect cancelled'); return; }
         const ctx = cel.getContext('2d');
         const image = ctx.getImageData(bounds.x, bounds.y, bounds.w, bounds.h);
+        const mask=Q.selectionMask(bounds), original=mask ? new Uint8ClampedArray(image.data) : null;
         const alpha=alphaLocked ? new Uint8Array(image.width*image.height) : null;
         if (alpha) for (let i=0; i<alpha.length; i++) alpha[i]=image.data[i*4+3];
         Q.applyPixelEffect(image, kind, amount);
         if (alpha) for (let i=0; i<alpha.length; i++) image.data[i*4+3]=alpha[i];
+        if (mask) for (let i=0;i<mask.length;i++) if (!mask[i]) for (let c=0;c<4;c++) image.data[i*4+c]=original[i*4+c];
         d.history.beginPixels(cel);
         ctx.putImageData(image, bounds.x, bounds.y);
         d.history.endPixels(bounds);

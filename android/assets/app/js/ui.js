@@ -85,6 +85,7 @@
     el('#btnRedo').addEventListener('click', function () { app().redo(); });
     el('#btnTimeline').addEventListener('click', function () { UI.toggleTimeline(); });
     el('#btnMenu').addEventListener('click', function () { UI.toggleTray('menu'); });
+    el('#btnEffects').addEventListener('click', function () { UI.closeTray(); UI.effectsDialog(); });
 
     el('#btnBrush').addEventListener('click', function () { UI.toggleTray('brushes'); });
     el('#btnLayers').addEventListener('click', function () { UI.toggleTray('layers'); });
@@ -706,51 +707,34 @@
   function buildMenu(root) {
     const d = app().doc;
     root.appendChild(trayHead('Actions', []));
-    const grid = Q.crel('div', 'menu-grid');
-
-    const item = function (label, ico, fn) {
-      const b = Q.crel('button', 'menu-item');
-      b.innerHTML = icon(ico);
-      b.appendChild(document.createTextNode(label));
-      b.addEventListener('click', function () { fn(); });
-      return b;
-    };
-
-    grid.appendChild(item('Export PNG', ICON.photo, function () { app().exportPng(); }));
-    grid.appendChild(item('Transparent PNG', ICON.photo, function () { app().exportPng(true); }));
-    grid.appendChild(item('Export GIF', ICON.film, function () { UI.exportDialog(); }));
-    grid.appendChild(item('Export PNG frames', ICON.photo, function () { UI.closeTray(); app().exportPngSequence(); }));
-    grid.appendChild(item('Transparent PNG frames', ICON.photo, function () { UI.closeTray(); app().exportPngSequence(true); }));
-    grid.appendChild(item('Export sprite sheet', ICON.photo, function () { UI.spriteSheetDialog(); }));
-    grid.appendChild(item('Export MP4', ICON.film, function () { UI.closeTray(); app().exportMp4(); }));
-    grid.appendChild(item('New canvas', ICON.plus, function () { UI.newCanvasDialog(); }));
-    grid.appendChild(item('Canvas background', ICON.sparkle, function () { UI.backgroundDialog(); }));
-    grid.appendChild(item('Drawing guides', ICON.sparkle, function () { UI.guideDialog(); }));
-    grid.appendChild(item('Canvas reference', ICON.photo, function () { UI.closeTray(); UI.openReference(); }));
-    grid.appendChild(item('Effects', ICON.sparkle, function () { UI.effectsDialog(); }));
-    grid.appendChild(item('Fill settings', ICON.sparkle, function () { UI.fillSettings(); }));
-    grid.appendChild(item('Selection & transform', ICON.copy, function () { UI.selectionDialog(); }));
-    grid.appendChild(item('Add frame', ICON.film, function () { app().addFrame(true); }));
-    grid.appendChild(item('Onion skin', ICON.sparkle, function () {
-      if (!d) return;
-      d.onion = !d.onion;
-      app().view.dirty = true;
-      Q.toast(d.onion ? 'Onion skin on' : 'Onion skin off');
-      buildMenu(root);
-    }));
-    grid.appendChild(item('Flip canvas', ICON.flip, function () { app().flipCanvas(); }));
-    grid.appendChild(item('Rotate 90°', ICON.reset, function () { app().view.rotateBy(90); }));
-    grid.appendChild(item('Zoom to fit', ICON.layers, function () { app().view.fit(); }));
-    grid.appendChild(item('Reset view', ICON.reset, function () { app().view.fit(); }));
-    grid.appendChild(item('Save now', ICON.save, function () { app().saveNow(true); }));
-
-    if (d && d.frames.length > 1) {
-      grid.appendChild(item('Delete frame', ICON.trash, function () { app().deleteFrame(); }));
+    function item(label, ico, fn) {
+      const b=Q.crel('button','menu-item'); b.innerHTML=icon(ico);
+      b.appendChild(document.createTextNode(label)); b.addEventListener('click',fn); return b;
     }
-    grid.appendChild(item('Gestures & help', ICON.sparkle, function () { UI.helpSheet(); }));
-    grid.appendChild(item('About Qalam', ICON.layers, function () { UI.aboutSheet(); }));
-
-    root.appendChild(grid);
+    function group(title, items) {
+      const section=Q.crel('section','action-group'); section.appendChild(Q.crel('h3','action-heading',title));
+      const grid=Q.crel('div','menu-grid'); items.forEach(x=>grid.appendChild(item(x[0],x[1],x[2]))); section.appendChild(grid); root.appendChild(section);
+    }
+    group('Create & edit', [
+      ['New canvas',ICON.plus,()=>UI.newCanvasDialog()], ['Effects',ICON.sparkle,()=>UI.effectsDialog()],
+      ['Selection & transform',ICON.copy,()=>UI.selectionDialog()], ['Fill settings',ICON.sparkle,()=>UI.fillSettings()]
+    ]);
+    group('Canvas & view', [
+      ['Canvas background',ICON.sparkle,()=>UI.backgroundDialog()], ['Drawing guides',ICON.sparkle,()=>UI.guideDialog()],
+      ['Canvas reference',ICON.photo,()=>{UI.closeTray(); UI.openReference();}], ['Flip canvas',ICON.flip,()=>app().flipCanvas()],
+      ['Rotate 90°',ICON.reset,()=>app().view.rotateBy(90)], ['Zoom to fit',ICON.layers,()=>app().view.fit()]
+    ]);
+    const animation=[['Add frame',ICON.film,()=>app().addFrame(true)], ['Animation timeline',ICON.film,()=>{UI.closeTray(); if (!timelineOpen) UI.toggleTimeline();}],
+      ['Onion skin',ICON.sparkle,()=>{if (!d) return; d.onion=!d.onion; app().view.dirty=true; app().markDirty(); Q.toast(d.onion ? 'Onion skin on' : 'Onion skin off'); root.innerHTML=''; buildMenu(root);}]];
+    if (d && d.frames.length>1) animation.push(['Delete frame',ICON.trash,()=>app().deleteFrame()]);
+    group('Animation',animation);
+    group('Export', [
+      ['Export PNG',ICON.photo,()=>app().exportPng()], ['Transparent PNG',ICON.photo,()=>app().exportPng(true)],
+      ['Export GIF',ICON.film,()=>UI.exportDialog()], ['Export PNG frames',ICON.photo,()=>{UI.closeTray(); app().exportPngSequence();}],
+      ['Transparent PNG frames',ICON.photo,()=>{UI.closeTray(); app().exportPngSequence(true);}], ['Export sprite sheet',ICON.photo,()=>UI.spriteSheetDialog()],
+      ['Export MP4',ICON.film,()=>{UI.closeTray(); app().exportMp4();}]
+    ]);
+    group('File & help', [ ['Save now',ICON.save,()=>app().saveNow(true)], ['Gestures & help',ICON.sparkle,()=>UI.helpSheet()], ['About Qalam',ICON.layers,()=>UI.aboutSheet()] ]);
 
     const info = Q.crel('div', 'layer-sub');
     info.style.margin = '12px 2px 0';
@@ -794,18 +778,19 @@
   UI.selectionDialog = function () {
     const v=app().view, d=app().doc; if (!d) return;
     const card=Q.crel('div'); card.appendChild(Q.crel('h2',null,'Selection & transform'));
-    card.appendChild(Q.crel('p','sub', v.selection ? 'Rectangle selected. Edits affect the current layer and frame.' : 'No rectangle selected. Flips and rotation use the whole current layer and frame.'));
-    card.appendChild(Q.crel('p','sub','The rectangle clips brushes, erasers, flood fill and effects. It is temporary and applies to the current layer and frame.'));
+    card.appendChild(Q.crel('p','sub', v.selection ? (v.selection.points ? 'Lasso selected. Transforms currently require a rectangle.' : 'Rectangle selected. Edits affect the current layer and frame.') : 'No selection. Flips and rotation use the whole current layer and frame.'));
+    card.appendChild(Q.crel('p','sub','The selection clips brushes, erasers, flood fill and effects. It is temporary and applies to the current layer and frame.'));
     const actions=Q.crel('div','menu-grid');
     function action(label, fn) { const b=Q.crel('button','menu-item',label); b.addEventListener('click',function () { UI.closeModal(); UI.closeTray(); fn(); }); actions.appendChild(b); }
     action('Draw rectangle',function () {
       v.tool='select'; v.selectionDraft=null; Q.el('#btnFill').classList.remove('on'); Q.el('#btnEyedrop').classList.remove('on');
       Q.hint('Drag on the canvas to select a rectangle',3000);
     });
+    action('Draw lasso',function () { v.tool='lasso'; v.selectionDraft=null; Q.el('#btnFill').classList.remove('on'); Q.el('#btnEyedrop').classList.remove('on'); Q.hint('Draw a closed selection around an area',3000); });
     action('Select all',function () { v.selection={x:0,y:0,w:d.width,h:d.height}; v.dirty=true; Q.hint('Entire canvas selected',1600); });
-    action('Deselect',function () { v.selection=null; v.selectionDraft=null; if (v.tool === 'select') v.tool='brush'; v.dirty=true; });
-    action('Fill rectangle',function () { app().editSelection('fill'); });
-    action('Clear rectangle',function () { app().editSelection('clear'); });
+    action('Deselect',function () { v.selection=null; v.selectionDraft=null; if (v.tool === 'select' || v.tool === 'lasso') v.tool='brush'; v.dirty=true; });
+    action(v.selection && v.selection.points ? 'Fill selection' : 'Fill rectangle',function () { app().editSelection('fill'); });
+    action(v.selection && v.selection.points ? 'Clear selection' : 'Clear rectangle',function () { app().editSelection('clear'); });
     action('Copy to layer',function () { app().copySelectionToLayer(); });
     action('Flip horizontal',function () { app().editSelection('flipH'); });
     action('Flip vertical',function () { app().editSelection('flipV'); });
@@ -957,6 +942,7 @@
     el.innerHTML = '';
 
     const head = Q.crel('div', 'tl-head');
+    const more = Q.crel('div', 'tl-more');
     head.appendChild(Q.crel('div', 'tl-title', 'Animation · ' + d.frames.length + ' frames'));
     head.appendChild(chip(d.fps + ' fps', false, function () {
       const next = d.fps >= 30 ? 6 : d.fps + 2;
@@ -964,22 +950,22 @@
       app().markDirty(true);
       buildTimeline();
     }, null));
-    head.appendChild(chip('Settings', false, function () { UI.animationSettings(); }, null));
-    head.appendChild(chip('Frame options', false, function () { UI.frameSheet(d.activeFrame); }, null));
-    head.appendChild(chip('Batch frames', false, function () { UI.batchFramesDialog(); }, null));
-    head.appendChild(chip('Copy cel', false, function () { UI.copyCelDialog(); }, null));
-    head.appendChild(chip('Blank frame', false, function () { app().addFrame(false); }, null));
-    head.appendChild(chip('◀ Frame', false, function () { app().selectFrame(Math.max(0,d.activeFrame-1)); }, null));
-    head.appendChild(chip('Frame ▶', false, function () { app().selectFrame(Math.min(d.frames.length-1,d.activeFrame+1)); }, null));
-    head.appendChild(chip('Onion', d.onion, function () {
+    more.appendChild(chip('Settings', false, function () { UI.animationSettings(); }, null));
+    more.appendChild(chip('Frame options', false, function () { UI.frameSheet(d.activeFrame); }, null));
+    more.appendChild(chip('Batch frames', false, function () { UI.batchFramesDialog(); }, null));
+    more.appendChild(chip('Copy cel', false, function () { UI.copyCelDialog(); }, null));
+    more.appendChild(chip('Blank frame', false, function () { app().addFrame(false); }, null));
+    more.appendChild(chip('◀ Frame', false, function () { app().selectFrame(Math.max(0,d.activeFrame-1)); }, null));
+    more.appendChild(chip('Frame ▶', false, function () { app().selectFrame(Math.min(d.frames.length-1,d.activeFrame+1)); }, null));
+    more.appendChild(chip('Onion', d.onion, function () {
       d.onion = !d.onion;
       app().view.dirty = true;
       app().markDirty(true);
       buildTimeline();
     }, ICON.sparkle));
-    head.appendChild(chip('', false, function () { app().togglePlay(); }, app().playing ? ICON.pause : ICON.play));
-    head.appendChild(chip('', false, function () { app().addFrame(true); }, ICON.plus));
-    el.appendChild(head);
+    const play=chip('', false, function () { app().togglePlay(); }, app().playing ? ICON.pause : ICON.play); play.setAttribute('aria-label',app().playing ? 'Stop playback' : 'Play animation'); head.appendChild(play);
+    const duplicate=chip('', false, function () { app().addFrame(true); }, ICON.plus); duplicate.setAttribute('aria-label','Duplicate frame'); head.appendChild(duplicate);
+    el.appendChild(head); el.appendChild(more);
 
     const strip = Q.crel('div', 'tl-frames'), bounds=Q.playbackBounds(d);
     d.frames.forEach(function (fr, i) {
@@ -999,7 +985,7 @@
       strip.appendChild(b);
     });
 
-    const add = Q.crel('button', 'tl-add', icon(ICON.plus));
+    const add = Q.crel('button', 'tl-add', icon(ICON.plus)); add.setAttribute('aria-label','Duplicate frame');
     add.addEventListener('click', function () { app().addFrame(true); });
     strip.appendChild(add);
     el.appendChild(strip);
@@ -1120,8 +1106,8 @@
     const rows = [
       ['One finger / stylus', 'Draw'],
       ['Two fingers', 'Pan, pinch to zoom, twist to rotate'],
-      ['Two-finger tap', 'Undo'],
-      ['Three-finger tap', 'Redo'],
+      ['Three-finger tap', 'Undo'],
+      ['Four-finger tap', 'Redo'],
       ['Long press', 'Pick a colour (eyedropper)'],
       ['Hold at the end of a stroke', 'Snap to a straight line or ellipse'],
       ['Drag a layer row sideways', 'Change layer opacity'],

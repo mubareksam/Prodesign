@@ -1,6 +1,6 @@
 /* Qalam — canvas viewport: rendering, pan/zoom/rotate, stylus input and the
- * Procreate-style gestures (two-finger pan/pinch/rotate, two-finger tap undo,
- * three-finger tap redo, long-press eyedropper, hold-to-snap QuickShape).
+ * Gestures: two-finger pan/pinch/rotate, three-finger undo, four-finger redo,
+ * long-press eyedropper and hold-to-snap QuickShape.
  */
 (function () {
   'use strict';
@@ -91,7 +91,7 @@
     sx = sx == null ? this.cssW / 2 : sx;
     sy = sy == null ? this.cssH / 2 : sy;
     const before = this.toDoc(sx, sy);
-    this.scale = Q.clamp(this.scale * factor, 0.02, 24);
+    this.scale = Q.clamp(this.scale * factor, 0.02, 64);
     const c = Math.cos(this.rot), s = Math.sin(this.rot);
     this.tx = sx - (before.x * c - before.y * s) * this.scale;
     this.ty = sy - (before.x * s + before.y * c) * this.scale;
@@ -164,9 +164,9 @@
     const selection = this.selectionDraft || this.selection;
     if (selection) {
       c.save(); c.lineWidth = 2 / this.scale; c.strokeStyle = '#111111';
-      c.strokeRect(selection.x, selection.y, selection.w, selection.h);
+      Q.selectionPath(c,selection); c.stroke();
       c.strokeStyle = '#ffffff'; c.setLineDash([6 / this.scale, 4 / this.scale]);
-      c.strokeRect(selection.x, selection.y, selection.w, selection.h); c.restore();
+      Q.selectionPath(c,selection); c.stroke(); c.restore();
     }
 
     // Canvas border
@@ -332,9 +332,9 @@
         return;
       }
       if (this.tool === 'fill') { this.pointers.get(e.pointerId).pendingFill = true; return; }
-      if (this.tool === 'select') {
+      if (this.tool === 'select' || this.tool === 'lasso') {
         const rec=this.pointers.get(e.pointerId), p=this.toDoc(pos.x,pos.y);
-        rec.selectStart=p; this.selectionDraft=null; return;
+        rec.selectStart=p; if (this.tool === 'lasso') rec.lassoPoints=[p]; this.selectionDraft=null; return;
       }
       this._startStroke(pos, e);
     } else if (this.pointers.size === 2) {
@@ -342,8 +342,7 @@
       if (this.stroke) { this.stroke.cancel(); this.stroke = null; this.dirty = true; }
       this._startGesture();
     } else {
-      // a third (or later) finger joins the running gesture: it only counts
-      // toward the tap -> three-finger redo, never a fourth-finger action
+      // Additional fingers count toward undo/redo only if the gesture stays still.
       if (this.g) this.g.maxPointers = Math.max(this.g.maxPointers, this.pointers.size);
       this.gestureTap = false;
     }
@@ -355,10 +354,16 @@
     if (!rec) return;
     rec.x = pos.x;
     rec.y = pos.y;
+    if (this.g && Q.dist(rec.startX,rec.startY,rec.x,rec.y)>10) this.g.moved=true;
 
     if (this.g) { this._moveGesture(); return; }
     if (rec.selectStart) {
-      const p=this.toDoc(pos.x,pos.y); this.selectionDraft=Q.selectionRect(rec.selectStart,p,this.doc.width,this.doc.height);
+      const p=this.toDoc(pos.x,pos.y);
+      if (rec.lassoPoints) {
+        const points=rec.lassoPoints, last=points[points.length-1];
+        if (points.length<2048 && Q.dist(last.x,last.y,p.x,p.y)*this.scale>=2) points.push(p);
+        this.selectionDraft=Q.lassoSelection(points,this.doc.width,this.doc.height);
+      } else this.selectionDraft=Q.selectionRect(rec.selectStart,p,this.doc.width,this.doc.height);
       this.dirty=true; return;
     }
 
@@ -384,14 +389,15 @@
     this.pointers.delete(e.pointerId);
 
     if (this.g) {
+      if (e.type === 'pointercancel') this.g.cancelled=true;
       const remaining = this.pointers.size;
       if (remaining === 0) {
-        const tap = !this.g.moved;
+        const tap = !this.g.moved && !this.g.cancelled && Q.now()-this.g.started < 500;
         const n = this.g.maxPointers;
         this.g = null;
         if (tap) {
-          if (n === 2) { if (this.onUndo) this.onUndo(); }
-          else if (n >= 3) { if (this.onRedo) this.onRedo(); }
+          if (n === 3) { if (this.onUndo) this.onUndo(); }
+          else if (n === 4) { if (this.onRedo) this.onRedo(); }
         }
       } else if (remaining === 1) {
         // continue with the remaining finger for panning, without rotating
@@ -557,7 +563,9 @@
     const prevMax = this.g ? this.g.maxPointers : 0;
     this.g = {
       maxPointers: Math.max(prevMax, pts.length),
-      moved: false,
+      moved: this.g ? this.g.moved : false,
+      cancelled: this.g ? this.g.cancelled : false,
+      started: this.g ? this.g.started : Q.now(),
       startScale: this.scale,
       startRot: this.rot,
       startCx: cx, startCy: cy,
@@ -579,7 +587,7 @@
     let scale = g.startScale, rot = g.startRot;
     if (pts.length > 1) {
       const dist = Q.dist(pts[0].x, pts[0].y, pts[1].x, pts[1].y);
-      if (g.startDist > 8) scale = Q.clamp(g.startScale * (dist / g.startDist), 0.02, 24);
+      if (g.startDist > 8) scale = Q.clamp(g.startScale * (dist / g.startDist), 0.02, 64);
       const ang = Math.atan2(pts[1].y - pts[0].y, pts[1].x - pts[0].x);
       let da = ang - g.startAngle;
       while (da > Math.PI) da -= Math.PI * 2;

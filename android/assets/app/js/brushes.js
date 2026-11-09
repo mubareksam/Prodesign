@@ -183,7 +183,7 @@
     this.opacity = Q.clamp(opacity, 0.01, 1);
     this.eraser = !!brush.eraser;
     this.alphaLocked = !!(doc.layer && doc.layer() && doc.layer().alphaLocked);
-    this.selection = selection ? {x:selection.x,y:selection.y,w:selection.w,h:selection.h} : null;
+    this.selection = selection ? {x:selection.x,y:selection.y,w:selection.w,h:selection.h,points:selection.points ? selection.points.map(p=>({x:p.x,y:p.y})) : null} : null;
     this.ctx = null;
     this.cel = null;
     this.dirty = null;
@@ -343,7 +343,7 @@
 
     const target = this.wet ? this.bufCtx : this.ctx;
     target.save();
-    if (this.selection) { const r=this.selection; target.beginPath(); target.rect(r.x,r.y,r.w,r.h); target.clip(); }
+    if (this.selection) { Q.selectionPath(target,this.selection); target.clip(); }
     if (this.eraser) {
       target.globalCompositeOperation = 'destination-out';
       target.globalAlpha = Q.clamp(alpha, 0.01, 1);
@@ -404,7 +404,7 @@
     const ctx = this.ctx;
     const snap = doc.history.snap;
     ctx.save();
-    if (this.selection) { const s=this.selection; ctx.beginPath(); ctx.rect(s.x,s.y,s.w,s.h); ctx.clip(); }
+    if (this.selection) { Q.selectionPath(ctx,this.selection); ctx.clip(); }
     ctx.globalAlpha = 1;
     ctx.globalCompositeOperation = 'source-over';
     ctx.clearRect(x, y, w, h);
@@ -432,7 +432,7 @@
       const h = Math.min(doc.height - y, Math.ceil(r.h) + 1);
       const ctx = this.ctx;
       ctx.save();
-      if (this.selection) { const s=this.selection; ctx.beginPath(); ctx.rect(s.x,s.y,s.w,s.h); ctx.clip(); }
+      if (this.selection) { Q.selectionPath(ctx,this.selection); ctx.clip(); }
       ctx.globalCompositeOperation = 'source-over';
       ctx.globalAlpha = 1;
       ctx.clearRect(x, y, w, h);

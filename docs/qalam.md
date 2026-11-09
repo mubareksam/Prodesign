@@ -8,11 +8,11 @@ brushes, layers with blend modes, a colour wheel, a frame timeline with onion sk
 Procreate's gesture vocabulary, PNG/GIF export and device-dependent MP4 export — all offline, with no account and
 no network permissions at all.
 
-- Package: `com.qalam.studio` · version 2.1 (versionCode 12)
+- Package: `com.qalam.studio` · version 2.2 (versionCode 13)
 - minSdk 26 (Android 8.0) · targetSdk 33 · armeabi-v7a/arm64/x86/x86_64 independent
   (everything is HTML/JS running inside the app's own `WebView`, so the APK has no
   native code)
-- APK: **`artifacts/Qalam-2.1.apk`** (~260 KB), signed with a v1+v2 scheme
+- APK: **`artifacts/Qalam-2.2.apk`** (~260 KB), signed with a v1+v2 scheme
 - The written analysis of Procreate that this app was specified from:
   [`docs/procreate-analysis.md`](procreate-analysis.md)
 
@@ -20,7 +20,7 @@ no network permissions at all.
 
 ## 1. Install
 
-1. Copy `artifacts/Qalam-2.1.apk` to the phone (USB, Drive, chat to yourself — anything).
+1. Copy `artifacts/Qalam-2.2.apk` to the phone (USB, Drive, chat to yourself — anything).
 2. Open it with the phone's file manager. Android will ask to allow installs from
    that app the first time ("Install unknown apps").
 3. Install and open **Qalam**. If an earlier Qalam version is already installed, Android should offer an update that preserves its data. Back up important artwork first. Android does not allow this app to silently uninstall itself; do not uninstall it unless you have backed up its local artwork.
@@ -110,23 +110,21 @@ Bottom bar: **Gallery · Layer · Brush · Colour · Timeline · Menu** (plus **
   undone. It appears in normal exports but not transparent PNGs.
 - **Menu → Canvas reference** — a movable, zoomable overview of the current frame.
   It refreshes after changes. It does not import external images.
-- **Menu → Selection & transform** — choose **Draw rectangle**, then drag on the
-  canvas. That temporary rectangle clips brush and eraser strokes, flood fill and
-  effects. It also applies to rectangle fill/clear, horizontal/vertical flip,
-  180° rotation and **Move / scale**; choose **Deselect** to paint everywhere again.
-  Effects work on the selected pixels only, so blur treats the selection edge as
-  its boundary. Select all and Deselect are available. **Copy to layer** places the
-  selected pixels on a new layer at the same position in the current frame only;
-  the new layer's other frames are blank. The source remains unchanged.
-  **Move / scale** uses numeric offsets (whole pixels) and uniform 25–400% scale,
-  anchored at the top-left, with no live preview. It cuts the source, draws the
-  result over existing pixels on the same cel, and crops off-canvas content. With
-  no selection, flips, 180° rotation and move/scale use the entire current cel.
-  These edits can be undone, but undo/redo restores pixels, not the selection
-  outline; redraw the selection if needed. The selection outline follows a
-  move/scale and is cleared if moved fully outside the canvas. It applies across
-  layer/frame switches, is not saved, and is cleared when switching artworks.
-  Large edits may take time and memory.
+- **Actions → Create & edit → Selection & transform** — choose **Draw rectangle**
+  and drag, or **Draw lasso** and trace a freehand outline. The lasso closes from
+  its last point to its first. Both selections clip brushes, erasers, fill and
+  effects and support selection fill/clear and **Copy to layer**. Copy creates a
+  new layer only in the current frame. Select all and Deselect are available.
+  Effects are calculated within the selection's bounding rectangle and masked on
+  output; blur can sample pixels inside that rectangle but outside a lasso.
+  Rectangular selections also support flips, 180° rotation and **Move / scale**.
+  These transforms do not yet support lasso and are refused instead of changing its
+  bounding rectangle. Move/scale uses numeric offsets and 25–400% scale anchored
+  at top left, without live preview; off-canvas content is cropped. With no
+  selection, transforms use the current cel. Undo restores pixels, not the selection
+  outline. Selections are temporary, unsaved and cleared when switching artworks;
+  they apply across layer/frame switches. Lasso paths are limited to 2048 sampled
+  points, are not feathered, and large edits can take time and memory.
 - **Menu → Drawing guides** — show an adjustable 2D, isometric or one-, two- or
   three-point perspective overlay, or a symmetry overlay. Perspective horizon and
   point spread can be adjusted; perspective and grids are visual only, not snapping
@@ -148,8 +146,8 @@ Bottom bar: **Gallery · Layer · Brush · Colour · Timeline · Menu** (plus **
 | Draw / drag with one finger or stylus | Paint |
 | Two fingers drag | Pan the canvas |
 | Two fingers pinch / twist | Zoom / rotate |
-| **Two-finger tap** | Undo |
-| **Three-finger tap** | Redo |
+| **Three-finger tap** | Undo |
+| **Four-finger tap** | Redo |
 | **Long-press on the canvas** | Eyedropper — picks the colour under the pen, no paint left behind |
 | Hold still at the end of a fast stroke | **QuickShape** — snaps to a straight line, or to an ellipse if the stroke curls back |
 | Pen down + finger down | Finger is ignored while a stylus stroke is running (palm rejection) |
@@ -206,7 +204,7 @@ android/
     js/gif.js                quantiser, LZW, GifWriter
     js/effects.js            undoable pixel effect algorithms
     js/fill.js               scanline flood fill
-    js/selection.js          rectangle geometry and pixel flips
+    js/selection.js          rectangle/lasso geometry and pixel flips
     js/spritesheet.js        bounded PNG sprite-sheet layout and rendering
     js/view.js               viewport, input, gestures, QuickShape, eyedropper
     js/storage.js            IndexedDB store with localStorage fallback
@@ -225,7 +223,7 @@ tools/
   tests/pixel_integration.mjs real raster and animation export checks
   tests/gif_roundtrip.mjs    encodes a GIF and decodes it with an independent decoder
   tests/ui_smoke.mjs         jsdom boot + full UI drive (gallery -> export)
-artifacts/Qalam-2.1.apk           the signed, installable artefact
+artifacts/Qalam-2.2.apk           the signed, installable artefact
 docs/procreate-analysis.md   the Procreate study this app was built from
 docs/qalam.md                this file
 ```
@@ -255,7 +253,7 @@ Design notes worth knowing before changing code:
 
 ```bash
 bash tools/fetch-toolchain.sh     # once per machine: JVM, apktool, aapt2, jars, npm
-bash tools/build.sh               # -> artifacts/Qalam-2.1.apk (signed + verified)
+bash tools/build.sh               # -> artifacts/Qalam-2.2.apk (signed + verified)
 bash tools/check_reference.sh     # optional: javac-check the Java mirrors
 ```
 
@@ -278,8 +276,8 @@ npm test        # engine_smoke (130 checks) + pixel_integration + gif_roundtrip 
 actual RGBA pixels, selection clipping, sprite sheets, GIF timing and undo/redo. It is not an Android device test.
 `ui_smoke.mjs` boots the real app in jsdom with a stubbed 2D context and drives the
 actual DOM: new canvas → brush tray → stroke → undo/redo → layers → colour →
-timeline → playback → save → reopen from the gallery → gestures (pinch, two-finger
-undo, three-finger redo, long-press eyedropper, QuickShape) → Android back button →
+timeline → playback → save → reopen from the gallery → gestures (pinch, three-finger
+undo, four-finger redo, long-press eyedropper, QuickShape) → Android back button →
 PNG export into the native bridge. It is the regression net for anything that
 touches `ui.js`, `view.js`, `app.js` or `storage.js`.
 
@@ -290,10 +288,10 @@ install, not merely that a build command exited 0.
 
 ## 7. Known limits & roadmap
 
-This is not a full Procreate replacement. Brush Studio edits existing presets only;
+This is not a full Procreate replacement. Canvas sizes are finite (up to 4096 px per side), and artwork is raster: magnification up to 64× reveals pixels rather than creating infinite detail. Image import, clipping masks, layer groups, audio tracks, motion paths, keyframes/easing, IK, camera animation, morphing and particles are not implemented. Onion skins provide ghost frames. Brush Studio edits existing presets only;
 custom tips/grains, dual brushes and import/export are not implemented. Guide
 snapping, adjustable vanishing-point placement, rectangle/arc QuickShape, imported
-image references, freehand/automatic selections, feathered masks, interactive
+image references, automatic selection, feathered masks, interactive
 transform previews and free rotation, layer masks/groups, text, cross-layer reference fill,
 smudge, timelapse, PSD and many other requested features remain unimplemented. Frame labels are not full nested frame groups; PNG sequences and sprite sheets
 contain one image per frame without hold metadata. MP4 availability depends on the

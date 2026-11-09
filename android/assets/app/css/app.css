@@ -188,8 +188,8 @@ svg { width: 22px; height: 22px; fill: none; stroke: currentColor; stroke-width:
 /* vertical sliders */
 .vslider { position: relative; width: 46px; height: 156px; border-radius: 16px; background: #17171cf0; border: 1px solid var(--line); backdrop-filter: blur(14px); }
 .vslider input[type=range] {
-  position: absolute; left: -55px; top: 56px;
-  width: 156px; height: 44px;
+  position: absolute; left: -42px; top: 45px;
+  width: 128px; height: 44px;
   transform: rotate(-90deg);
   -webkit-appearance: none; appearance: none; background: transparent; margin: 0;
 }
@@ -402,3 +402,11 @@ select, .select {
 .tl-position { color: #e2e2e9; font-size: 11px; white-space: nowrap; }
 
 .tl-timing { margin-top: 3px; color: var(--txt-3); font-size: 11px; }
+
+/* Reachable controls, with the frame strip as the only horizontal scroller. */
+.timeline { max-height: 55vh; max-height: min(55vh, 450px); overflow-y: auto; }
+.tl-head, .tl-more { display: flex; flex-wrap: wrap; gap: 6px; overflow: visible; padding: 0 0 6px; }
+.tl-head .chip, .tl-more .chip { flex: none; }
+.tl-head .tl-title { flex: 1 1 auto; }
+.action-group { margin: 14px 0; }
+.action-heading { color: var(--txt-2); font-size: 12px; font-weight: 700; margin: 0 0 8px; }
