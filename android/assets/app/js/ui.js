@@ -56,6 +56,7 @@
     next: '<path d="M18 5v14M6 6l8 6-8 6z"/>',
     onion: '<circle cx="9" cy="12" r="6"/><circle cx="15" cy="12" r="6"/>',
     audio: '<path d="M10 17V5l9-2v12"/><circle cx="7" cy="18" r="3"/><circle cx="16" cy="16" r="3"/>',
+    particles: '<circle cx="5" cy="17" r="1.5"/><circle cx="12" cy="12" r="2"/><circle cx="19" cy="5" r="2.5"/><path d="M8 15l2-2M15 10l2-3"/>',
     camera: '<rect x="3" y="6" width="18" height="13" rx="2"/><circle cx="12" cy="12.5" r="3.5"/><path d="M7 6l1.5-2h4L14 6"/>',
     tween: '<rect x="3" y="7" width="7" height="7" rx="1"/><path d="M12 12h4M14 10l2 2-2 2"/><rect x="17" y="5" width="4" height="4" rx="1" transform="rotate(25 19 7)"/>'
   };
@@ -1038,6 +1039,7 @@
     } else {
       tool('Motion guide',ICON.motion,function () { UI.motionGuideDialog(); });
       tool('Camera keyframes',ICON.camera,function () { UI.cameraDialog(); },d.cameraEnabled && d.cameraKeys.length>0);
+      tool('Generate particles',ICON.particles,function () { UI.particleDialog(); });
       tool('Generate transform frames',ICON.tween,function () { UI.transformBakeDialog(); });
       tool('Manage audio',ICON.audio,function () { UI.audioDialog(); });
     }
@@ -1167,6 +1169,30 @@
       action('Remove audio',function () { UI.confirm('Remove audio?', 'The audio track can be restored with Undo.',function () { d.setAudioTrack(null); app().markDirty(); UI.refreshTimeline(); }); });
     }
     card.appendChild(actions); const close=Q.crel('button','btn ghost','Close'); close.addEventListener('click',function () { UI.closeModal(); }); card.appendChild(close); UI.openModal(card);
+  };
+
+  UI.particleDialog = function () {
+    app().stopPlay(); const d=app().doc; if (!d) return;
+    const card=Q.crel('div'); card.appendChild(Q.crel('h2',null,'Generate particle layer'));
+    card.appendChild(Q.crel('p','sub','Create a new topmost raster layer across existing frames. Other layers are untouched. Dots follow simple seeded ballistic motion; these are baked cels, not a live particle system. Undo removes the layer.'));
+    function section(name) { card.appendChild(Q.crel('h3','transform-heading',name)); const grid=Q.crel('div','transform-grid'); card.appendChild(grid); return grid; }
+    function field(grid,label,value,step) { const row=Q.crel('div','transform-field'), text=Q.crel('label',null,label), input=Q.crel('input','select'); input.type='number'; input.step=step || 'any'; input.value=String(value); input.setAttribute('aria-label',label); row.appendChild(text); row.appendChild(input); grid.appendChild(row); return input; }
+    function choice(grid,label,choices) { const row=Q.crel('div','transform-field'), text=Q.crel('label',null,label), input=Q.crel('select'); input.setAttribute('aria-label',label); choices.forEach(function (v) { const option=Q.crel('option'); option.value=v[0]; option.textContent=v[1]; input.appendChild(option); }); row.appendChild(text); row.appendChild(input); grid.appendChild(row); return input; }
+    const range=section('Frames and emission'), start=field(range,'Particle first frame',1,'1'), end=field(range,'Particle last frame',d.frames.length,'1'), count=field(range,'Particle count',24,'1'), life=field(range,'Particle life (frames)',Math.min(15,d.frames.length),'1');
+    const mode=choice(range,'Particle emission',[['burst','Burst at start'],['continuous','Stagger over range']]), seed=field(range,'Particle seed',1,'1');
+    const motion=section('Emitter and movement'), x=field(motion,'Emitter X',d.width/2), y=field(motion,'Emitter Y',d.height/2), angle=field(motion,'Direction (degrees)',-90), spread=field(motion,'Spread (degrees)',100), speed=field(motion,'Speed (px per frame)',Math.max(1,Math.round(Math.max(d.width,d.height)/30))), gravity=field(motion,'Gravity (px per frame squared)',0.15);
+    const appearance=section('Appearance'), radius=field(appearance,'Particle radius (px)',Math.max(2,Math.min(32,Math.round(Math.max(d.width,d.height)/100)))), opacity=field(appearance,'Particle opacity (%)',100);
+    const shape=choice(appearance,'Particle shape',[['circle','Circle'],['square','Square']]), fade=choice(appearance,'Particle fade',[['yes','Fade over life'],['no','Constant opacity']]);
+    const colorRow=Q.crel('div','transform-field'), colorLabel=Q.crel('label',null,'Particle hex colour'), color=Q.crel('input','select'); color.type='text'; color.value=Q.rgbToHex(app().view.color); color.setAttribute('aria-label','Particle hex colour'); colorRow.appendChild(colorLabel); colorRow.appendChild(color); appearance.appendChild(colorRow);
+    card.appendChild(Q.crel('p','sub','Direction is in degrees: right 0, down 90, up −90. Gravity is positive downward. The seed reproduces the same pattern. Age is measured in frame numbers, not holds or playback time; skipped frames are generated too. Particles outside the canvas are cropped. Selection is ignored. A 64 MiB new-cel limit applies; existing layers and history use additional memory.'));
+    const error=Q.crel('p','canvas-error'); error.setAttribute('role','alert'); card.appendChild(error);
+    const actions=Q.crel('div','modal-actions'), cancel=Q.crel('button','btn ghost','Cancel'), generate=Q.crel('button','btn primary','Generate layer');
+    cancel.addEventListener('click',function () { UI.closeModal(); }); generate.addEventListener('click',function () {
+      const inputs=[start,end,count,life,seed,x,y,angle,spread,speed,gravity,radius,opacity];
+      if (inputs.some(v=>!v.value.trim() || !Number.isFinite(Number(v.value)))) { error.textContent='Enter a number in every particle field.'; return; }
+      const options={start:Number(start.value)-1,end:Number(end.value)-1,count:Number(count.value),life:Number(life.value),mode:mode.value,seed:Number(seed.value),x:Number(x.value),y:Number(y.value),angle:Number(angle.value),spread:Number(spread.value),speed:Number(speed.value),gravity:Number(gravity.value),radius:Number(radius.value),opacity:Number(opacity.value)/100,shape:shape.value,fade:fade.value==='yes',color:color.value};
+      const msg=app().generateParticles(options); if (msg) { error.textContent=msg; return; } UI.closeModal();
+    }); actions.appendChild(cancel); actions.appendChild(generate); card.appendChild(actions); UI.openModal(card);
   };
 
   UI.cameraDialog = function () {

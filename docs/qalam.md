@@ -8,11 +8,11 @@ brushes, layers with blend modes, a colour wheel, a frame timeline with onion sk
 Procreate's gesture vocabulary, PNG/GIF export and device-dependent MP4 export — all offline, with no account and
 no network permissions at all.
 
-- Package: `com.qalam.studio` · version 3.0 (versionCode 21)
+- Package: `com.qalam.studio` · version 3.1 (versionCode 22)
 - minSdk 26 (Android 8.0) · targetSdk 33 · armeabi-v7a/arm64/x86/x86_64 independent
   (everything is HTML/JS running inside the app's own `WebView`, so the APK has no
   native code)
-- APK: **`artifacts/Qalam-3.0.apk`** (~279 KB), signed with a v1+v2 scheme
+- APK: **`artifacts/Qalam-3.1.apk`** (~281 KB), signed with a v1+v2 scheme
 - The written analysis of Procreate that this app was specified from:
   [`docs/procreate-analysis.md`](procreate-analysis.md)
 
@@ -20,7 +20,7 @@ no network permissions at all.
 
 ## 1. Install
 
-1. Copy `artifacts/Qalam-3.0.apk` to the phone (USB, Drive, chat to yourself — anything).
+1. Copy `artifacts/Qalam-3.1.apk` to the phone (USB, Drive, chat to yourself — anything).
 2. Open it with the phone's file manager. Android will ask to allow installs from
    that app the first time ("Install unknown apps").
 3. Install and open **Qalam**. If an earlier Qalam version is already installed, Android should offer an update that preserves its data. Back up important artwork first. Android does not allow this app to silently uninstall itself; do not uninstall it unless you have backed up its local artwork.
@@ -147,6 +147,23 @@ Bottom bar: **Gallery · Layer · Brush · Colour · Timeline · Menu** (plus **
   this track on a compatible device; see the export instructions below. Local storage
   fallback may run out of space sooner when audio is saved; export and back up work
   regularly. The picker, playback and audio export need physical-device testing.
+- **Timeline → Guides & audio → Generate particles** — generate simple animated
+  dots on a new topmost raster layer over an inclusive range of existing frames.
+  Choose burst (all born on the first frame) or staggered emission over the range,
+  circle/square shape, colour, opacity, fade, count (1–200), lifetime (1–60 frames),
+  emitter position, direction, spread, speed, gravity and integer seed. Direction
+  is 0° right, 90° down and −90° up; positive gravity pulls down. Speeds are pixels
+  per frame and gravity is pixels per frame squared. The seed reproduces the same
+  result for the same settings. Particle speeds vary from 65–100% of the chosen
+  speed and radii from 70–100% of the chosen radius. Frame age uses frame numbers,
+  not holds or playback time; skipped frames are generated too. Pixels outside the
+  canvas are cropped, and the current selection is ignored. Existing layers and
+  clipping-mask bases are untouched; undo removes the new layer in one step. The
+  generated cels are saved and appear in normal exports and camera playback.
+  Generation is capped at 64 MiB of new cel pixels, while history, existing artwork
+  and canvas overhead require additional memory. This is a simple baked effect:
+  settings are not retained for live editing, and there are no collisions, forces
+  beyond gravity, sprites, paths or an automatic seamless loop.
 - **Timeline → Guides & audio → Camera keyframes** — select a timeline frame,
   open the camera button and add or update its key: center X/Y in canvas pixels,
   zoom (25–400%), rotation (−1440° to 1440°), and easing to the next key. Add
@@ -336,7 +353,7 @@ tools/
   tests/pixel_integration.mjs real raster and animation export checks
   tests/gif_roundtrip.mjs    encodes a GIF and decodes it with an independent decoder
   tests/ui_smoke.mjs         jsdom boot + full UI drive (gallery -> export)
-artifacts/Qalam-3.0.apk           the signed, installable artefact
+artifacts/Qalam-3.1.apk           the signed, installable artefact
 docs/procreate-analysis.md   the Procreate study this app was built from
 docs/qalam.md                this file
 ```
@@ -366,7 +383,7 @@ Design notes worth knowing before changing code:
 
 ```bash
 bash tools/fetch-toolchain.sh     # once per machine: JVM, apktool, aapt2, jars, npm
-bash tools/build.sh               # -> artifacts/Qalam-3.0.apk (signed + verified)
+bash tools/build.sh               # -> artifacts/Qalam-3.1.apk (signed + verified)
 bash tools/check_reference.sh     # optional: javac-check the Java mirrors
 ```
 
@@ -401,7 +418,7 @@ install, not merely that a build command exited 0.
 
 ## 7. Known limits & roadmap
 
-This is not a full Procreate replacement. Canvas sizes are finite (up to 4096 px per side), and artwork is raster: magnification up to 64× reveals pixels rather than creating infinite detail. Layer groups, multi-track audio mixing, per-layer editable keyframe tracks, IK, morphing and particles are not implemented. A global editable camera track is available for animation playback and GIF/MP4 export. Audio-in-MP4 export is conditional on device support and requires physical-device testing. Path and two-pose transform animation generate raster cels rather than live keyframes. Onion skins provide ghost frames. Brush Studio edits existing presets only;
+This is not a full Procreate replacement. Canvas sizes are finite (up to 4096 px per side), and artwork is raster: magnification up to 64× reveals pixels rather than creating infinite detail. Layer groups, multi-track audio mixing, per-layer editable keyframe tracks, IK, morphing and live particle systems are not implemented. A basic baked particle generator is available. A global editable camera track is available for animation playback and GIF/MP4 export. Audio-in-MP4 export is conditional on device support and requires physical-device testing. Path and two-pose transform animation generate raster cels rather than live keyframes. Onion skins provide ghost frames. Brush Studio edits existing presets only;
 custom tips/grains, dual brushes and import/export are not implemented. Guide
 snapping, adjustable vanishing-point placement, rectangle/arc QuickShape, imported
 image references, automatic selection, feathered masks, interactive

@@ -46,6 +46,14 @@ The supplied feature inventory is a roadmap, not a list of completed work.
   confirm audibility or sync; exports need to be checked by the user. PNG and GIF are
   silent. There is no waveform, trimming, offsets or multiple-track mixing. Actual
   device format support, picker, playback and audio export need physical-device testing.
+- A seeded burst or staggered ballistic particle generator creates a new topmost
+  raster layer in an existing frame range. It offers 1–200 circles or squares, life,
+  position, direction/spread, speed, gravity, colour, fade and seed. Existing layers
+  remain untouched; the operation is undoable. Frame numbers rather than holds drive
+  age, including skipped frames; off-canvas pixels are cropped. The operation allocates
+  at most 64 MiB of new cel pixels, with further memory used by existing artwork and
+  history. Parameters are not saved as editable effects, and there are no collisions,
+  sprites or live simulation. This is not a full particle engine.
 - A global non-destructive camera track supports up to 60 saved/undoable editable
   frame-position keys with center, zoom, rotation and outgoing easing. It applies to
   playback and GIF/MP4 export but not the drawing view, PNGs or sprite sheets. The
@@ -123,4 +131,4 @@ Apple Pencil-specific controls are not applicable on Android. See the original
 [Procreate analysis](procreate-analysis.md) for background; its feature matrix
 predates version 2.5.
 
-Per-layer editable keyframe tracks, IK, morphing, particle animation and multiple-track audio mixing are not implemented. One global editable camera track is available. Path-based translation and two-pose transforms are available as limited baked cel-generation tools. Onion skins are available as ghost frames. The canvas is finite raster, not infinite or resolution-independent.
+Per-layer editable keyframe tracks, IK, morphing, live particle systems and multiple-track audio mixing are not implemented. Basic baked particle animation is available. One global editable camera track is available. Path-based translation and two-pose transforms are available as limited baked cel-generation tools. Onion skins are available as ghost frames. The canvas is finite raster, not infinite or resolution-independent.

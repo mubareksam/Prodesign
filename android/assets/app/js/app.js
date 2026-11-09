@@ -507,6 +507,13 @@
       App.view.dirty=true; Q.UI.syncDoc(); Q.UI.refreshTimeline(); App.markDirty(); Q.toast('Motion generated · Undo to restore'); return null;
     } catch (err) { return 'Could not generate motion on this device'; }
   };
+  App.generateParticles = function (options) {
+    App.stopPlay(); const d=App.doc; if (!d) return 'No document';
+    try {
+      const error=d.generateParticles(options); if (error) return error;
+      App.view.dirty=true; Q.UI.syncDoc(); Q.UI.refreshTimeline(); App.markDirty(); Q.toast('Particle layer created · Undo to remove'); return null;
+    } catch (err) { return 'Could not generate particles on this device'; }
+  };
   App.bakeTransform = function (source,start,end,easing,first,last,pivot) {
     App.stopPlay(); const d=App.doc; if (!d) return 'No document';
     try {

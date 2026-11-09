@@ -300,6 +300,47 @@
       });
       return true;
     }
+    // Generate deterministic particles as new raster cels on a topmost layer.
+    // All cels are rendered before structure/history change so failure is atomic.
+    validateParticles(o) {
+      if (!o || !Number.isInteger(o.start) || !Number.isInteger(o.end) || o.start<0 || o.end<o.start || o.end>=this.frames.length) return 'Choose a valid frame range';
+      if (!['burst','continuous'].includes(o.mode) || !['circle','square'].includes(o.shape) || typeof o.fade!=='boolean') return 'Choose valid particle options';
+      if (!Number.isInteger(o.count) || o.count<1 || o.count>200 || !Number.isInteger(o.life) || o.life<1 || o.life>60 || !Number.isInteger(o.seed) || o.seed<0 || o.seed>2147483647) return 'Use 1–200 particles, life 1–60 frames, and an integer seed from 0 to 2147483647';
+      if (!Number.isFinite(o.x) || !Number.isFinite(o.y) || o.x<0 || o.x>this.width || o.y<0 || o.y>this.height) return 'Emitter must be on the canvas';
+      if (!Number.isFinite(o.angle) || Math.abs(o.angle)>360 || !Number.isFinite(o.spread) || o.spread<0 || o.spread>360 || !Number.isFinite(o.speed) || o.speed<0 || o.speed>4096 || !Number.isFinite(o.gravity) || Math.abs(o.gravity)>256) return 'Check direction, spread, speed and gravity';
+      if (!Number.isFinite(o.radius) || o.radius<1 || o.radius>256 || !Number.isFinite(o.opacity) || o.opacity<=0 || o.opacity>1 || !Q.hexToRgb(o.color)) return 'Use a valid colour, radius 1–256 px and opacity over 0–100%';
+      if (this.width*this.height*4*(o.end-o.start+1)>64*1024*1024) return 'Too many pixels to generate at once; use a smaller frame range';
+      return null;
+    }
+    generateParticles(o) {
+      const error=this.validateParticles(o); if (error) return error;
+      const frameCount=o.end-o.start+1, color=Q.rgbToHex(Q.hexToRgb(o.color)); let seed=o.seed>>>0;
+      function random() { seed=(Math.imul(seed,1664525)+1013904223)>>>0; return seed/4294967296; }
+      const particles=[];
+      for (let i=0;i<o.count;i++) {
+        const angle=(o.angle+(random()-0.5)*o.spread)*Math.PI/180, speed=o.speed*(0.65+0.35*random());
+        particles.push({birth:o.mode==='burst' ? 0 : Math.floor(i*frameCount/o.count),vx:Math.cos(angle)*speed,vy:Math.sin(angle)*speed,radius:o.radius*(0.7+0.3*random())});
+      }
+      const cels=[];
+      for (let f=0;f<frameCount;f++) {
+        const cv=Q.canvas(this.width,this.height), c=cv.getContext('2d'); c.fillStyle=color;
+        particles.forEach(function (p) {
+          const age=f-p.birth; if (age<0 || age>=o.life) return;
+          const x=o.x+p.vx*age, y=o.y+p.vy*age+0.5*o.gravity*age*age;
+          if (x+p.radius<0 || x-p.radius>cv.width || y+p.radius<0 || y-p.radius>cv.height) return;
+          c.globalAlpha=o.opacity*(o.fade ? 1-age/o.life : 1);
+          if (o.shape==='square') c.fillRect(x-p.radius,y-p.radius,p.radius*2,p.radius*2);
+          else { c.beginPath(); c.arc(x,y,p.radius,0,Math.PI*2); c.fill(); }
+        });
+        cels.push(cv);
+      }
+      this.history.struct(function () {
+        const at=this.layers.length; this.layers.push(makeLayer('Particles'));
+        this.frames.forEach((frame,i)=>frame.cels.push(i>=o.start && i<=o.end ? cels[i-o.start] : null));
+        this.activeLayer=at;
+      });
+      return null;
+    }
     normalizeCameraKeys() { this.cameraKeys=this.cameraKeys.filter(k=>k.frame<this.frames.length); }
     setCameraKey(key) {
       if (!Q.validCameraKey(key,this.width,this.height) || key.frame>=this.frames.length) return false;

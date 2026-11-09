@@ -945,6 +945,26 @@ async function run() {
   Q.UI.cameraDialog(); action('Clear all camera keys'); ok(doc.querySelector('#modalBody h2').textContent.includes('Clear camera keys'), 'clearing all camera keys asks for confirmation'); click('#modalBody .btn.danger'); ok(App.doc.cameraKeys.length===0, 'confirmed clear removes all camera keys'); Q.UI.closeModal(); App.undo(); ok(App.doc.cameraKeys.length===2, 'undo restores cleared camera keys');
   }
 
+  {
+  console.log('3.1 particle animation');
+  App.createDoc(64,64,'Particles'); const original=App.doc.activeCel(true); App.addFrame(true); App.addFrame(true); App.selectFrame(0); App.doc.frames[1].skipped=true;
+  App.doc.setCameraKey({frame:0,x:32,y:32,zoom:1,angle:0,easing:'linear'}); App.doc.history.clear(); App.view.selection={x:0,y:0,w:10,h:10};
+  if (doc.querySelector('#timeline').classList.contains('hidden')) Q.UI.toggleTimeline();
+  click('#timeline [aria-label="Animation guides and audio"]'); ok(!!doc.querySelector('#timeline [aria-label="Generate particles"] svg'), 'particle generator is available in animation tools');
+  click('#timeline [aria-label="Generate particles"]'); const get=label=>doc.querySelector('#modalBody [aria-label="'+label+'"]');
+  ok(doc.querySelector('#modalBody').textContent.includes('topmost raster layer') && doc.querySelector('#modalBody').textContent.includes('Selection is ignored'), 'particle dialog explains baked layer and selection behaviour');
+  get('Particle count').value='201'; click('#modalBody .btn.primary'); ok(doc.querySelector('.canvas-error').textContent.includes('1–200') && App.doc.layers.length===1, 'invalid particle count is rejected');
+  get('Particle count').value='5'; get('Particle hex colour').value='invalid'; click('#modalBody .btn.primary'); ok(doc.querySelector('.canvas-error').textContent.includes('colour') && App.doc.layers.length===1, 'invalid particle colour is rejected');
+  get('Particle hex colour').value='#3a6'; get('Particle emission').value='continuous'; get('Particle shape').value='square'; get('Particle fade').value='no'; get('Particle seed').value='42'; get('Particle first frame').value='2';
+  const originalGenerate=App.generateParticles; let generated=null; App.generateParticles=function (opts) { generated=opts; return originalGenerate(opts); }; click('#modalBody .btn.primary'); App.generateParticles=originalGenerate;
+  ok(generated && generated.start===1 && generated.end===2 && generated.seed===42 && generated.mode==='continuous' && generated.shape==='square' && !generated.fade && generated.color==='#3a6', 'particle dialog passes settings to generation engine');
+  ok(App.doc.layers.length===2 && App.doc.layer().name==='Particles' && !App.doc.cel(0,1,false) && !!App.doc.cel(1,1,false) && !!App.doc.cel(2,1,false), 'generated layer has cels only in selected range, including skipped frame');
+  ok(App.doc.cel(0,0,false)===original && App.doc.cameraKeys.length===1 && App.view.selection.w===10 && App.doc.history.undoStack.length===1, 'particle generation preserves artwork, camera, selection and creates one history step');
+  App.undo(); ok(App.doc.layers.length===1 && App.doc.cameraKeys.length===1, 'particle layer creation is undoable'); App.redo(); ok(App.doc.layers.length===2 && !!App.doc.cel(1,1,false), 'particle layer creation is redoable');
+  await App.saveNow(false); const loaded=await Q.Store.load(App.doc.id); ok(loaded.layers.length===2 && loaded.layer().name==='Particles' && !loaded.cel(0,1,false) && !!loaded.cel(1,1,false) && loaded.cameraKeys.length===1, 'particle layer and camera survive save and reopen');
+  Q.UI.particleDialog(); get('Particle first frame').value='3'; get('Particle last frame').value='2'; click('#modalBody .btn.primary'); ok(doc.querySelector('.canvas-error').textContent.includes('range'), 'reversed particle range is rejected'); Q.UI.closeModal();
+  }
+
   await App.saveNow(false);
   console.log(failures ? `\n${failures} check(s) FAILED` : '\nall UI checks passed');
   process.exit(failures ? 1 : 0);

@@ -489,4 +489,57 @@ for (const mode of ['linear','in','out','inout']) {
  Q.encodeGif=oldGif; Q.saveBytes=oldSave;
 }
 
+
+function particleOptions(overrides={}) { return {start:0,end:2,count:1,life:2,seed:1,mode:'burst',shape:'circle',fade:false,x:8,y:8,angle:0,spread:0,speed:0,gravity:0,radius:3,opacity:1,color:'#f00',...overrides}; }
+{
+ const d=setup(), base=d.activeCel(true); base.getContext('2d').fillStyle='#0000ff'; base.getContext('2d').fillRect(1,1,2,2);
+ d.addLayer(); d.activeCel(true).getContext('2d').fillRect(1,1,2,2); d.setLayerClipped(1,true); d.addFrame(false); d.addFrame(false); d.addFrame(false); d.frames[1].skipped=true; d.frames[2].duration=5; d.history.clear();
+ const originalBase=d.cel(0,0,false), originalClip=d.cel(0,1,false), layerCount=d.layers.length;
+ ok(d.generateParticles(particleOptions())===null && d.layers.length===layerCount+1 && d.activeLayer===2 && d.layer().name==='Particles', 'particle generation adds a topmost ordinary layer');
+ ok(d.cel(0,0,false)===originalBase && d.cel(0,1,false)===originalClip && d.layer(1).clipped && d.clipBase(1)===0, 'particles preserve existing cels and clipping base');
+ ok(same(pixel(d.cel(0,2,false),8,8),[255,0,0,255]) && pixel(d.cel(1,2,false),8,8)[0]===255 && pixel(d.cel(2,2,false),8,8)[3]===0 && !d.cel(3,2,false), 'particle cels obey life and range and are blank outside range');
+ ok(d.frames[1].skipped && d.frames[2].duration===5 && !!d.cel(1,2,false), 'particles include skipped frames without altering frame timing');
+ ok(d.history.undoStack.length===1, 'particle layer creation is one undo step'); d.history.undo();
+ ok(d.layers.length===2 && d.cel(0,0,false)===originalBase && d.clipBase(1)===0, 'undo removes particle layer and retains original artwork');
+ d.history.redo(); ok(d.layers.length===3 && pixel(d.cel(0,2,false),8,8)[0]===255, 'redo restores generated particle pixels');
+ const png=d.flatten(0,{background:false}); ok(pixel(png,8,8)[0]===255, 'particles appear in exported composited frames');
+}
+{
+ const d=setup(); d.addFrame(false); d.addFrame(false); d.addFrame(false); d.history.clear();
+ const options=particleOptions({start:1,end:3,mode:'continuous',count:3,life:1,shape:'square',fade:false,x:7,y:7,radius:3,color:'00ff00'});
+ ok(d.generateParticles(options)===null && !d.cel(0,1,false), 'staggered particles start only in chosen range');
+ ok([1,2,3].every(f=>pixel(d.cel(f,1,false),7,7)[1]===255), 'staggered births produce particles on successive frames');
+ ok(pixel(d.cel(1,1,false),5,5)[1]===255, 'square particle shape renders with normalised hex colour');
+}
+{
+ const d=setup(); d.addFrame(false); d.addFrame(false); const o=particleOptions({fade:true,life:3,opacity:0.6,radius:4}); d.generateParticles(o);
+ const a0=pixel(d.cel(0,1,false),8,8)[3], a1=pixel(d.cel(1,1,false),8,8)[3], a2=pixel(d.cel(2,1,false),8,8)[3];
+ ok(a0>a1 && a1>a2 && a2>0, 'particle fade decreases opacity over lifetime');
+}
+{
+ const d=setup(); d.addFrame(false); d.addFrame(false); d.generateParticles(particleOptions({x:3,y:4,speed:3,gravity:2,radius:2,life:3}));
+ function center(canvas) { const data=canvas.getContext('2d').getImageData(0,0,16,16).data; let x=0,y=0,w=0; for(let i=0;i<256;i++){const a=data[i*4+3]; x+=(i%16)*a; y+=Math.floor(i/16)*a; w+=a;} return [x/w,y/w]; }
+ const a=center(d.cel(0,1,false)), b=center(d.cel(1,1,false)), c=center(d.cel(2,1,false));
+ ok(b[0]>a[0]+1 && c[0]>b[0]+1 && c[1]>b[1]+1, 'particle direction, speed and gravity move particles across frames');
+ d.history.undo(); d.generateParticles(particleOptions({x:15,y:8,speed:4096,radius:2,life:3}));
+ ok(pixel(d.cel(1,1,false),15,8)[3]===0, 'particles moving outside the canvas are cropped');
+}
+{
+ function make(seed) { const d=setup(); for(let i=1;i<4;i++) d.addFrame(false); const o=particleOptions({end:3,seed,count:16,life:4,spread:360,speed:2.5,gravity:0.2,radius:1.5,opacity:0.7}); d.generateParticles(o); return d.cel(3,1,false).getContext('2d').getImageData(0,0,16,16).data; }
+ const a=make(77), b=make(77), c=make(78);
+ ok(Buffer.from(a).equals(Buffer.from(b)), 'same seed reproduces identical particle pixels');
+ ok(!Buffer.from(a).equals(Buffer.from(c)), 'different seeds change particle pattern');
+}
+{
+ const d=setup(); d.addFrame(false); d.addFrame(false); d.history.clear(); const o=particleOptions();
+ const bad=[{...o,start:-1},{...o,end:3},{...o,count:0},{...o,count:201},{...o,life:0},{...o,seed:-1},{...o,seed:1.2},{...o,shape:'triangle'},{...o,fade:'yes'},{...o,x:-1},{...o,y:17},{...o,angle:361},{...o,spread:361},{...o,speed:Infinity},{...o,gravity:257},{...o,radius:0},{...o,opacity:0},{...o,color:'not-colour'}];
+ ok(bad.every(v=>!!d.generateParticles(v)) && d.layers.length===1 && !d.history.undoStack.length, 'invalid particle options do not change document or history');
+ d.width=4096; d.height=4096; ok(!!d.generateParticles(o) && d.layers.length===1, 'particle generation refuses allocations over 64 MiB');
+}
+{
+ const d=setup(); d.addFrame(false); d.addFrame(false); d.history.clear(); const original=Q.canvas; let count=0; Q.canvas=function (...args) { if (++count===2) throw Error('allocation failed'); return original(...args); };
+ let failed=false; try { d.generateParticles(particleOptions()); } catch(e) { failed=true; } finally { Q.canvas=original; }
+ ok(failed && d.layers.length===1 && d.frames.every(f=>f.cels.length===1) && d.history.undoStack.length===0, 'particle canvas allocation failure is atomic');
+}
+
 console.log(`all ${n} raster integration checks passed`);
