@@ -374,3 +374,5 @@ select, .select {
 .tl-head .chip { flex: none; }
 
 .brush-kind svg { width: 20px; height: 20px; flex: none; stroke-width: 1.8; }
+
+.frame-group { position: absolute; top: 2px; left: 2px; right: 2px; border-radius: 5px; padding: 2px 3px; background: #251c12df; color: #ffe1b4; font-size: 9px; font-weight: 700; overflow: hidden; white-space: nowrap; text-overflow: ellipsis; }

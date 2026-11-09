@@ -15,11 +15,11 @@
     notify() { if (this.onchange) this.onchange(); }
     structSnapshot() {
       const d = this.doc;
-      return { layers: d.layers.map(l => ({ ...l })), frames: d.frames.map(f => ({cels: f.cels.slice(), duration: f.duration || 1})), activeLayer: d.activeLayer, activeFrame: d.activeFrame };
+      return { layers: d.layers.map(l => ({ ...l })), frames: d.frames.map(f => ({cels: f.cels.slice(), duration: f.duration || 1, group: f.group || ''})), activeLayer: d.activeLayer, activeFrame: d.activeFrame };
     }
     applyStruct(s) {
       const d = this.doc;
-      d.layers = s.layers.map(l => ({ ...l })); d.frames = s.frames.map(f => ({ cels: f.cels.slice(), duration: f.duration || 1 }));
+      d.layers = s.layers.map(l => ({ ...l })); d.frames = s.frames.map(f => ({ cels: f.cels.slice(), duration: f.duration || 1, group: f.group || '' }));
       d.activeLayer = Q.clamp(s.activeLayer, 0, d.layers.length - 1); d.activeFrame = Q.clamp(s.activeFrame, 0, d.frames.length - 1);
     }
     struct(fn) { const before = this.structSnapshot(), result = fn.call(this.doc); this.push({ type:'struct', before, after:this.structSnapshot() }); return result; }
@@ -59,7 +59,7 @@
       this.fps = opts.fps || 12; this.bg = opts.bg || '#ffffff'; this.onion = !!opts.onion; this.onionAlpha = opts.onionAlpha == null ? 0.32 : opts.onionAlpha;
       this.playMode = opts.playMode || 'loop'; this.onionFrames = Q.clamp(opts.onionFrames || 1, 1, 4);
       this.onionPrevColor = opts.onionPrevColor || '#ff5a7a'; this.onionNextColor = opts.onionNextColor || '#4fd1c5'; this.guide = Object.assign({type:'off', symmetry:'off', spacing:100}, opts.guide || {});
-      this.layers = [makeLayer('Layer 1')]; this.frames = [{ cels:[null], duration:1 }]; this.activeFrame = 0; this.activeLayer = 0;
+      this.layers = [makeLayer('Layer 1')]; this.frames = [{ cels:[null], duration:1, group:'' }]; this.activeFrame = 0; this.activeLayer = 0;
       this.history = new History(this); this.dirty = true;
     }
     cel(f,l,create) { const frame = this.frames[f]; if (!frame || l < 0 || l >= this.layers.length) return null; if (!frame.cels[l] && create) frame.cels[l] = Q.canvas(this.width,this.height); return frame.cels[l] || null; }
@@ -102,8 +102,9 @@
       });
     }
     clearLayer(i) { if (i < 0 || i >= this.layers.length) return; return this.history.struct(function () { for (const f of this.frames) f.cels[i] = null; }); }
-    addFrame(duplicate) { return this.history.struct(function () { const at = this.activeFrame+1; this.frames.splice(at,0,{ cels:duplicate ? this.cloneCels(this.frames[this.activeFrame].cels) : this.blankCels(), duration: duplicate ? (this.frames[this.activeFrame].duration || 1) : 1 }); this.activeFrame=at; }); }
+    addFrame(duplicate) { return this.history.struct(function () { const at = this.activeFrame+1; this.frames.splice(at,0,{ cels:duplicate ? this.cloneCels(this.frames[this.activeFrame].cels) : this.blankCels(), duration: duplicate ? (this.frames[this.activeFrame].duration || 1) : 1, group: duplicate ? (this.frames[this.activeFrame].group || '') : '' }); this.activeFrame=at; }); }
     setFrameDuration(i, duration) { if (!this.frames[i]) return; return this.history.struct(function () { this.frames[i].duration = Q.clamp(Math.round(duration) || 1,1,12); }); }
+    setFrameGroup(i, group) { if (!this.frames[i]) return; const name = String(group || '').trim().slice(0, 32); if (this.frames[i].group === name) return; return this.history.struct(function () { this.frames[i].group = name; }); }
     deleteFrame(i) {
       if (this.frames.length < 2) { Q.toast('A canvas needs at least one frame'); return; }
       if (i < 0 || i >= this.frames.length) return;

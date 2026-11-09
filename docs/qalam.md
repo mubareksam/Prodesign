@@ -1,16 +1,18 @@
 # Qalam — a Procreate-style painting & animation studio for Android
 
+**Developed by Qmer.**
+
 **Qalam** (from Arabic *qalam*, قلم — pen) is a self-contained Android drawing and
 frame-animation app modelled on Procreate: full-screen canvas, pressure-sensitive
 brushes, layers with blend modes, a colour wheel, a frame timeline with onion skin,
 Procreate's gesture vocabulary, PNG/GIF export and device-dependent MP4 export — all offline, with no account and
 no network permissions at all.
 
-- Package: `com.qalam.studio` · version 1.3 (versionCode 4)
+- Package: `com.qalam.studio` · version 1.4 (versionCode 5)
 - minSdk 26 (Android 8.0) · targetSdk 33 · armeabi-v7a/arm64/x86/x86_64 independent
   (everything is HTML/JS running inside the app's own `WebView`, so the APK has no
   native code)
-- APK: **`artifacts/Qalam-1.3.apk`** (~245 KB), signed with a v1+v2 scheme
+- APK: **`artifacts/Qalam-1.4.apk`** (~246 KB), signed with a v1+v2 scheme
 - The written analysis of Procreate that this app was specified from:
   [`docs/procreate-analysis.md`](procreate-analysis.md)
 
@@ -18,10 +20,10 @@ no network permissions at all.
 
 ## 1. Install
 
-1. Copy `artifacts/Qalam-1.3.apk` to the phone (USB, Drive, chat to yourself — anything).
+1. Copy `artifacts/Qalam-1.4.apk` to the phone (USB, Drive, chat to yourself — anything).
 2. Open it with the phone's file manager. Android will ask to allow installs from
    that app the first time ("Install unknown apps").
-3. Install and open **Qalam**. If version 1.0, 1.1 or 1.2 is already installed, Android should offer an update that preserves its data. Back up important artwork first. Android does not allow this app to silently uninstall itself; do not uninstall it unless you have backed up its local artwork.
+3. Install and open **Qalam**. If an earlier Qalam version is already installed, Android should offer an update that preserves its data. Back up important artwork first. Android does not allow this app to silently uninstall itself; do not uninstall it unless you have backed up its local artwork.
 
 No permissions are requested except `VIBRATE` (haptic ticks). There is no internet
 permission, so nothing can phone home.
@@ -68,13 +70,16 @@ Bottom bar: **Gallery · Layer · Brush · Colour · Timeline · Menu** (plus **
   scrub or tap to select, ▶ play/stop and onion-skin toggle. **Settings** provides
   1–30 fps, onion opacity, 1–4 neighbouring frames, previous/next colours, loop,
   ping-pong and one-shot playback. Select a frame and tap **Frame options** to set
-  its hold from 1–12 ticks, duplicate, move or delete it. Onion skin switches on
+  its hold from 1–12 ticks, add an optional group label, duplicate, move or delete
+  it. Group labels are visual tags, not nested groups or batch-editing controls.
+  Onion skin switches on
   when a second frame is added and is hidden during playback.
 - **Menu → Drawing guides** — show an adjustable 2D or isometric grid, or a
   symmetry overlay. Choose vertical, horizontal, quadrant or eight-fold radial
   symmetry and switch **Layer assist** on to mirror strokes on the selected layer.
   The grid is visual only; it does not snap strokes. Guides are not exported.
-- **Menu → Effects** — soft box blur, grayscale, invert, sepia, brightness,
+- **Menu → Effects** — soft box blur, horizontal motion blur, sharpen, bloom,
+  glitch, grayscale, invert, sepia, brightness,
   saturation, contrast, hue shift, noise, chromatic shift, halftone dither and
   threshold. Effects permanently modify the selected layer of the current frame;
   use Undo to revert. Large canvases can take time and memory.
@@ -147,10 +152,10 @@ tools/
   verify_apk.py              re-parses the APK: zip, arsc, dex, v2 signature
   make_icons.py              icon source -> all mipmap densities + adaptive icon
   apksign/sign.mjs           v1+v2 signer
-  tests/engine_smoke.mjs     64 engine checks (history, brushes, doc, GIF, …)
+  tests/engine_smoke.mjs     71 engine checks (history, brushes, doc, GIF, …)
   tests/gif_roundtrip.mjs    encodes a GIF and decodes it with an independent decoder
   tests/ui_smoke.mjs         jsdom boot + full UI drive (gallery -> export)
-artifacts/Qalam-1.3.apk           the signed, installable artefact
+artifacts/Qalam-1.4.apk           the signed, installable artefact
 docs/procreate-analysis.md   the Procreate study this app was built from
 docs/qalam.md                this file
 ```
@@ -180,7 +185,7 @@ Design notes worth knowing before changing code:
 
 ```bash
 bash tools/fetch-toolchain.sh     # once per machine: JVM, apktool, aapt2, jars, npm
-bash tools/build.sh               # -> artifacts/Qalam-1.3.apk (signed + verified)
+bash tools/build.sh               # -> artifacts/Qalam-1.4.apk (signed + verified)
 bash tools/check_reference.sh     # optional: javac-check the Java mirrors
 ```
 
@@ -196,7 +201,7 @@ bash tools/check_reference.sh     # optional: javac-check the Java mirrors
 
 ```bash
 cd tools/tests && npm install
-npm test        # engine_smoke (64 checks) + gif_roundtrip + ui_smoke
+npm test        # engine_smoke (71 checks) + gif_roundtrip + ui_smoke
 ```
 
 `ui_smoke.mjs` boots the real app in jsdom with a stubbed 2D context and drives the
@@ -217,7 +222,7 @@ This is not a full Procreate replacement. Brush Studio edits existing presets on
 custom tips/grains, dual brushes and import/export are not implemented. Perspective
 guides, snapping to grid, rectangle/arc QuickShape, reference windows, selections,
 layer masks/groups, text, fill, smudge, timelapse, PSD and many other requested
-features remain unimplemented. Frame grouping is not yet supported; PNG sequences
+features remain unimplemented. Frame labels are not full nested frame groups; PNG sequences
 contain one image per frame without hold metadata. MP4 availability depends on the
 WebView and has not been verified on a physical Android phone. See
 [feature coverage](FEATURES.md) for details.

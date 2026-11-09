@@ -1,23 +1,23 @@
 # ProDesign · Qalam
 
-An offline painting and frame-animation studio for Android, modelled on Procreate —
+Developed by **Qmer**. An offline painting and frame-animation studio for Android, modelled on Procreate —
 brushes, layers, a colour wheel, a frame timeline with onion skin, Procreate's gesture
 vocabulary, and PNG/GIF export. No account, no ads, no network permission.
 
-**Download:** [`Qalam-1.3.apk`](../artifacts/Qalam-1.3.apk) (~245 KB)
+**Download:** [`Qalam-1.4.apk`](../artifacts/Qalam-1.4.apk) (~246 KB)
 
 | | |
 |---|---|
 | Package | `com.qalam.studio` |
-| Version | 1.3 (versionCode 4) |
+| Version | 1.4 (versionCode 5) |
 | Requires | Android 8.0+ (minSdk 26), built for targetSdk 33 |
 | Permissions | `VIBRATE` only — no internet, no storage, no location |
 | Signing | APK Signature Scheme v1 + v2, self-signed with a public test key |
-| SHA-256 | `b5f529b03f32b5c4fe078f0126ad300367cc19c4a0cd63b93f3994297381c035` |
+| SHA-256 | `a22f3d8279e5f44f94e767196e3998ebc6288b61c62ab2bb2001cdd3ce493e5a` |
 
 ## Install
 
-1. Download `Qalam-1.3.apk` to the phone (or copy it over USB).
+1. Download `Qalam-1.4.apk` to the phone (or copy it over USB).
 2. Open it from the file manager. Android will ask you to allow installs from that
    app the first time ("Install unknown apps") — allow it, then install.
 3. Open **Qalam**.

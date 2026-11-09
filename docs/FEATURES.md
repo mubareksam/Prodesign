@@ -15,8 +15,11 @@ The supplied feature inventory is a roadmap, not a list of completed work.
   are not implemented.
 - Frame timeline, add/duplicate/delete, preview, 1–30 fps, loop, ping-pong and
   one-shot playback, per-frame holds, and 1–4 previous/next onion frames with
-  adjustable opacity and colours. Frame grouping is absent.
-- Undoable per-frame layer effects: soft box blur, grayscale, invert, sepia,
+  adjustable opacity and colours. Frames can have optional group labels that are
+  saved and shown on the timeline. These are tags, not nested frame/layer groups or
+  batch operations.
+- Undoable per-frame layer effects: soft box blur, horizontal motion blur, sharpen,
+  bloom, glitch, grayscale, invert, sepia,
   brightness, saturation, contrast, hue shift, noise, chromatic shift, halftone
   dither and threshold. These are basic destructive pixel effects, not a full
   Procreate adjustment or live preview system.
@@ -36,4 +39,4 @@ sizes/DPI, timelapse, gallery stacks, PSD/Procreate/PDF/TIFF compatibility, brus
 import/export, and most advanced colour-management and accessibility features.
 Apple Pencil-specific controls are not applicable on Android. See the original
 [Procreate analysis](procreate-analysis.md) for background; its feature matrix
-predates version 1.3.
+predates version 1.4.

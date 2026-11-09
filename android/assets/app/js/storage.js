@@ -168,6 +168,7 @@
       onionPrevColor: doc.onionPrevColor,
       onionNextColor: doc.onionNextColor,
       frameDurations: doc.frames.map(function (f) { return f.duration || 1; }),
+      frameGroups: doc.frames.map(function (f) { return f.group || ''; }),
       playMode: doc.playMode,
       guide: doc.guide,
       frameCount: doc.frames.length,
@@ -218,7 +219,7 @@
     for (let i = 0; i < (rec.frameCount || 1); i++) {
       const cels = [];
       for (let j = 0; j < doc.layers.length; j++) cels.push(null);
-      frames.push({ cels: cels, duration: Q.clamp(Math.round((rec.frameDurations || [])[i]) || 1, 1, 12) });
+      frames.push({ cels: cels, duration: Q.clamp(Math.round((rec.frameDurations || [])[i]) || 1, 1, 12), group: String((rec.frameGroups || [])[i] || '').slice(0,32) });
     }
     doc.frames = frames;
     doc.activeFrame = Q.clamp(rec.activeFrame || 0, 0, frames.length - 1);
