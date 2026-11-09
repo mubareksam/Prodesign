@@ -8,11 +8,11 @@ brushes, layers with blend modes, a colour wheel, a frame timeline with onion sk
 Procreate's gesture vocabulary, PNG/GIF export and device-dependent MP4 export — all offline, with no account and
 no network permissions at all.
 
-- Package: `com.qalam.studio` · version 3.2 (versionCode 23)
+- Package: `com.qalam.studio` · version 3.3 (versionCode 24)
 - minSdk 26 (Android 8.0) · targetSdk 33 · armeabi-v7a/arm64/x86/x86_64 independent
   (everything is HTML/JS running inside the app's own `WebView`, so the APK has no
   native code)
-- APK: **`artifacts/Qalam-3.2.apk`** (~282 KB), signed with a v1+v2 scheme
+- APK: **`artifacts/Qalam-3.3.apk`** (~285 KB), signed with a v1+v2 scheme
 - The written analysis of Procreate that this app was specified from:
   [`docs/procreate-analysis.md`](procreate-analysis.md)
 
@@ -20,7 +20,7 @@ no network permissions at all.
 
 ## 1. Install
 
-1. Copy `artifacts/Qalam-3.2.apk` to the phone (USB, Drive, chat to yourself — anything).
+1. Copy `artifacts/Qalam-3.3.apk` to the phone (USB, Drive, chat to yourself — anything).
 2. Open it with the phone's file manager. Android will ask to allow installs from
    that app the first time ("Install unknown apps").
 3. Install and open **Qalam**. If an earlier Qalam version is already installed, Android should offer an update that preserves its data. Back up important artwork first. Android does not allow this app to silently uninstall itself; do not uninstall it unless you have backed up its local artwork.
@@ -171,7 +171,10 @@ Bottom bar: **Gallery · Layer · Brush · Colour · Timeline · Menu** (plus **
   Keys belong to frame positions, not identities: insertion and reordering change
   which drawing sits under a key; shortening the timeline removes out-of-range keys,
   and undo restores them. There is no graphical transform editor, custom pivot, 3D
-  rigging or IK. Existing baked motion and particle tools are separate operations.
+  rigging or a deformable IK rig. Existing baked motion and particle tools are separate operations.
+- **Timeline → Guides & audio → Two-bone IK** — create editable layer-motion keys for two separate rigid layers. Draw the upper and lower bones in their original rest pose on each frame you want to animate; blank cels remain blank. Select the two unlocked layers and a range of at least two existing frames. Enter the root, joint and tip positions in original, untransformed canvas pixels, then the start and end tip targets, bend side and easing. The skeleton preview shows the solved end pose, not the actual artwork, and reports how many target positions are clamped to the bones' reach. The confirmation displays that preview and warns before replacing both layers' existing keys within the range; keys outside it are kept. Both tracks are enabled, one key per frame is created, and a single undo restores both tracks. Key and motion limits still apply. Values are interpolated by frame index, not hold length; skipped frames still get keys. Playback and animated exports use these keys like other layer motion, whereas raw editing and PNG exports remain untransformed.
+
+  This is a two-layer key generator, not a saved rig: it cannot deform, skin or bend artwork, has no draggable bone handles, and does not copy cels or follow a live target after generation. Whole layers rotate rigidly, and raster resampling/clipping applies. Keys can be edited afterward in Layer keyframes.
 - **Timeline → Guides & audio → Generate particles** — generate simple animated
   dots on a new topmost raster layer over an inclusive range of existing frames.
   Choose burst (all born on the first frame) or staggered emission over the range,
@@ -378,7 +381,7 @@ tools/
   tests/pixel_integration.mjs real raster and animation export checks
   tests/gif_roundtrip.mjs    encodes a GIF and decodes it with an independent decoder
   tests/ui_smoke.mjs         jsdom boot + full UI drive (gallery -> export)
-artifacts/Qalam-3.2.apk           the signed, installable artefact
+artifacts/Qalam-3.3.apk           the signed, installable artefact
 docs/procreate-analysis.md   the Procreate study this app was built from
 docs/qalam.md                this file
 ```
@@ -408,7 +411,7 @@ Design notes worth knowing before changing code:
 
 ```bash
 bash tools/fetch-toolchain.sh     # once per machine: JVM, apktool, aapt2, jars, npm
-bash tools/build.sh               # -> artifacts/Qalam-3.2.apk (signed + verified)
+bash tools/build.sh               # -> artifacts/Qalam-3.3.apk (signed + verified)
 bash tools/check_reference.sh     # optional: javac-check the Java mirrors
 ```
 
@@ -443,7 +446,7 @@ install, not merely that a build command exited 0.
 
 ## 7. Known limits & roadmap
 
-This is not a full Procreate replacement. Canvas sizes are finite (up to 4096 px per side), and artwork is raster: magnification up to 64× reveals pixels rather than creating infinite detail. Layer groups, multi-track audio mixing, IK, morphing and live particle systems are not implemented. Editable per-layer transform tracks are limited to position, uniform scale and rotation. A basic baked particle generator is available. A global editable camera track is available for animation playback and GIF/MP4 export. Audio-in-MP4 export is conditional on device support and requires physical-device testing. Path and two-pose transform animation generate raster cels rather than live keyframes. Onion skins provide ghost frames. Brush Studio edits existing presets only;
+This is not a full Procreate replacement. Canvas sizes are finite (up to 4096 px per side), and artwork is raster: magnification up to 64× reveals pixels rather than creating infinite detail. Layer groups, multi-track audio mixing, deformable rigging, morphing and live particle systems are not implemented. A limited two-layer IK key generator is available. Editable per-layer transform tracks are limited to position, uniform scale and rotation. A basic baked particle generator is available. A global editable camera track is available for animation playback and GIF/MP4 export. Audio-in-MP4 export is conditional on device support and requires physical-device testing. Path and two-pose transform animation generate raster cels rather than live keyframes. Onion skins provide ghost frames. Brush Studio edits existing presets only;
 custom tips/grains, dual brushes and import/export are not implemented. Guide
 snapping, adjustable vanishing-point placement, rectangle/arc QuickShape, imported
 image references, automatic selection, feathered masks, interactive

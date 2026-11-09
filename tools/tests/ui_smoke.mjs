@@ -995,6 +995,32 @@ async function run() {
   Q.UI.layerSheet(0); ok(doc.querySelector('#modalBody').textContent.includes('Layer keyframes'), 'layer options link directly to keyframe controls'); Q.UI.closeModal();
   }
 
+  {
+  console.log('3.3 two-bone IK');
+  App.createDoc(64,64,'IK'); App.doc.activeCel(true); App.addFrame(true); App.addFrame(true); App.selectFrame(0);
+  if (doc.querySelector('#timeline').classList.contains('hidden')) Q.UI.toggleTimeline(); click('#timeline [aria-label="Animation guides and audio"]');
+  ok(!!doc.querySelector('#timeline [aria-label="Two-bone IK"] svg'), 'IK controls are accessible in animation tools'); click('#timeline [aria-label="Two-bone IK"]');
+  let btn=label=>Array.from(doc.querySelectorAll('#modalBody button')).find(x=>x.textContent===label).click();
+  btn('Review keys'); ok(doc.querySelector('.canvas-error').textContent.includes('two different layers'), 'IK requires two separate layers'); Q.UI.closeModal();
+  App.doc.addLayer(); App.doc.activeCel(true); App.doc.cel(1,1,true); App.doc.cel(2,1,true); App.doc.history.clear();
+  Q.UI.twoBoneIKDialog(); const get=label=>doc.querySelector('#modalBody [aria-label="'+label+'"]');
+  ok(doc.querySelector('#modalBody').textContent.includes('does not bend or deform pixels') && doc.querySelector('#modalBody').textContent.includes('Blank cels stay blank'), 'IK dialog explains rigid layers and empty cels');
+  get('IK lower layer').value=get('IK upper layer').value; btn('Review keys'); ok(doc.querySelector('.canvas-error').textContent.includes('two different layers'), 'IK rejects the same layer twice');
+  get('IK upper layer').value='0'; get('IK lower layer').value='1'; get('IK joint X').value=''; btn('Review keys'); ok(doc.querySelector('.canvas-error').textContent.includes('every IK field'), 'IK validates empty numeric fields');
+  get('IK root X').value='32'; get('IK root Y').value='16'; get('IK joint X').value='32'; get('IK joint Y').value='16'; btn('Review keys'); ok(doc.querySelector('.canvas-error').textContent.includes('bones'), 'IK rejects a zero-length bone');
+  get('IK joint Y').value='24'; get('IK tip X').value='32'; get('IK tip Y').value='32'; get('IK start target X').value='32'; get('IK start target Y').value='32'; get('IK end target X').value='63'; get('IK end target Y').value='63'; get('IK bend side').value='-1'; get('IK easing').value='inout';
+  btn('Preview'); ok(!!doc.querySelector('#modalBody canvas[aria-label="IK end pose skeleton preview"]') && doc.querySelector('.ik-preview').textContent.includes('clamped'), 'IK previews skeleton and reports unreachable targets');
+  btn('Review keys'); ok(doc.querySelector('#modalBody h2').textContent.includes('Replace keys') && doc.querySelector('#modalBody').textContent.includes('clamped') && !!doc.querySelector('#modalBody canvas[aria-label="IK end pose skeleton preview"]') && !App.doc.history.undoStack.length, 'IK requires confirmation before replacing keys'); click('#modalBody .btn.ghost');
+  ok(App.doc.layers.every(l=>!(l.motionKeys || []).length), 'cancelling IK preserves both tracks');
+  Q.UI.twoBoneIKDialog(); get('IK upper layer').value='0'; get('IK lower layer').value='1'; get('IK root Y').value='16'; get('IK joint Y').value='24'; get('IK tip Y').value='32'; get('IK start target Y').value='32'; get('IK end target X').value='63'; get('IK end target Y').value='63'; btn('Review keys'); click('#modalBody .btn.danger');
+  ok(App.doc.layers.every(l=>l.motionEnabled && l.motionKeys.length===3) && App.doc.history.undoStack.length===1, 'confirmed IK creates editable tracks on both layers in one step');
+  App.undo(); ok(App.doc.layers.every(l=>!(l.motionKeys || []).length), 'IK undo restores both original tracks'); App.redo(); ok(App.doc.layers.every(l=>l.motionKeys.length===3), 'IK redo restores both tracks');
+  await App.saveNow(false); const loaded=await Q.Store.load(App.doc.id); ok(loaded.layers.every(l=>l.motionEnabled && l.motionKeys.length===3), 'generated IK keys survive saving and reopening');
+  Q.UI.twoBoneIKDialog(); get('IK upper layer').value='0'; get('IK lower layer').value='1'; btn('Review keys'); App.doc.setLayerMotionKey(0,{frame:0,x:1,y:0,scale:1,angle:0,easing:'linear'}); const hist=App.doc.history.undoStack.length; click('#modalBody .btn.danger');
+  ok(App.doc.history.undoStack.length===hist && doc.querySelector('#toast').textContent.includes('cancelled'), 'IK confirmation cancels if either track changes');
+  App.doc.setLayerProp(1,'locked',true); Q.UI.twoBoneIKDialog(); get('IK upper layer').value='0'; get('IK lower layer').value='1'; btn('Review keys'); ok(doc.querySelector('.canvas-error').textContent.includes('Unlock'), 'IK rejects locked layers in the dialog'); Q.UI.closeModal();
+  }
+
   await App.saveNow(false);
   console.log(failures ? `\n${failures} check(s) FAILED` : '\nall UI checks passed');
   process.exit(failures ? 1 : 0);

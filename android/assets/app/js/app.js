@@ -507,6 +507,14 @@
       App.view.dirty=true; Q.UI.syncDoc(); Q.UI.refreshTimeline(); App.markDirty(); Q.toast('Motion generated · Undo to restore'); return null;
     } catch (err) { return 'Could not generate motion on this device'; }
   };
+  App.applyTwoBoneIK = function (options) {
+    App.stopPlay(); const d=App.doc; if (!d) return {error:'No document'};
+    try {
+      const result=d.applyTwoBoneIK(options); if (result.error) return result;
+      App.view.dirty=true; Q.UI.syncDoc(); Q.UI.refreshTimeline(); App.markDirty();
+      Q.toast(result.clamped ? 'IK keys created · '+result.clamped+' frame(s) clamped to reach' : 'IK keys created · Undo to revert',4000); return result;
+    } catch (err) { return {error:'Could not generate IK keys on this device'}; }
+  };
   App.generateParticles = function (options) {
     App.stopPlay(); const d=App.doc; if (!d) return 'No document';
     try {

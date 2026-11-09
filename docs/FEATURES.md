@@ -54,7 +54,7 @@ The supplied feature inventory is a roadmap, not a list of completed work.
   respected. Layer duplication copies keys independently; locked layers protect keys.
   Merge down is blocked until both layers' keys are cleared. Tracks are frame-position
   based and out-of-range keys are removed when shortening a timeline; undo restores
-  them. There is no graphical keyframe editor, custom pivot, IK or 3D rigging.
+  them. Two-bone IK can generate keys for two rigid layers from numeric rest joints and moving tip targets; it does not deform artwork or save a rig. There is no graphical keyframe editor, custom pivot, deformable IK rig or 3D rigging.
 - A seeded burst or staggered ballistic particle generator creates a new topmost
   raster layer in an existing frame range. It offers 1–200 circles or squares, life,
   position, direction/spread, speed, gravity, colour, fade and seed. Existing layers
@@ -140,4 +140,4 @@ Apple Pencil-specific controls are not applicable on Android. See the original
 [Procreate analysis](procreate-analysis.md) for background; its feature matrix
 predates version 2.5.
 
-IK, morphing, live particle systems and multiple-track audio mixing are not implemented. Per-layer tracks support only position, uniform scale and rotation. Basic baked particle animation is available. One global editable camera track is available. Path-based translation and two-pose transforms are available as limited baked cel-generation tools. Onion skins are available as ghost frames. The canvas is finite raster, not infinite or resolution-independent.
+Deformable IK rigs, morphing, live particle systems and multiple-track audio mixing are not implemented. A limited two-bone IK generator creates editable rigid transform keys on two layers, with no skinning or saved rig. Per-layer tracks support only position, uniform scale and rotation. Basic baked particle animation is available. One global editable camera track is available. Path-based translation and two-pose transforms are available as limited baked cel-generation tools. Onion skins are available as ghost frames. The canvas is finite raster, not infinite or resolution-independent.

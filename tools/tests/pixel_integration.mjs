@@ -616,4 +616,49 @@ function particleOptions(overrides={}) { return {start:0,end:2,count:1,life:2,se
  ok(same(pixel(cv,6,4),[0,0,0,255]) && same(pixel(cv,2,4),[0,255,0,255]), 'animated layer retains its blend mode at the transformed position');
 }
 
+
+{
+ const root={x:4,y:4}, joint={x:8,y:4}, tip={x:12,y:4}, target={x:8,y:8};
+ const a=Q.solveTwoBoneIK(root,joint,tip,target,1), b=Q.solveTwoBoneIK(root,joint,tip,target,-1), dist=(p,q)=>Math.hypot(p.x-q.x,p.y-q.y);
+ ok(Math.abs(dist(root,a.elbow)-4)<1e-7 && Math.abs(dist(a.elbow,a.end)-4)<1e-7 && dist(a.end,target)<1e-7 && !a.clamped, 'IK solver preserves bone lengths and reaches a reachable target');
+ ok(Math.abs(dist(root,b.elbow)-4)<1e-7 && dist(a.elbow,b.elbow)>1 && dist(b.end,target)<1e-7, 'IK bend side chooses the other elbow solution');
+ const far=Q.solveTwoBoneIK(root,joint,tip,{x:16,y:16},1); ok(far.clamped && Math.abs(dist(root,far.end)-8)<1e-7 && Math.abs(dist(far.elbow,far.end)-4)<1e-7, 'IK clamps unreachable targets without changing bone lengths');
+ const inner=Q.solveTwoBoneIK({x:0,y:0},{x:5,y:0},{x:7,y:0},{x:0,y:0},1); ok(inner.clamped && Math.abs(dist(inner.end,{x:0,y:0})-3)<1e-7 && Math.abs(dist(inner.elbow,inner.end)-2)<1e-7, 'IK clamps targets closer than unequal bone minimum reach');
+ const coincident=Q.solveTwoBoneIK(root,joint,{x:4,y:4},root,1); ok(!coincident.clamped && dist(coincident.end,root)<1e-7 && Math.abs(dist(coincident.elbow,root)-4)<1e-7, 'IK handles equal-bone coincident targets without division by zero');
+ ok(Q.solveTwoBoneIK(root,root,tip,target,1)===null, 'IK rejects zero-length bones');
+}
+function ikOptions(overrides={}) { return {upper:0,lower:1,start:0,end:2,root:{x:4,y:4},joint:{x:8,y:4},tip:{x:12,y:4},from:{x:12,y:4},to:{x:8,y:8},bend:1,easing:'linear',...overrides}; }
+{
+ const d=setup(); const upper=d.activeCel(true); upper.getContext('2d').fillStyle='#ff0000'; upper.getContext('2d').fillRect(4,3,4,2); d.addLayer(); const lower=d.activeCel(true); lower.getContext('2d').fillStyle='#0000ff'; lower.getContext('2d').fillRect(8,3,4,2);
+ d.addFrame(true); d.addFrame(true); d.addFrame(true); d.frames[1].skipped=true; d.frames[2].duration=4;
+ const existing={frame:3,x:1,y:2,scale:1,angle:5,easing:'out'}; d.setLayerMotionKey(0,existing); d.setLayerMotionKey(1,existing); d.history.clear();
+ const o=ikOptions(), plan=d.planTwoBoneIK(o); ok(!plan.error && plan.clamped===0 && d.history.undoStack.length===0, 'IK plan is non-mutating');
+ const result=d.applyTwoBoneIK(o); ok(!result.error && d.history.undoStack.length===1 && d.layers.every(l=>l.motionEnabled && l.motionKeys.length===4), 'IK creates both layer tracks in one undo step');
+ function transform(k,p) { const a=k.angle*Math.PI/180, dx=p.x-8, dy=p.y-8; return {x:8+k.x+Math.cos(a)*dx-Math.sin(a)*dy,y:8+k.y+Math.sin(a)*dx+Math.cos(a)*dy}; }
+ for(let i=0;i<=2;i++) {
+   const target={x:12-2*i,y:4+2*i}, expected=Q.solveTwoBoneIK(o.root,o.joint,o.tip,target,1), u=d.layers[0].motionKeys.find(k=>k.frame===i), l=d.layers[1].motionKeys.find(k=>k.frame===i);
+   const near=(p,q)=>Math.hypot(p.x-q.x,p.y-q.y)<1e-6;
+   ok(near(transform(u,o.root),o.root) && near(transform(u,o.joint),expected.elbow) && near(transform(l,o.joint),expected.elbow) && near(transform(l,o.tip),expected.end), 'IK frame '+i+' connects rigid layers at solved joints');
+ }
+ ok(d.layers[0].motionKeys.at(-1).frame===3 && d.layers[0].motionKeys.at(-1).x===1 && d.frames[1].skipped && d.frames[2].duration===4, 'IK preserves outside keys, skipped status and holds');
+ ok(d.cel(0,0,false)===upper && d.cel(0,1,false)===lower, 'IK does not modify raster cels');
+ const cv=createCanvas(16,16); d.compositeCamera(cv.getContext('2d'),2); ok(pixel(cv,4,6)[0]===255 && pixel(cv,6,8)[2]===255, 'generated IK keys actually render both rigid layers at the solved pose');
+ d.history.undo(); ok(d.layers.every(l=>l.motionKeys.length===1 && l.motionKeys[0].frame===3), 'one undo restores both pre-existing tracks');
+ d.history.redo(); ok(d.layers.every(l=>l.motionKeys.length===4) && d.cel(0,0,false)===upper, 'redo restores generated keys and original cels');
+}
+{
+ const d=setup(); d.addLayer(); d.addFrame(false); d.addFrame(false); d.history.clear(); const o=ikOptions();
+ const invalid=[{...o,upper:1},{...o,end:0},{...o,end:3},{...o,bend:0},{...o,easing:'other'},{...o,root:{x:-1,y:1}},{...o,joint:o.root},{...o,to:{x:NaN,y:0}}];
+ ok(invalid.every(x=>!!d.applyTwoBoneIK(x).error) && d.history.undoStack.length===0, 'invalid IK settings do not change tracks or history');
+ d.layer(0).locked=true; ok(!!d.applyTwoBoneIK(o).error && d.history.undoStack.length===0, 'IK refuses locked layers'); d.layer(0).locked=false;
+ const clamped=d.planTwoBoneIK({...o,to:{x:16,y:16},easing:'in'}); ok(!clamped.error && clamped.clamped>0 && clamped.endPose.clamped, 'IK planning reports how many targets exceed reach');
+}
+
+{
+ const d=setup(); d.addLayer(); for(let i=0;i<4;i++) d.addFrame(false);
+ const o=ikOptions({end:4,root:{x:8,y:8},joint:{x:12,y:8},tip:{x:16,y:8},from:{x:2,y:9},to:{x:2,y:7},easing:'in'});
+ const p=d.planTwoBoneIK(o), q=d.planTwoBoneIK({...o,easing:'linear'});
+ ok(!p.error && p.upper.every((k,i,arr)=>Number.isFinite(k.angle) && (!i || Math.abs(k.angle-arr[i-1].angle)<=180)) && p.lower.every((k,i,arr)=>Number.isFinite(k.angle) && (!i || Math.abs(k.angle-arr[i-1].angle)<=180)), 'IK angles remain finite and continuous across the 180-degree boundary');
+ ok(!q.error && Math.abs(p.upper[1].angle-q.upper[1].angle)>0.01, 'IK target easing changes intermediate generated poses');
+}
 console.log(`all ${n} raster integration checks passed`);

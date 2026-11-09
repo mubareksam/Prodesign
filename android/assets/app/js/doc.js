@@ -78,6 +78,23 @@
     return out.sort((a,b)=>a.frame-b.frame);
   };
   function copyLayer(layer) { return {...layer,motionKeys:(layer.motionKeys || []).map(k=>({...k}))}; }
+  // Analytic planar two-bone IK; targets outside reach are clamped to the
+  // nearest possible distance, while the requested bend side is maintained.
+  Q.solveTwoBoneIK = function (root,joint,tip,target,bend) {
+    const l1=Math.hypot(joint.x-root.x,joint.y-root.y), l2=Math.hypot(tip.x-joint.x,tip.y-joint.y);
+    if (!(l1>0.5 && l2>0.5) || (bend!==1 && bend!==-1)) return null;
+    let dx=target.x-root.x, dy=target.y-root.y, distance=Math.hypot(dx,dy);
+    if (distance<1e-9) { dx=tip.x-root.x; dy=tip.y-root.y; let size=Math.hypot(dx,dy); if (size<1e-9) { dx=joint.x-root.x; dy=joint.y-root.y; size=l1; } dx/=size; dy/=size; }
+    else { dx/=distance; dy/=distance; }
+    const reach=Q.clamp(distance,Math.abs(l1-l2),l1+l2);
+    let elbow;
+    if (reach<1e-9) elbow={x:root.x+(joint.x-root.x)*bend,y:root.y+(joint.y-root.y)*bend};
+    else {
+      const cosine=Q.clamp((l1*l1+reach*reach-l2*l2)/(2*l1*reach),-1,1), sine=Math.sqrt(Math.max(0,1-cosine*cosine))*bend;
+      elbow={x:root.x+l1*(dx*cosine-dy*sine),y:root.y+l1*(dy*cosine+dx*sine)};
+    }
+    return {elbow:elbow,end:{x:root.x+dx*reach,y:root.y+dy*reach},clamped:Math.abs(reach-distance)>1e-7};
+  };
   let seq = 1;
   function makeLayer(name) { return { id: Q.uid(), name: name || `Layer ${++seq}`, visible: true, opacity: 1, blend: 'source-over' }; }
   class History {
@@ -405,6 +422,42 @@
       this.history.struct(function () { this.layers[index].motionEnabled=!!value; }); return true;
     }
     hasLayerMotion() { return this.layers.some(layer=>layer.motionEnabled && (layer.motionKeys || []).length); }
+    // Plan every key first; no changes occur until both tracks are valid.
+    planTwoBoneIK(o) {
+      if (!o || !Number.isInteger(o.upper) || !Number.isInteger(o.lower) || o.upper===o.lower || !this.layers[o.upper] || !this.layers[o.lower]) return {error:'Choose two different layers'};
+      if (this.layers[o.upper].locked || this.layers[o.lower].locked) return {error:'Unlock both layers first'};
+      if (!Number.isInteger(o.start) || !Number.isInteger(o.end) || o.start<0 || o.end<=o.start || o.end>=this.frames.length) return {error:'Choose at least two existing destination frames'};
+      if (!['linear','in','out','inout'].includes(o.easing) || (o.bend!==1 && o.bend!==-1)) return {error:'Choose valid easing and bend side'};
+      const validPoint=p=>p && Number.isFinite(p.x) && Number.isFinite(p.y) && p.x>=0 && p.x<=this.width && p.y>=0 && p.y<=this.height;
+      if (![o.root,o.joint,o.tip,o.from,o.to].every(validPoint)) return {error:'All joint and target points must be on the canvas'};
+      if (Math.hypot(o.joint.x-o.root.x,o.joint.y-o.root.y)<=0.5 || Math.hypot(o.tip.x-o.joint.x,o.tip.y-o.joint.y)<=0.5) return {error:'Both bones must be longer than half a pixel'};
+      const retained=idx=>(this.layers[idx].motionKeys || []).filter(k=>k.frame<o.start || k.frame>o.end).map(k=>({...k}));
+      const upper=retained(o.upper), lower=retained(o.lower), count=o.end-o.start+1;
+      if (upper.length+count>60 || lower.length+count>60) return {error:'Each layer is limited to 60 keys'};
+      const center={x:this.width/2,y:this.height/2}, restUpper=Math.atan2(o.joint.y-o.root.y,o.joint.x-o.root.x), restLower=Math.atan2(o.tip.y-o.joint.y,o.tip.x-o.joint.x);
+      function key(frame,reference,destination,angle,previous) {
+        let degrees=angle*180/Math.PI; while (degrees>180) degrees-=360; while (degrees<=-180) degrees+=360;
+        if (previous!=null) { while (degrees-previous>180) degrees-=360; while (degrees-previous< -180) degrees+=360; }
+        const r=degrees*Math.PI/180, dx=reference.x-center.x, dy=reference.y-center.y;
+        return {frame:frame,x:destination.x-center.x-(Math.cos(r)*dx-Math.sin(r)*dy),y:destination.y-center.y-(Math.sin(r)*dx+Math.cos(r)*dy),scale:1,angle:degrees,easing:'linear'};
+      }
+      let clamped=0, lastUpper=null, lastLower=null, endPose=null;
+      for (let frame=o.start;frame<=o.end;frame++) {
+        const t=Q.motionEase((frame-o.start)/(o.end-o.start),o.easing), target={x:o.from.x+(o.to.x-o.from.x)*t,y:o.from.y+(o.to.y-o.from.y)*t};
+        const solved=Q.solveTwoBoneIK(o.root,o.joint,o.tip,target,o.bend); if (!solved) return {error:'Could not solve these bones'};
+        const upperAngle=Math.atan2(solved.elbow.y-o.root.y,solved.elbow.x-o.root.x)-restUpper;
+        const lowerAngle=Math.atan2(solved.end.y-solved.elbow.y,solved.end.x-solved.elbow.x)-restLower;
+        const u=key(frame,o.root,o.root,upperAngle,lastUpper), l=key(frame,o.joint,solved.elbow,lowerAngle,lastLower);
+        if (!Q.validLayerMotionKey(u,this.width,this.height) || !Q.validLayerMotionKey(l,this.width,this.height)) return {error:'Generated motion exceeds layer offset or rotation limits'};
+        upper.push(u); lower.push(l); lastUpper=u.angle; lastLower=l.angle; if (solved.clamped) clamped++; endPose={...solved,target:target};
+      }
+      return {upper:upper.sort((a,b)=>a.frame-b.frame),lower:lower.sort((a,b)=>a.frame-b.frame),clamped:clamped,endPose:endPose};
+    }
+    applyTwoBoneIK(o) {
+      const plan=this.planTwoBoneIK(o); if (plan.error) return plan;
+      this.history.struct(function () { this.layers[o.upper].motionKeys=plan.upper; this.layers[o.upper].motionEnabled=true; this.layers[o.lower].motionKeys=plan.lower; this.layers[o.lower].motionEnabled=true; });
+      return {clamped:plan.clamped};
+    }
     setAudioTrack(track) {
       if (track !== null && !Q.validAudioTrack(track)) return false;
       const clean=track ? {name:track.name,data:track.data,muted:!!track.muted} : null;

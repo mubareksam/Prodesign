@@ -56,6 +56,7 @@
     next: '<path d="M18 5v14M6 6l8 6-8 6z"/>',
     onion: '<circle cx="9" cy="12" r="6"/><circle cx="15" cy="12" r="6"/>',
     audio: '<path d="M10 17V5l9-2v12"/><circle cx="7" cy="18" r="3"/><circle cx="16" cy="16" r="3"/>',
+    rig: '<circle cx="5" cy="17" r="2"/><circle cx="12" cy="8" r="2"/><circle cx="19" cy="16" r="2"/><path d="M6.5 15.5l4-6M13.5 9.5l4 5"/>',
     layerMotion: '<path d="M3 9l6-4 6 4-6 4zM3 13l6 4 5-3"/><path d="M16 17h5M19 15l2 2-2 2"/>',
     particles: '<circle cx="5" cy="17" r="1.5"/><circle cx="12" cy="12" r="2"/><circle cx="19" cy="5" r="2.5"/><path d="M8 15l2-2M15 10l2-3"/>',
     camera: '<rect x="3" y="6" width="18" height="13" rx="2"/><circle cx="12" cy="12.5" r="3.5"/><path d="M7 6l1.5-2h4L14 6"/>',
@@ -1042,6 +1043,7 @@
       tool('Motion guide',ICON.motion,function () { UI.motionGuideDialog(); });
       tool('Camera keyframes',ICON.camera,function () { UI.cameraDialog(); },d.cameraEnabled && d.cameraKeys.length>0);
       tool('Layer keyframes',ICON.layerMotion,function () { UI.layerMotionDialog(); },!!d.layer().motionEnabled && (d.layer().motionKeys || []).length>0);
+      tool('Two-bone IK',ICON.rig,function () { UI.twoBoneIKDialog(); });
       tool('Generate particles',ICON.particles,function () { UI.particleDialog(); });
       tool('Generate transform frames',ICON.tween,function () { UI.transformBakeDialog(); });
       tool('Manage audio',ICON.audio,function () { UI.audioDialog(); });
@@ -1173,6 +1175,48 @@
       action('Remove audio',function () { UI.confirm('Remove audio?', 'The audio track can be restored with Undo.',function () { d.setAudioTrack(null); app().markDirty(); UI.refreshTimeline(); }); });
     }
     card.appendChild(actions); const close=Q.crel('button','btn ghost','Close'); close.addEventListener('click',function () { UI.closeModal(); }); card.appendChild(close); UI.openModal(card);
+  };
+
+  UI.twoBoneIKDialog = function () {
+    app().stopPlay(); const d=app().doc; if (!d) return;
+    const card=Q.crel('div'); card.appendChild(Q.crel('h2',null,'Two-bone IK keys'));
+    card.appendChild(Q.crel('p','sub','Use two separate layers drawn in a common rest pose. Enter the root, joint and tip in canvas pixels, then move the tip between two targets. The solver rotates whole layers rigidly and creates one editable motion key per frame. It does not bend or deform pixels. Blank cels stay blank.'));
+    function section(label) { card.appendChild(Q.crel('h3','transform-heading',label)); const box=Q.crel('div','transform-grid'); card.appendChild(box); return box; }
+    function numberField(box,label,value,step) { const row=Q.crel('div','transform-field'), text=Q.crel('label',null,label), input=Q.crel('input','select'); input.type='number'; input.step=step || 'any'; input.value=String(Math.round(value*100)/100); input.setAttribute('aria-label',label); row.appendChild(text); row.appendChild(input); box.appendChild(row); return input; }
+    function selectField(box,label,items,value) { const row=Q.crel('div','transform-field'), text=Q.crel('label',null,label), input=Q.crel('select'); input.setAttribute('aria-label',label); items.forEach(function (v) { const option=Q.crel('option'); option.value=String(v[0]); option.textContent=v[1]; input.appendChild(option); }); input.value=String(value); row.appendChild(text); row.appendChild(input); box.appendChild(row); return input; }
+    const layerBox=section('Bone layers and frames'), layerChoices=d.layers.map((l,i)=>[i,(i+1)+'. '+l.name]);
+    const upper=selectField(layerBox,'IK upper layer',layerChoices,d.activeLayer), lower=selectField(layerBox,'IK lower layer',layerChoices,d.activeLayer===0 ? 1 : 0);
+    const start=numberField(layerBox,'IK first frame',1,'1'), end=numberField(layerBox,'IK last frame',d.frames.length,'1');
+    const bones=section('Rest pose: bone joints on original artwork'), rx=numberField(bones,'IK root X',d.width/2), ry=numberField(bones,'IK root Y',d.height/4), jx=numberField(bones,'IK joint X',d.width/2), jy=numberField(bones,'IK joint Y',d.height/2), tx=numberField(bones,'IK tip X',d.width/2), ty=numberField(bones,'IK tip Y',d.height*3/4);
+    const targets=section('Tip target movement'), fx=numberField(targets,'IK start target X',d.width/2), fy=numberField(targets,'IK start target Y',d.height*3/4), ex=numberField(targets,'IK end target X',d.width*0.65), ey=numberField(targets,'IK end target Y',d.height*0.65);
+    const bend=selectField(targets,'IK bend side',[[1,'Side A'],[-1,'Side B']],1), easing=selectField(targets,'IK easing',[['linear','Linear'],['in','Ease in'],['out','Ease out'],['inout','Ease in and out']],'linear');
+    card.appendChild(Q.crel('p','sub','Targets beyond reach are clamped to the nearest reachable point. Each generated frame replaces any existing keys on both chosen layers in the range and enables those tracks; keys outside the range stay. Holds and skipped frames do not change interpolation. Drawings are not copied, so populate the cels first.'));
+    const error=Q.crel('p','canvas-error'); error.setAttribute('role','alert'); card.appendChild(error); const preview=Q.crel('div','ik-preview'); card.appendChild(preview);
+    function read() {
+      const fields=[start,end,rx,ry,jx,jy,tx,ty,fx,fy,ex,ey];
+      if (fields.some(v=>!v.value.trim() || !Number.isFinite(Number(v.value)))) { error.textContent='Enter a number in every IK field.'; return null; }
+      const o={upper:Number(upper.value),lower:Number(lower.value),start:Number(start.value)-1,end:Number(end.value)-1,root:{x:Number(rx.value),y:Number(ry.value)},joint:{x:Number(jx.value),y:Number(jy.value)},tip:{x:Number(tx.value),y:Number(ty.value)},from:{x:Number(fx.value),y:Number(fy.value)},to:{x:Number(ex.value),y:Number(ey.value)},bend:Number(bend.value),easing:easing.value};
+      const plan=d.planTwoBoneIK(o); if (plan.error) { error.textContent=plan.error; return null; } error.textContent=''; return {options:o,plan:plan};
+    }
+    function showPreview(value) {
+      preview.innerHTML=''; const o=value.options, p=value.plan.endPose, s=192/Math.max(d.width,d.height), cv=Q.canvas(Math.max(1,Math.round(d.width*s)),Math.max(1,Math.round(d.height*s))), c=cv.getContext('2d');
+      c.fillStyle='#25252d'; c.fillRect(0,0,cv.width,cv.height); c.save(); c.scale(cv.width/d.width,cv.height/d.height);
+      c.lineWidth=Math.max(d.width,d.height)/90; c.strokeStyle='#f0b46a'; c.beginPath(); c.moveTo(o.root.x,o.root.y); c.lineTo(p.elbow.x,p.elbow.y); c.lineTo(p.end.x,p.end.y); c.stroke();
+      function dot(point,color) { c.fillStyle=color; c.beginPath(); c.arc(point.x,point.y,Math.max(d.width,d.height)/45,0,Math.PI*2); c.fill(); }
+      dot(o.root,'#ffffff'); dot(p.elbow,'#7ddbd1'); dot(p.end,'#f0b46a'); if (p.clamped) dot(p.target,'#ff6f7b'); c.restore();
+      cv.className='camera-preview'; cv.setAttribute('aria-label','IK end pose skeleton preview'); preview.appendChild(cv);
+      preview.appendChild(Q.crel('p','sub','End pose skeleton only, not the artwork. '+value.plan.clamped+' of '+(o.end-o.start+1)+' target positions are clamped.'));
+    }
+    const actions=Q.crel('div','modal-actions'), cancel=Q.crel('button','btn ghost','Cancel'), inspect=Q.crel('button','btn ghost','Preview'), review=Q.crel('button','btn primary','Review keys');
+    cancel.addEventListener('click',function () { UI.closeModal(); }); inspect.addEventListener('click',function () { const v=read(); if (v) try { showPreview(v); } catch(e) { error.textContent='Could not render the skeleton preview.'; } });
+    review.addEventListener('click',function () {
+      const v=read(); if (!v) return; try { showPreview(v); } catch(e) { error.textContent='Could not render the skeleton preview.'; return; } const o=v.options, a=d.layers[o.upper], b=d.layers[o.lower], oldA=a.motionKeys, oldB=b.motionKeys, frames=d.frames.slice(o.start,o.end+1);
+      UI.confirm('Replace keys on both layers?', 'This creates '+(o.end-o.start+1)+' keys per layer and replaces existing keys in the range. '+v.plan.clamped+' target positions are clamped. Source pixels stay unchanged; undo restores both tracks.',function () {
+        if (app().doc!==d || d.layers[o.upper]!==a || d.layers[o.lower]!==b || a.motionKeys!==oldA || b.motionKeys!==oldB || a.locked || b.locked || frames.some((f,i)=>d.frames[o.start+i]!==f)) { Q.toast('IK cancelled because the artwork changed',4000); return; }
+        const result=app().applyTwoBoneIK(o); if (result.error) Q.toast(result.error,4000);
+      },'Generate');
+      const confirmation=document.getElementById('modalBody').firstElementChild; confirmation.insertBefore(preview,confirmation.querySelector('.modal-actions'));
+    }); actions.appendChild(cancel); actions.appendChild(inspect); actions.appendChild(review); card.appendChild(actions); UI.openModal(card);
   };
 
   UI.layerMotionDialog = function () {
