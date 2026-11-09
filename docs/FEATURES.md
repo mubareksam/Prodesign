@@ -14,9 +14,14 @@ The supplied feature inventory is a roadmap, not a list of completed work.
 - Hold-to-snap QuickShape for lines and ellipses. Rectangles, arcs and shape editing
   are not implemented.
 - Frame timeline, add/duplicate/delete, preview, 1–30 fps, loop, ping-pong and
-  one-shot playback, one previous and one next onion skin with adjustable opacity.
-  Frame duration, multiple onion frames, custom onion colours and grouping are absent.
-- PNG and GIF export. MP4 export records one loop in real time only when the Android
+  one-shot playback, per-frame holds, and 1–4 previous/next onion frames with
+  adjustable opacity and colours. Frame grouping is absent.
+- Undoable per-frame layer effects: soft box blur, grayscale, invert, sepia,
+  brightness, saturation, contrast, hue shift, noise, chromatic shift, halftone
+  dither and threshold. These are basic destructive pixel effects, not a full
+  Procreate adjustment or live preview system.
+- PNG, numbered PNG sequence and GIF export. PNG sequences contain one image per
+  frame and do not include hold timing metadata. MP4 export records one loop in real time only when the Android
   WebView supports MP4 `MediaRecorder` and canvas capture; it is not available on all
   devices. MP4 and Android MediaStore exports still need physical-device testing.
 - Layer visibility, opacity, blend modes, reorder, duplicate, merge and delete; colour
@@ -26,9 +31,9 @@ The supplied feature inventory is a roadmap, not a list of completed work.
 
 Perspective and 1/2/3-point guides, snapping/drawing assist for grids, reference
 windows or image import, layer masks/groups/clipping/alpha lock, selections and
-transforms, ColorDrop/fill, smudge, filters and liquify, typography, custom canvas
+transforms, ColorDrop/fill, smudge, advanced filters and liquify, typography, custom canvas
 sizes/DPI, timelapse, gallery stacks, PSD/Procreate/PDF/TIFF compatibility, brush
 import/export, and most advanced colour-management and accessibility features.
 Apple Pencil-specific controls are not applicable on Android. See the original
 [Procreate analysis](procreate-analysis.md) for background; its feature matrix
-predates version 1.2.
+predates version 1.3.

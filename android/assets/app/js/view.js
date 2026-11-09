@@ -151,10 +151,15 @@
     c.restore();
 
     // onion skin
-    if (doc.onion && doc.frames.length > 1) {
-      const prev = doc.activeFrame - 1, next = doc.activeFrame + 1;
-      if (prev >= 0) this._drawOnion(c, prev, '#ff5a7a', doc.onionAlpha * 0.85);
-      if (next < doc.frames.length) this._drawOnion(c, next, '#4fd1c5', doc.onionAlpha * 0.85);
+    if (doc.onion && doc.frames.length > 1 && !(Q.App && Q.App.playing)) {
+      const count = Math.min(doc.onionFrames || 1, 4);
+      // Draw distant cels first and fade them to reduce visual clutter.
+      for (let n = count; n >= 1; n--) {
+        const prev = doc.activeFrame - n, next = doc.activeFrame + n;
+        const alpha = doc.onionAlpha * 0.85 / n;
+        if (prev >= 0) this._drawOnion(c, prev, doc.onionPrevColor, alpha);
+        if (next < doc.frames.length) this._drawOnion(c, next, doc.onionNextColor, alpha);
+      }
     }
 
     // artwork

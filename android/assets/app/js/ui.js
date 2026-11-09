@@ -690,9 +690,11 @@
 
     grid.appendChild(item('Export PNG', ICON.photo, function () { app().exportPng(); }));
     grid.appendChild(item('Export GIF', ICON.film, function () { UI.exportDialog(); }));
+    grid.appendChild(item('Export PNG frames', ICON.photo, function () { UI.closeTray(); app().exportPngSequence(); }));
     grid.appendChild(item('Export MP4', ICON.film, function () { UI.closeTray(); app().exportMp4(); }));
     grid.appendChild(item('New canvas', ICON.plus, function () { UI.newCanvasDialog(); }));
     grid.appendChild(item('Drawing guides', ICON.sparkle, function () { UI.guideDialog(); }));
+    grid.appendChild(item('Effects', ICON.sparkle, function () { UI.effectsDialog(); }));
     grid.appendChild(item('Add frame', ICON.film, function () { app().addFrame(true); }));
     grid.appendChild(item('Onion skin', ICON.sparkle, function () {
       if (!d) return;
@@ -720,6 +722,24 @@
     info.textContent = d ? ('Canvas ' + d.width + '×' + d.height + ' · ' + d.memoryMB() + ' MB · stored on device (' + Q.Store.mode() + ')') : '';
     root.appendChild(info);
   }
+
+  UI.effectsDialog = function () {
+    const card = Q.crel('div'); card.appendChild(Q.crel('h2', null, 'Effects'));
+    card.appendChild(Q.crel('p', 'sub', 'Applies to the selected layer and current frame. The change can be undone.'));
+    const row = Q.crel('div', 'field studio-field'); row.appendChild(Q.crel('label', null, 'Effect'));
+    const select = Q.crel('select'); select.setAttribute('aria-label', 'Effect');
+    [['blur','Soft blur'],['grayscale','Grayscale'],['invert','Invert'],['sepia','Sepia'],['brightness','Brightness'],['saturation','Saturation'],['contrast','Contrast'],['hue','Hue shift'],['noise','Noise'],['chromatic','Chromatic shift'],['halftone','Halftone dither'],['threshold','Threshold']].forEach(function (option) {
+      const el = Q.crel('option'); el.value=option[0]; el.textContent=option[1]; select.appendChild(el);
+    }); row.appendChild(select); card.appendChild(row);
+    const amountRow=Q.crel('div','field studio-field'); amountRow.appendChild(Q.crel('label',null,'Strength'));
+    const amount=Q.crel('input'); amount.type='range'; amount.min=0; amount.max=100; amount.value=50; amount.setAttribute('aria-label','Effect strength');
+    const value=Q.crel('div','val','50%'); amount.addEventListener('input',function () { value.textContent=amount.value+'%'; });
+    amountRow.appendChild(amount); amountRow.appendChild(value); card.appendChild(amountRow);
+    const actions=Q.crel('div','modal-actions'), cancel=Q.crel('button','btn ghost','Cancel'), apply=Q.crel('button','btn primary','Apply');
+    cancel.addEventListener('click',function () { UI.closeModal(); });
+    apply.addEventListener('click',function () { UI.closeModal(); UI.closeTray(); app().applyEffect(select.value,Number(amount.value)/100); });
+    actions.appendChild(cancel); actions.appendChild(apply); card.appendChild(actions); UI.openModal(card);
+  };
 
   UI.guideDialog = function () {
     const d = app().doc, card = Q.crel('div');
@@ -754,7 +774,12 @@
       const value=Q.crel('div','val',String(input.value)); input.addEventListener('input',function () { d[key]=Number(input.value)/mult; value.textContent=input.value; app().view.dirty=true; app().markDirty(); });
       row.appendChild(input); row.appendChild(value); card.appendChild(row);
     }
-    slider('FPS','fps',1,30,1); slider('Onion opacity','onionAlpha',0,100,100);
+    slider('FPS','fps',1,30,1); slider('Onion opacity','onionAlpha',0,100,100); slider('Onion frames','onionFrames',1,4,1);
+    [['Previous colour','onionPrevColor'], ['Next colour','onionNextColor']].forEach(function (entry) {
+      const row=Q.crel('div','field studio-field'); row.appendChild(Q.crel('label',null,entry[0]));
+      const color=Q.crel('input'); color.type='color'; color.value=d[entry[1]]; color.setAttribute('aria-label',entry[0]);
+      color.addEventListener('input',function () { d[entry[1]]=color.value; app().view.dirty=true; app().markDirty(); }); row.appendChild(color); card.appendChild(row);
+    });
     const row=Q.crel('div','field studio-field'); row.appendChild(Q.crel('label',null,'Playback'));
     const select=Q.crel('select'); select.setAttribute('aria-label','Playback');
     [['loop','Loop'],['pingpong','Ping-pong'],['once','One-shot']].forEach(function (v) { const o=Q.crel('option'); o.value=v[0]; o.textContent=v[1]; select.appendChild(o); });
@@ -788,6 +813,7 @@
       buildTimeline();
     }, null));
     head.appendChild(chip('Settings', false, function () { UI.animationSettings(); }, null));
+    head.appendChild(chip('Frame options', false, function () { UI.frameSheet(d.activeFrame); }, null));
     head.appendChild(chip('Onion', d.onion, function () {
       d.onion = !d.onion;
       app().view.dirty = true;
@@ -805,7 +831,7 @@
       const small = Q.canvas(72, 72 * (d.height / d.width));
       small.getContext('2d').drawImage(cv, 0, 0, small.width, small.height);
       b.appendChild(small);
-      b.appendChild(Q.crel('span', 'n', String(i + 1)));
+      b.appendChild(Q.crel('span', 'n', String(i + 1) + ((fr.duration || 1) > 1 ? ' · ' + fr.duration + '×' : '')));
       b.addEventListener('click', function () { app().selectFrame(i); });
       b.addEventListener('dblclick', function () { UI.frameSheet(i); });
       b.addEventListener('contextmenu', function (e) { e.preventDefault(); UI.frameSheet(i); });
@@ -818,10 +844,18 @@
     el.appendChild(strip);
   }
 
+  UI.highlightFrame = function (i) { Q.els('#timeline .tl-frame').forEach(function (b, index) { b.classList.toggle('on', index === i); }); };
+
   UI.frameSheet = function (i) {
     const card = Q.crel('div');
     card.appendChild(Q.crel('h2', null, 'Frame ' + (i + 1)));
     card.appendChild(Q.crel('p', 'sub', 'Frames are duplicated when added so you can build on the previous drawing.'));
+    const row = Q.crel('div', 'field studio-field'); row.appendChild(Q.crel('label', null, 'Frame hold'));
+    const duration = Q.crel('input'); duration.type='range'; duration.min=1; duration.max=12; duration.value=app().doc.frames[i].duration || 1; duration.setAttribute('aria-label','Frame hold');
+    const val = Q.crel('div','val',duration.value + '×');
+    duration.addEventListener('input', function () { val.textContent=duration.value + '×'; });
+    duration.addEventListener('change', function () { app().doc.setFrameDuration(i,Number(duration.value)); app().markDirty(); UI.refreshTimeline(); });
+    row.appendChild(duration); row.appendChild(val); card.appendChild(row);
     const grid = Q.crel('div', 'menu-grid');
     const mk = function (label, ico, fn) {
       const b = Q.crel('button', 'menu-item');
@@ -876,7 +910,7 @@
     card.appendChild(Q.crel('h2', null, 'Qalam'));
     card.appendChild(Q.crel('p', 'sub', 'A paint, sketch and frame-by-frame animation studio for Android. Built from scratch: brush engine, layer compositor, GIF encoder and UI. Artwork is stored on this device only — nothing is uploaded.'));
     card.appendChild(Q.crel('p', 'sub', 'ቀለም (qalam) means “pen” or “ink”.'));
-    card.appendChild(Q.crel('p', 'sub', 'Version 1.2'));
+    card.appendChild(Q.crel('p', 'sub', 'Version 1.3'));
     const actions = Q.crel('div', 'modal-actions');
     const close = Q.crel('button', 'btn primary', 'Close');
     close.addEventListener('click', function () { UI.closeModal(); });
@@ -977,7 +1011,7 @@
   UI.exportDialog = function () {
     const d = app().doc;
     if (!d) return;
-    let scale = 1, loop = 0;
+    let scale = 1, loop = d.playMode === 'once' ? -1 : 0;
     const card = Q.crel('div');
     card.appendChild(Q.crel('h2', null, 'Export animation'));
     card.appendChild(Q.crel('p', 'sub', d.frames.length + ' frames at ' + d.fps + ' fps. Saved to Pictures/Qalam.'));
@@ -997,11 +1031,12 @@
     const loopField = Q.crel('div', 'field');
     loopField.innerHTML = '<label>Loop</label>';
     const loopSel = Q.crel('select');
-    [[0, 'Forever'], [1, 'Once']].forEach(function (o) {
+    [[0, 'Forever'], [-1, 'Once']].forEach(function (o) {
       const opt = document.createElement('option');
       opt.value = String(o[0]); opt.textContent = o[1];
       loopSel.appendChild(opt);
     });
+    loopSel.value = String(loop);
     loopSel.addEventListener('change', function () { loop = parseInt(loopSel.value, 10); });
     loopField.appendChild(loopSel);
     card.appendChild(loopField);

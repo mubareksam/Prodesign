@@ -4,20 +4,20 @@ An offline painting and frame-animation studio for Android, modelled on Procreat
 brushes, layers, a colour wheel, a frame timeline with onion skin, Procreate's gesture
 vocabulary, and PNG/GIF export. No account, no ads, no network permission.
 
-**Download:** [`Qalam-1.2.apk`](../artifacts/Qalam-1.2.apk) (~241 KB)
+**Download:** [`Qalam-1.3.apk`](../artifacts/Qalam-1.3.apk) (~245 KB)
 
 | | |
 |---|---|
 | Package | `com.qalam.studio` |
-| Version | 1.2 (versionCode 3) |
+| Version | 1.3 (versionCode 4) |
 | Requires | Android 8.0+ (minSdk 26), built for targetSdk 33 |
 | Permissions | `VIBRATE` only — no internet, no storage, no location |
 | Signing | APK Signature Scheme v1 + v2, self-signed with a public test key |
-| SHA-256 | `9d40afdda2e58d8bafa79034782fa028c4b7c25a3031f5721bdb0e18603c3ac1` |
+| SHA-256 | `b5f529b03f32b5c4fe078f0126ad300367cc19c4a0cd63b93f3994297381c035` |
 
 ## Install
 
-1. Download `Qalam-1.2.apk` to the phone (or copy it over USB).
+1. Download `Qalam-1.3.apk` to the phone (or copy it over USB).
 2. Open it from the file manager. Android will ask you to allow installs from that
    app the first time ("Install unknown apps") — allow it, then install.
 3. Open **Qalam**.
@@ -44,7 +44,7 @@ live thumbnails and visibility toggles.
 12 most recent colours.
 
 **Animation** — frames live on the layer stack; add/duplicate/delete frames, scrub the
-timeline, play at 1–30 fps, onion skin (switches on automatically at the second frame).
+timeline, play at 1–30 fps with frame holds, and configurable onion skins.
 
 **Gestures**
 

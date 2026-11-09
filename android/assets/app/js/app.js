@@ -280,6 +280,17 @@
     App.markDirty();
   };
 
+  // One export cycle; ping-pong excludes duplicated endpoints.
+  Q.animationOrder = function (count, mode) {
+    const order = [];
+    for (let i = 0; i < count; i++) order.push(i);
+    if (mode === 'pingpong') for (let i = count - 2; i > 0; i--) order.push(i);
+    return order;
+  };
+  Q.frameDelayMs = function (doc, index) {
+    return 1000 * (doc.frames[index].duration || 1) / Q.clamp(doc.fps, 1, 30);
+  };
+
   App.togglePlay = function () {
     const d = App.doc;
     if (!d) return;
@@ -297,9 +308,10 @@
       } else frame = (frame + 1) % d.frames.length;
       d.activeFrame = frame;
       App.view.dirty = true;
-      App.playTimer = setTimeout(step, Math.max(33, 1000 / d.fps));
+      Q.UI.highlightFrame(frame);
+      App.playTimer = setTimeout(step, Q.frameDelayMs(d, frame));
     };
-    App.playTimer = setTimeout(step, Math.max(33, 1000 / d.fps));
+    App.playTimer = setTimeout(step, Q.frameDelayMs(d, frame));
     Q.UI.refreshTimeline();
     Q.toast('Playing ' + d.fps + ' fps');
   };
@@ -361,12 +373,52 @@
     });
   };
 
+  App.applyEffect = function (kind, amount) {
+    const d = App.doc, cel = d && d.activeCel(false);
+    if (!cel) { Q.toast('Draw on this layer first'); return; }
+    if (amount <= 0) { Q.toast('Choose an effect strength'); return; }
+    Q.UI.progress('Applying effect', 'Processing the current layer…', 0);
+    setTimeout(function () {
+      try {
+        if (App.doc !== d || d.activeCel(false) !== cel) { Q.UI.endProgress(); Q.toast('Effect cancelled'); return; }
+        const ctx = cel.getContext('2d');
+        const image = ctx.getImageData(0, 0, d.width, d.height);
+        Q.applyPixelEffect(image, kind, amount);
+        d.history.beginPixels(cel);
+        ctx.putImageData(image, 0, 0);
+        d.history.endPixels({x:0,y:0,w:d.width,h:d.height});
+        App.view.dirty = true; App.markDirty();
+        Q.UI.endProgress(); Q.toast('Effect applied · Undo to revert');
+      } catch (err) {
+        Q.UI.endProgress(); Q.toast('Could not apply effect on this device', 4000);
+      }
+    }, 30);
+  };
+
   App.exportPng = function () {
     const d = App.doc;
     if (!d) return;
     const cv = d.flatten(d.activeFrame);
     const ok = Q.saveBytes(cv.toDataURL('image/png'), 'image/png', 'Qalam-' + Q.stamp() + '.png');
     Q.toast(ok ? 'PNG saved' : 'Could not save PNG');
+  };
+
+  App.exportPngSequence = function () {
+    const d = App.doc; if (!d) return;
+    const stamp = Q.stamp(), total = d.frames.length;
+    let index = 0, saved = 0;
+    Q.UI.progress('Exporting PNG sequence', 'Preparing frames…', 0);
+    function step() {
+      try {
+        const png = d.flatten(index).toDataURL('image/png');
+        const number = String(index + 1).padStart(3, '0');
+        if (Q.saveBytes(png, 'image/png', 'Qalam-' + stamp + '-frame-' + number + '.png')) saved++;
+        index++;
+        if (index < total) { Q.UI.progress('Exporting PNG sequence', index + ' / ' + total, index / total); setTimeout(step, 0); }
+        else { Q.UI.endProgress(); Q.toast('Saved ' + saved + ' of ' + total + ' PNG frames', 4000); }
+      } catch (err) { Q.UI.endProgress(); Q.toast('Sequence stopped after ' + saved + ' frames', 4000); }
+    }
+    setTimeout(step, 30);
   };
 
   // MediaRecorder MP4 is optional on Android WebView. Never label WebM as MP4.
@@ -407,13 +459,14 @@
       };
       Q.UI.progress('Exporting MP4', 'Recording one animation loop…', 0);
       recorder.start();
-      let frame = 0;
+      const order = Q.animationOrder(d.frames.length, d.playMode);
+      let position = 0;
       function next() {
-        frame++;
-        if (frame >= d.frames.length) { try { recorder.stop(); } catch (err) { fail('MP4 encoder stopped unexpectedly'); } return; }
-        paint(frame); timer = setTimeout(next, 1000 / fps);
+        position++;
+        if (position >= order.length) { try { recorder.stop(); } catch (err) { fail('MP4 encoder stopped unexpectedly'); } return; }
+        paint(order[position]); timer = setTimeout(next, Q.frameDelayMs(d, order[position]));
       }
-      timer = setTimeout(next, 1000 / fps);
+      timer = setTimeout(next, Q.frameDelayMs(d, order[position]));
     } catch (err) { fail('Could not start MP4 export on this device'); }
   };
 
@@ -440,9 +493,11 @@
       frames.push(cv);
     }
 
-    Q.encodeGif(frames, {
+    const order = Q.animationOrder(d.frames.length, d.playMode);
+    Q.encodeGif(order.map(function (i) { return frames[i]; }), {
       delayCs: Math.round(100 / d.fps),
-      loop: opts.loop == null ? 0 : opts.loop,
+      delaysCs: order.map(function (i) { return Math.max(2, Math.round(Q.frameDelayMs(d, i) / 10)); }),
+      loop: opts.loop == null ? (d.playMode === 'once' ? -1 : 0) : opts.loop,
       background: d.bg,
       onProgress: function (p) {
         Q.UI.progress('Encoding GIF', Math.round(p * 100) + '%', p);

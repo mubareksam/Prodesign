@@ -68,6 +68,7 @@ function load(file) {
 load('core.js');
 load('doc.js');
 load('brushes.js');
+load('effects.js');
 
 const Q = globalThis.Q;
 let checks = 0;
@@ -196,5 +197,24 @@ smoothing.dirty = null; smoothing.pending = null;
 smoothing._grow(5,5,2); smoothing._grow(30,5,2);
 smoothing.pending = null; smoothing._grow(70,5,2);
 ok(smoothing.pending.x > 60 && smoothing.dirty.x < 5, 'wet flush bounds stay independent from overall stroke bounds');
+
+console.log('frame timing and effects');
+const timing = new Q.Doc({width:4,height:4});
+timing.setFrameDuration(0, 4);
+ok(timing.frames[0].duration === 4, 'frame hold set');
+timing.history.undo();
+ok(timing.frames[0].duration === 1, 'frame hold undo');
+timing.history.redo();
+timing.addFrame(true);
+ok(timing.frames[1].duration === 4, 'duplicating a frame copies its hold');
+const image = {width:1,height:1,data:new Uint8ClampedArray([10,20,30,127])};
+Q.applyPixelEffect(image,'invert',1);
+ok(image.data[0] === 245 && image.data[1] === 235 && image.data[2] === 225 && image.data[3] === 127, 'invert preserves alpha');
+const blur = {width:3,height:1,data:new Uint8ClampedArray([0,0,0,255, 255,255,255,255, 0,0,0,255])};
+Q.applyPixelEffect(blur,'blur',0.01);
+ok(blur.data[0] === 128 && blur.data[4] === 85 && blur.data[8] === 128, 'blur averages neighbours at image edges');
+const alphaBlur = {width:2,height:1,data:new Uint8ClampedArray([255,0,0,255, 0,0,0,0])};
+Q.applyPixelEffect(alphaBlur,'blur',0.01);
+ok(alphaBlur.data[0] >= 250 && alphaBlur.data[4] >= 250 && alphaBlur.data[3] > 0, 'blur preserves colours across transparent edges');
 
 console.log(`\nall ${checks} engine checks passed`);
