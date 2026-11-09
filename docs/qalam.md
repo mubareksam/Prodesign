@@ -8,11 +8,11 @@ brushes, layers with blend modes, a colour wheel, a frame timeline with onion sk
 Procreate's gesture vocabulary, PNG/GIF export and device-dependent MP4 export — all offline, with no account and
 no network permissions at all.
 
-- Package: `com.qalam.studio` · version 1.5 (versionCode 6)
+- Package: `com.qalam.studio` · version 1.6 (versionCode 7)
 - minSdk 26 (Android 8.0) · targetSdk 33 · armeabi-v7a/arm64/x86/x86_64 independent
   (everything is HTML/JS running inside the app's own `WebView`, so the APK has no
   native code)
-- APK: **`artifacts/Qalam-1.5.apk`** (~250 KB), signed with a v1+v2 scheme
+- APK: **`artifacts/Qalam-1.6.apk`** (~252 KB), signed with a v1+v2 scheme
 - The written analysis of Procreate that this app was specified from:
   [`docs/procreate-analysis.md`](procreate-analysis.md)
 
@@ -20,7 +20,7 @@ no network permissions at all.
 
 ## 1. Install
 
-1. Copy `artifacts/Qalam-1.5.apk` to the phone (USB, Drive, chat to yourself — anything).
+1. Copy `artifacts/Qalam-1.6.apk` to the phone (USB, Drive, chat to yourself — anything).
 2. Open it with the phone's file manager. Android will ask to allow installs from
    that app the first time ("Install unknown apps").
 3. Install and open **Qalam**. If an earlier Qalam version is already installed, Android should offer an update that preserves its data. Back up important artwork first. Android does not allow this app to silently uninstall itself; do not uninstall it unless you have backed up its local artwork.
@@ -84,6 +84,15 @@ Bottom bar: **Gallery · Layer · Brush · Colour · Timeline · Menu** (plus **
   does not sample outlines on other layers and may take time on large canvases.
 - **Menu → Canvas reference** — a movable, zoomable overview of the current frame.
   It refreshes after changes. It does not import external images.
+- **Menu → Selection & transform** — choose **Draw rectangle**, then drag on the
+  canvas. Open the same menu again to fill or clear that rectangle, flip it
+  horizontally or vertically, or rotate it 180°. Select all and Deselect are also
+  available. Each edit affects the current layer and frame and can be undone; with
+  no selection, flips and rotation affect the whole current cel. Fill uses the
+  selected colour at full opacity. The selection is temporary, applies across
+  layer/frame switches, and is cleared when switching artworks. It limits only
+  these menu edits — brush strokes, flood fill and effects are not clipped. Large
+  transforms may take time and memory.
 - **Menu → Drawing guides** — show an adjustable 2D, isometric or one-, two- or
   three-point perspective overlay, or a symmetry overlay. Perspective horizon and
   point spread can be adjusted; perspective and grids are visual only, not snapping
@@ -152,6 +161,7 @@ android/
     js/gif.js                quantiser, LZW, GifWriter
     js/effects.js            undoable pixel effect algorithms
     js/fill.js               scanline flood fill
+    js/selection.js          rectangle geometry and pixel flips
     js/view.js               viewport, input, gestures, QuickShape, eyedropper
     js/storage.js            IndexedDB store with localStorage fallback
     js/ui.js                 trays, colour wheel, layers, timeline, dialogs
@@ -165,10 +175,10 @@ tools/
   verify_apk.py              re-parses the APK: zip, arsc, dex, v2 signature
   make_icons.py              icon source -> all mipmap densities + adaptive icon
   apksign/sign.mjs           v1+v2 signer
-  tests/engine_smoke.mjs     75 engine checks (history, brushes, doc, GIF, …)
+  tests/engine_smoke.mjs     81 engine checks (history, brushes, doc, GIF, …)
   tests/gif_roundtrip.mjs    encodes a GIF and decodes it with an independent decoder
   tests/ui_smoke.mjs         jsdom boot + full UI drive (gallery -> export)
-artifacts/Qalam-1.5.apk           the signed, installable artefact
+artifacts/Qalam-1.6.apk           the signed, installable artefact
 docs/procreate-analysis.md   the Procreate study this app was built from
 docs/qalam.md                this file
 ```
@@ -198,7 +208,7 @@ Design notes worth knowing before changing code:
 
 ```bash
 bash tools/fetch-toolchain.sh     # once per machine: JVM, apktool, aapt2, jars, npm
-bash tools/build.sh               # -> artifacts/Qalam-1.5.apk (signed + verified)
+bash tools/build.sh               # -> artifacts/Qalam-1.6.apk (signed + verified)
 bash tools/check_reference.sh     # optional: javac-check the Java mirrors
 ```
 
@@ -214,7 +224,7 @@ bash tools/check_reference.sh     # optional: javac-check the Java mirrors
 
 ```bash
 cd tools/tests && npm install
-npm test        # engine_smoke (75 checks) + gif_roundtrip + ui_smoke
+npm test        # engine_smoke (81 checks) + gif_roundtrip + ui_smoke
 ```
 
 `ui_smoke.mjs` boots the real app in jsdom with a stubbed 2D context and drives the
@@ -234,7 +244,8 @@ install, not merely that a build command exited 0.
 This is not a full Procreate replacement. Brush Studio edits existing presets only;
 custom tips/grains, dual brushes and import/export are not implemented. Guide
 snapping, adjustable vanishing-point placement, rectangle/arc QuickShape, imported
-image references, selections, layer masks/groups, text, cross-layer reference fill,
+image references, freehand/automatic selections, selection masks for brushes,
+move/scale/free rotation transforms, layer masks/groups, text, cross-layer reference fill,
 smudge, timelapse, PSD and many other requested features remain unimplemented. Frame labels are not full nested frame groups; PNG sequences
 contain one image per frame without hold metadata. MP4 availability depends on the
 WebView and has not been verified on a physical Android phone. See

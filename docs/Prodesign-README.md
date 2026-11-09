@@ -4,20 +4,20 @@ Developed by **Qmer**. An offline painting and frame-animation studio for Androi
 brushes, layers, a colour wheel, a frame timeline with onion skin, Procreate's gesture
 vocabulary, and PNG/GIF export. No account, no ads, no network permission.
 
-**Download:** [`Qalam-1.5.apk`](../artifacts/Qalam-1.5.apk) (~250 KB)
+**Download:** [`Qalam-1.6.apk`](../artifacts/Qalam-1.6.apk) (~252 KB)
 
 | | |
 |---|---|
 | Package | `com.qalam.studio` |
-| Version | 1.5 (versionCode 6) |
+| Version | 1.6 (versionCode 7) |
 | Requires | Android 8.0+ (minSdk 26), built for targetSdk 33 |
 | Permissions | `VIBRATE` only — no internet, no storage, no location |
 | Signing | APK Signature Scheme v1 + v2, self-signed with a public test key |
-| SHA-256 | `d844caf0b22b8d1e6cb08171ff9e7d3f207707a184880931f81d5ef03d98a2a8` |
+| SHA-256 | `e024c3cb5a8f17e5e3088b09e4af151014de3d881e72120ec4ae496697f34524` |
 
 ## Install
 
-1. Download `Qalam-1.5.apk` to the phone (or copy it over USB).
+1. Download `Qalam-1.6.apk` to the phone (or copy it over USB).
 2. Open it from the file manager. Android will ask you to allow installs from that
    app the first time ("Install unknown apps") — allow it, then install.
 3. Open **Qalam**.
@@ -29,6 +29,10 @@ once. That is expected for any app that doesn't come through the Play Store.
 
 **Canvas** — 2048², portrait, landscape, 1920×1080, 1280² animation and 1080×1920
 story presets and custom sizes from 64 to 4096 pixels per side; full-screen canvas with two-finger pan, pinch zoom and twist rotate.
+
+**Selection & transform** — temporary rectangular fill, clear, horizontal/vertical
+flip and 180° rotation on the current layer and frame, with undo. This rectangle does
+not mask brush strokes or effects; moving, scaling and free rotation are not included.
 
 **Brushes** — 20 presets, including: Studio pen, Inking pen, Monoline, Technical pencil,
 6B pencil, Marker, Airbrush, Charcoal, Watercolour, Hard eraser, Soft eraser. Stylus

@@ -723,6 +723,7 @@
     grid.appendChild(item('Canvas reference', ICON.photo, function () { UI.closeTray(); UI.openReference(); }));
     grid.appendChild(item('Effects', ICON.sparkle, function () { UI.effectsDialog(); }));
     grid.appendChild(item('Fill settings', ICON.sparkle, function () { UI.fillSettings(); }));
+    grid.appendChild(item('Selection & transform', ICON.copy, function () { UI.selectionDialog(); }));
     grid.appendChild(item('Add frame', ICON.film, function () { app().addFrame(true); }));
     grid.appendChild(item('Onion skin', ICON.sparkle, function () {
       if (!d) return;
@@ -768,6 +769,29 @@
       const thumb = app().doc.thumbnail(app().doc.activeFrame, 260), cv = Q.el('#referenceCanvas');
       cv.width = thumb.width; cv.height = thumb.height; cv.getContext('2d').drawImage(thumb, 0, 0);
     }, 120);
+  };
+
+
+  UI.selectionDialog = function () {
+    const v=app().view, d=app().doc; if (!d) return;
+    const card=Q.crel('div'); card.appendChild(Q.crel('h2',null,'Selection & transform'));
+    card.appendChild(Q.crel('p','sub', v.selection ? 'Rectangle selected. Edits affect the current layer and frame.' : 'No rectangle selected. Flips and rotation use the whole current layer and frame.'));
+    card.appendChild(Q.crel('p','sub','The rectangle limits these edits only; it does not clip brush strokes, flood fill or effects.'));
+    const actions=Q.crel('div','menu-grid');
+    function action(label, fn) { const b=Q.crel('button','menu-item',label); b.addEventListener('click',function () { UI.closeModal(); UI.closeTray(); fn(); }); actions.appendChild(b); }
+    action('Draw rectangle',function () {
+      v.tool='select'; v.selectionDraft=null; Q.el('#btnFill').classList.remove('on'); Q.el('#btnEyedrop').classList.remove('on');
+      Q.hint('Drag on the canvas to select a rectangle',3000);
+    });
+    action('Select all',function () { v.selection={x:0,y:0,w:d.width,h:d.height}; v.dirty=true; Q.hint('Entire canvas selected',1600); });
+    action('Deselect',function () { v.selection=null; v.selectionDraft=null; if (v.tool === 'select') v.tool='brush'; v.dirty=true; });
+    action('Fill rectangle',function () { app().editSelection('fill'); });
+    action('Clear rectangle',function () { app().editSelection('clear'); });
+    action('Flip horizontal',function () { app().editSelection('flipH'); });
+    action('Flip vertical',function () { app().editSelection('flipV'); });
+    action('Rotate 180°',function () { app().editSelection('rotate180'); });
+    card.appendChild(actions);
+    const done=Q.crel('button','btn ghost','Close'); done.addEventListener('click',function () { UI.closeModal(); }); card.appendChild(done); UI.openModal(card);
   };
 
   UI.fillSettings = function () {
@@ -982,7 +1006,7 @@
     card.appendChild(Q.crel('p', 'sub', 'A paint, sketch and frame-by-frame animation studio for Android. Artwork is stored on this device only — nothing is uploaded.'));
     card.appendChild(Q.crel('p', 'sub', 'Developed by Qmer'));
     card.appendChild(Q.crel('p', 'sub', 'ቀለም (qalam) means “pen” or “ink”.'));
-    card.appendChild(Q.crel('p', 'sub', 'Version 1.5'));
+    card.appendChild(Q.crel('p', 'sub', 'Version 1.6'));
     const actions = Q.crel('div', 'modal-actions');
     const close = Q.crel('button', 'btn primary', 'Close');
     close.addEventListener('click', function () { UI.closeModal(); });

@@ -70,6 +70,7 @@ load('doc.js');
 load('brushes.js');
 load('effects.js');
 load('fill.js');
+load('selection.js');
 
 const Q = globalThis.Q;
 let checks = 0;
@@ -249,5 +250,21 @@ ok(Q.floodFill(region,0,0,[220,30,40],0)===null, 'fill skips an identical colour
 const shades={width:3,height:1,data:new Uint8ClampedArray([100,100,100,255, 105,105,105,255, 140,140,140,255])};
 Q.floodFill(shades,0,0,[0,0,0],10);
 ok(shades.data[4]===0 && shades.data[8]===140, 'fill tolerance includes similar colours only');
+
+
+console.log('rectangular editing');
+const bounds=Q.selectionRect({x:6.2,y:5.2},{x:-3,y:1.3},5,6);
+ok(bounds.x===0 && bounds.y===1 && bounds.w===5 && bounds.h===5, 'selection normalizes reverse drag and clips to canvas');
+ok(Q.selectionRect({x:-9,y:0},{x:-2,y:5},5,6)===null, 'selection outside canvas is rejected');
+function sample() { return {width:3,height:2,data:new Uint8ClampedArray([1,11,21,31, 2,12,22,32, 3,13,23,33, 4,14,24,34, 5,15,25,35, 6,16,26,36])}; }
+function ids(img) { return Array.from(img.data).filter((_,i)=>i%4===0).join(','); }
+const hor=sample(); Q.flipImage(hor,true,false);
+ok(ids(hor)==='3,2,1,6,5,4' && hor.data[3]===33, 'horizontal flip preserves complete RGBA pixels');
+const ver=sample(); Q.flipImage(ver,false,true);
+ok(ids(ver)==='4,5,6,1,2,3', 'vertical flip handles non-square images');
+const rot=sample(); Q.flipImage(rot,true,true);
+ok(ids(rot)==='6,5,4,3,2,1', '180 degree rotation swaps opposite pixels');
+Q.flipImage(rot,true,true);
+ok(ids(rot)==='1,2,3,4,5,6', 'rotating twice restores image');
 
 console.log(`\nall ${checks} engine checks passed`);

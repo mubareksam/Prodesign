@@ -18,6 +18,11 @@ The supplied feature inventory is a roadmap, not a list of completed work.
   with adjustable tolerance and undo; it does not sample other layers.
 - A movable, zoomable reference window showing the current canvas. Importing an
   external reference image or using a camera is not implemented.
+- Temporary rectangular selection for fill, clear, horizontal/vertical flip and
+  180° rotation of the current layer and frame, with undo. Flips and 180° rotation
+  also work on the whole cel when nothing is selected. Selection does not clip
+  brushes, flood fill or effects; it is not saved with the artwork. Freehand,
+  automatic, additive/subtractive selection and move/scale/free rotation are absent.
 - Hold-to-snap QuickShape for lines and ellipses. Rectangles, arcs and shape editing
   are not implemented.
 - Frame timeline, add/duplicate/delete, preview, 1–30 fps, loop, ping-pong and
@@ -39,10 +44,10 @@ The supplied feature inventory is a roadmap, not a list of completed work.
 
 ## Not yet implemented
 
-Snapping/drawing assist for grids and perspective, image import, camera references, layer masks/groups/clipping/alpha lock, selections and
-transforms, cross-layer ColorDrop/reference fill, smudge, advanced filters and liquify, typography,
+Snapping/drawing assist for grids and perspective, image import, camera references, layer masks/groups/clipping/alpha lock, freehand/automatic selection,
+selection masking and move/scale/free rotation transforms, cross-layer ColorDrop/reference fill, smudge, advanced filters and liquify, typography,
 DPI settings, timelapse, gallery stacks, PSD/Procreate/PDF/TIFF compatibility, brush
 import/export, and most advanced colour-management and accessibility features.
 Apple Pencil-specific controls are not applicable on Android. See the original
 [Procreate analysis](procreate-analysis.md) for background; its feature matrix
-predates version 1.5.
+predates version 1.6.

@@ -106,7 +106,7 @@
     const v = App.view;
     v.doc = doc;
     v.locked = false;
-    v.tool = 'brush';
+    v.tool = 'brush'; v.selection = null; v.selectionDraft = null;
     Q.UI.showStudio();
     Q.el('#btnEyedrop').classList.remove('on');
     Q.el('#btnFill').classList.remove('on');
@@ -383,6 +383,37 @@
       if (announce) Q.toast('Could not save');
       return false;
     });
+  };
+
+
+  // Rectangle operations affect only the selected layer and current animation frame.
+  App.editSelection = function (operation) {
+    const d=App.doc, v=App.view;
+    if (!d) return;
+    const layer=d.layer();
+    if (!layer || !layer.visible) { Q.toast('This layer is hidden'); return; }
+    const sel=v.selection;
+    if (!sel && (operation === 'clear' || operation === 'fill')) { Q.toast('Draw a rectangle or select all first'); return; }
+    const r=sel || {x:0,y:0,w:d.width,h:d.height};
+    const cel=d.activeCel(operation === 'fill');
+    if (!cel) { Q.toast('Draw on this layer first'); return; }
+    const ctx=cel.getContext('2d');
+    try {
+      let image=null;
+      if (operation === 'flipH' || operation === 'flipV' || operation === 'rotate180') {
+        image=ctx.getImageData(r.x,r.y,r.w,r.h);
+        Q.flipImage(image, operation !== 'flipV', operation !== 'flipH');
+      } else if (operation !== 'clear' && operation !== 'fill') return;
+      d.history.beginPixels(cel);
+      if (image) ctx.putImageData(image,r.x,r.y);
+      else {
+        ctx.save(); ctx.setTransform(1,0,0,1,0,0); ctx.globalAlpha=1; ctx.globalCompositeOperation='source-over';
+        if (operation === 'clear') ctx.clearRect(r.x,r.y,r.w,r.h);
+        else { ctx.fillStyle=Q.rgbToHex(v.color); ctx.fillRect(r.x,r.y,r.w,r.h); }
+        ctx.restore();
+      }
+      d.history.endPixels(r); v.dirty=true; App.markDirty(); Q.toast('Edit applied · Undo to revert');
+    } catch (err) { Q.toast('Could not edit this area on this device',4000); }
   };
 
   App.fillAt = function (x, y) {

@@ -100,7 +100,7 @@ win.navigator.vibrate = () => true;
 
 /* ── load the app scripts in page order ─────────────────── */
 
-const files = ['core.js', 'doc.js', 'brushes.js', 'gif.js', 'effects.js', 'fill.js', 'view.js', 'storage.js', 'ui.js', 'app.js'];
+const files = ['core.js', 'doc.js', 'brushes.js', 'gif.js', 'effects.js', 'fill.js', 'selection.js', 'view.js', 'storage.js', 'ui.js', 'app.js'];
 for (const f of files) {
   const code = readFileSync(path.join(APP, 'js', f), 'utf8');
   win.eval(code);
@@ -299,7 +299,11 @@ async function run() {
   console.log('menu + save');
   click('#btnMenu');
   ok(doc.querySelectorAll('#trayBody .menu-item').length >= 6, 'action menu populated');
-  Q.UI.closeTray();
+  const selectionMenu=Array.from(doc.querySelectorAll('#trayBody .menu-item')).find(el=>el.textContent.includes('Selection & transform'));
+  ok(!!selectionMenu, 'selection and transform is accessible from the menu');
+  if (selectionMenu) selectionMenu.click();
+  ok(visible(doc.querySelector('#modal')) && doc.querySelector('#modalBody').textContent.includes('Draw rectangle'), 'selection menu opens the edit dialog');
+  Q.UI.closeModal(); Q.UI.closeTray();
   const savedId = App.doc.id;
   await App.saveNow(false);
   const list = await Q.Store.list();
@@ -462,6 +466,37 @@ async function run() {
   pointer(view,'pointerdown',point.x,point.y,{id:70}); pointer(view,'pointerup',point.x,point.y,{id:70}); await wait(100);
   ok(App.doc.history.undoStack.length===beforeFill+1, 'fill tool commits one undoable fill');
   App.undo(); ok(App.doc.history.canRedo(), 'fill can be undone');
+
+
+  console.log('selection and transforms');
+  Q.UI.selectionDialog();
+  ok(doc.querySelector('#modalBody').textContent.includes('does not clip brush strokes'), 'selection dialog explains scope');
+  function selectionAction(label) {
+    const b=Array.from(doc.querySelectorAll('#modalBody button')).find(x=>x.textContent===label);
+    if (!b) throw new Error('missing selection action '+label); b.click();
+  }
+  selectionAction('Draw rectangle');
+  const a=App.view.toScreen(5,10), b=App.view.toScreen(30,40);
+  pointer(view,'pointerdown',a.x,a.y,{id:80}); pointer(view,'pointermove',b.x,b.y,{id:80}); pointer(view,'pointerup',b.x,b.y,{id:80});
+  ok(App.view.selection && Math.abs(App.view.selection.x-5)<=1 && App.view.selection.w>=25 && App.view.tool==='brush', 'drag creates a canvas rectangle then returns to brush');
+  const rectHistory=App.doc.history.undoStack.length;
+  Q.UI.selectionDialog(); selectionAction('Fill rectangle');
+  ok(App.doc.history.undoStack.length===rectHistory+1, 'rectangle fill is one undoable edit');
+  App.undo(); ok(App.doc.history.canRedo(), 'rectangle fill can be undone');
+  const flipHistory=App.doc.history.undoStack.length;
+  Q.UI.selectionDialog(); selectionAction('Flip horizontal');
+  ok(App.doc.history.undoStack.length===flipHistory+1, 'flip is one undoable pixel edit');
+  Q.UI.selectionDialog(); selectionAction('Deselect');
+  ok(App.view.selection===null, 'deselect clears the overlay');
+  const wholeHistory=App.doc.history.undoStack.length;
+  Q.UI.selectionDialog(); selectionAction('Rotate 180°');
+  ok(App.doc.history.undoStack.length===wholeHistory+1 && App.doc.history.undoStack.at(-1).rect.w===64, 'rotation without a selection targets the whole current cel');
+  Q.UI.selectionDialog(); selectionAction('Draw rectangle');
+  pointer(view,'pointerdown',a.x,a.y,{id:81}); pointer(view,'pointermove',b.x,b.y,{id:81}); pointer(view,'pointercancel',b.x,b.y,{id:81});
+  ok(App.view.selection===null, 'cancelled selection is discarded');
+  Q.UI.selectionDialog(); selectionAction('Select all');
+  const id=App.doc.id; App.createDoc(64,64,'next');
+  ok(App.doc.id!==id && App.view.selection===null, 'selection is cleared when switching documents');
 
   await App.saveNow(false);
   console.log(failures ? `\n${failures} check(s) FAILED` : '\nall UI checks passed');

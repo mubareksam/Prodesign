@@ -32,6 +32,8 @@
     this.onRedo = null;
     this.onPick = null;
     this.onFill = null;
+    this.selection = null;
+    this.selectionDraft = null;
     this.lastPointerType = 'touch';
     this.holdTimer = 0;
     this.holdStart = 0;
@@ -168,7 +170,16 @@
 
     this._drawGuide(c, doc);
 
-    // selection-free border
+    // Selection is an editing overlay, never part of the exported artwork.
+    const selection = this.selectionDraft || this.selection;
+    if (selection) {
+      c.save(); c.lineWidth = 2 / this.scale; c.strokeStyle = '#111111';
+      c.strokeRect(selection.x, selection.y, selection.w, selection.h);
+      c.strokeStyle = '#ffffff'; c.setLineDash([6 / this.scale, 4 / this.scale]);
+      c.strokeRect(selection.x, selection.y, selection.w, selection.h); c.restore();
+    }
+
+    // Canvas border
     c.lineWidth = 1 / this.scale;
     c.strokeStyle = 'rgba(255,255,255,0.12)';
     c.strokeRect(0, 0, doc.width, doc.height);
@@ -319,8 +330,13 @@
         return;
       }
       if (this.tool === 'fill') { this.pointers.get(e.pointerId).pendingFill = true; return; }
+      if (this.tool === 'select') {
+        const rec=this.pointers.get(e.pointerId), p=this.toDoc(pos.x,pos.y);
+        rec.selectStart=p; this.selectionDraft=null; return;
+      }
       this._startStroke(pos, e);
     } else if (this.pointers.size === 2) {
+      this.selectionDraft=null; this.dirty=true;
       if (this.stroke) { this.stroke.cancel(); this.stroke = null; this.dirty = true; }
       this._startGesture();
     } else {
@@ -339,6 +355,10 @@
     rec.y = pos.y;
 
     if (this.g) { this._moveGesture(); return; }
+    if (rec.selectStart) {
+      const p=this.toDoc(pos.x,pos.y); this.selectionDraft=Q.selectionRect(rec.selectStart,p,this.doc.width,this.doc.height);
+      this.dirty=true; return;
+    }
 
     if (this.stroke && rec.id === this.strokePointerId) {
       const samples = e.getCoalescedEvents ? e.getCoalescedEvents() : null;
@@ -378,6 +398,12 @@
       return;
     }
 
+    if (rec.selectStart) {
+      if (e.type !== 'pointercancel' && this.selectionDraft) {
+        this.selection=this.selectionDraft; Q.hint('Selection ready · open Menu → Selection & transform', 2500);
+      }
+      this.selectionDraft=null; this.tool='brush'; this.dirty=true; return;
+    }
     if (e.type !== 'pointercancel' && rec.pendingFill && Q.dist(rec.startX, rec.startY, rec.x, rec.y) < 6 && this.onFill) {
       const point = this.toDoc(rec.x, rec.y); this.onFill(point.x, point.y); return;
     }
