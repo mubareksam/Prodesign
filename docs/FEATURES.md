@@ -8,9 +8,16 @@ The supplied feature inventory is a roadmap, not a list of completed work.
 - 20 preset brushes, brush size/opacity, pressure, per-preset basic Brush Studio
   sliders for spacing, flow, opacity, hardness, pressure and stabilization. Brush
   shapes/grains cannot be edited or imported; dual brushes and wet mixing are absent.
-- 2D grid and isometric visual guides; vertical, horizontal, quadrant and eight-fold
+- 2D grid, isometric and 1/2/3-point perspective visual guides (adjustable horizon
+  and spread); vertical, horizontal, quadrant and eight-fold
   radial symmetry. Turn on **Layer assist** in Drawing guides to mirror painting on
-  the selected layer. Grid and isometric guides are visual, not snapping guides.
+  the selected layer. Grid, isometric and perspective guides are visual, not
+  snapping guides; vanishing points are preset by the horizon and spread controls.
+- Custom canvas dimensions from 64 to 4096 pixels in each direction; DPI settings
+  are not implemented. A fill tool fills connected pixels on the selected layer,
+  with adjustable tolerance and undo; it does not sample other layers.
+- A movable, zoomable reference window showing the current canvas. Importing an
+  external reference image or using a camera is not implemented.
 - Hold-to-snap QuickShape for lines and ellipses. Rectangles, arcs and shape editing
   are not implemented.
 - Frame timeline, add/duplicate/delete, preview, 1–30 fps, loop, ping-pong and
@@ -32,11 +39,10 @@ The supplied feature inventory is a roadmap, not a list of completed work.
 
 ## Not yet implemented
 
-Perspective and 1/2/3-point guides, snapping/drawing assist for grids, reference
-windows or image import, layer masks/groups/clipping/alpha lock, selections and
-transforms, ColorDrop/fill, smudge, advanced filters and liquify, typography, custom canvas
-sizes/DPI, timelapse, gallery stacks, PSD/Procreate/PDF/TIFF compatibility, brush
+Snapping/drawing assist for grids and perspective, image import, camera references, layer masks/groups/clipping/alpha lock, selections and
+transforms, cross-layer ColorDrop/reference fill, smudge, advanced filters and liquify, typography,
+DPI settings, timelapse, gallery stacks, PSD/Procreate/PDF/TIFF compatibility, brush
 import/export, and most advanced colour-management and accessibility features.
 Apple Pencil-specific controls are not applicable on Android. See the original
 [Procreate analysis](procreate-analysis.md) for background; its feature matrix
-predates version 1.4.
+predates version 1.5.

@@ -10,7 +10,8 @@
     playTimer: 0,
     recent: [],
     autosaveTimer: 0,
-    ready: false
+    ready: false,
+    fillThreshold: 12
   });
 
   /* ── boot ───────────────────────────────────────────────── */
@@ -21,6 +22,7 @@
 
     const v = App.view;
     v.onDocChange = function () { App.markDirty(); };
+    v.onFill = function (x, y) { App.fillAt(x, y); };
     v.onStrokeEnd = function () { App.markDirty(); App.pushRecentColor(); };
     v.onUndo = function () { App.undo(); };
     v.onRedo = function () { App.redo(); };
@@ -38,6 +40,8 @@
     // Do not let a slow storage provider keep the launch screen on top forever.
     setTimeout(function () { Q.el('#splash').classList.add('hidden'); }, 400);
 
+    const threshold = Q.Store.meta('fillThreshold');
+    if (typeof threshold === 'number') App.fillThreshold = Q.clamp(threshold, 0, 128);
     Q.restoreBrushSettings(Q.Store.meta('brushSettings'));
     const savedBrush = Q.Store.meta('brush');
     const savedRecent = Q.Store.meta('recent');
@@ -67,6 +71,7 @@
     window.qalamBack = function () {
       if (!Q.el('#modal').classList.contains('hidden')) { Q.UI.closeModal(); return 0; }
       if (!Q.el('#tray').classList.contains('hidden')) { Q.UI.closeTray(); return 0; }
+      if (!Q.el('#referenceWindow').classList.contains('hidden')) { Q.UI.closeReference(); return 0; }
       if (App.playing) { App.togglePlay(); return 0; }
       if (!Q.el('#studio').classList.contains('hidden')) { App.backToGallery(); return 0; }
       return 1;
@@ -94,6 +99,9 @@
 
   App.adoptDoc = function (doc, isNew) {
     App.stopPlay();
+    // Serialize the previous artwork before switching documents, including when
+    // New canvas is opened from the studio before the autosave timer fires.
+    if (App.doc && App.doc.id !== doc.id) { clearTimeout(App.autosaveTimer); App.saveNow(false); }
     App.doc = doc;
     const v = App.view;
     v.doc = doc;
@@ -101,6 +109,7 @@
     v.tool = 'brush';
     Q.UI.showStudio();
     Q.el('#btnEyedrop').classList.remove('on');
+    Q.el('#btnFill').classList.remove('on');
     v.resize();
     v.fit();
     v.dirty = true;
@@ -148,6 +157,8 @@
   App.setBrush = function (id) {
     const b = Q.brushById(id);
     App.view.brush = b;
+    App.view.tool = 'brush';
+    Q.el('#btnFill').classList.remove('on'); Q.el('#btnEyedrop').classList.remove('on');
     App.view.size = b.size;
     App.view.opacity = 1;
     Q.Store.meta('brush', id);
@@ -351,6 +362,7 @@
 
   App.markDirty = function (immediate) {
     Q.UI.syncHistory();
+    Q.UI.refreshReference();
     if (immediate) { App.saveNow(false); return; }
     clearTimeout(App.autosaveTimer);
     App.autosaveTimer = setTimeout(function () { App.saveNow(false); }, 2500);
@@ -371,6 +383,29 @@
       if (announce) Q.toast('Could not save');
       return false;
     });
+  };
+
+  App.fillAt = function (x, y) {
+    const d = App.doc;
+    if (!d || x < 0 || y < 0 || x >= d.width || y >= d.height) return;
+    const layer = d.layer();
+    if (!layer || !layer.visible) { Q.toast('This layer is hidden'); return; }
+    const cel = d.activeCel(true), color = App.view.color.slice(), tolerance = App.fillThreshold;
+    App.view.locked = true;
+    Q.UI.progress('Filling', 'Processing the current layer…', 0);
+    setTimeout(function () {
+      try {
+        if (App.doc !== d || d.activeCel(false) !== cel) { Q.UI.endProgress(); return; }
+        const ctx=cel.getContext('2d'), image=ctx.getImageData(0,0,d.width,d.height);
+        const rect=Q.floodFill(image,x,y,color,tolerance);
+        if (rect) {
+          d.history.beginPixels(cel); ctx.putImageData(image,0,0); d.history.endPixels(rect);
+          App.view.dirty=true; App.markDirty();
+        }
+        Q.UI.endProgress(); Q.toast(rect ? 'Filled · Undo to revert' : 'Nothing to fill');
+      } catch (err) { Q.UI.endProgress(); Q.toast('Could not fill this canvas',4000); }
+      finally { App.view.locked = false; }
+    }, 40);
   };
 
   App.applyEffect = function (kind, amount) {

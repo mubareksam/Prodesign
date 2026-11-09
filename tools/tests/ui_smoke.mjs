@@ -100,7 +100,7 @@ win.navigator.vibrate = () => true;
 
 /* ── load the app scripts in page order ─────────────────── */
 
-const files = ['core.js', 'doc.js', 'brushes.js', 'gif.js', 'effects.js', 'view.js', 'storage.js', 'ui.js', 'app.js'];
+const files = ['core.js', 'doc.js', 'brushes.js', 'gif.js', 'effects.js', 'fill.js', 'view.js', 'storage.js', 'ui.js', 'app.js'];
 for (const f of files) {
   const code = readFileSync(path.join(APP, 'js', f), 'utf8');
   win.eval(code);
@@ -240,6 +240,12 @@ async function run() {
   const assist = doc.querySelector('#modalBody select[aria-label="Layer assist"]');
   assist.value = 'on'; assist.dispatchEvent(new win.Event('change', {bubbles:true}));
   ok(App.doc.guide.symmetry === 'quadrant' && App.doc.layer().assisted, 'symmetry assist enabled on selected layer');
+  const guideSelect = doc.querySelector('#modalBody select[aria-label="Guide"]');
+  guideSelect.value = 'perspective2'; guideSelect.dispatchEvent(new win.Event('change',{bubbles:true}));
+  const horizon = doc.querySelector('#modalBody input[aria-label="Horizon"]');
+  horizon.value = '65'; horizon.dispatchEvent(new win.Event('input',{bubbles:true}));
+  ok(App.doc.guide.type === 'perspective2' && App.doc.guide.horizon === 0.65, 'perspective guide and horizon can be adjusted');
+
   click('#modalBody .btn.primary');
 
   console.log('animation + timeline');
@@ -320,6 +326,7 @@ async function run() {
   ok(App.doc.layers.length === 2, 'layers survived the round trip');
   ok(App.doc.guide.symmetry === 'quadrant' && App.doc.layer().assisted && App.doc.playMode === 'pingpong' && App.doc.onionAlpha === 0.4, 'guide, assist and animation settings survive the round trip');
   ok(App.doc.onionFrames === 3 && App.doc.onionPrevColor === '#bb4488', 'onion frame count and colours survive the round trip');
+  ok(App.doc.guide.type === 'perspective2' && App.doc.guide.horizon === 0.65, 'perspective guide survives the round trip');
 
   console.log('gestures');
   App.view.fit();
@@ -379,6 +386,13 @@ async function run() {
   await tick();
   ok(App.doc.history.undoStack.length === qsBefore + 1, 'quickshape committed exactly one stroke');
 
+  console.log('canvas reference');
+  Q.UI.openReference(); await wait(160);
+  ok(visible(doc.querySelector('#referenceWindow')) && doc.querySelector('#referenceCanvas').width > 0, 'canvas reference is displayed');
+  const zoom=doc.querySelector('#referenceZoom'); zoom.value='200'; zoom.dispatchEvent(new win.Event('input',{bubbles:true}));
+  ok(doc.querySelector('#referenceCanvas').style.width === '200%', 'canvas reference zoom works');
+  click('#referenceClose'); ok(!visible(doc.querySelector('#referenceWindow')), 'reference closes');
+
   console.log('about');
   Q.UI.aboutSheet();
   ok(doc.querySelector('#modalBody').textContent.includes('Developed by Qmer'), 'About credits Qmer');
@@ -425,6 +439,29 @@ async function run() {
   saved = null; App.doc.fps = 30; App.exportMp4(); await wait(250);
   ok(saved && saved.mime === 'video/mp4' && saved.name.endsWith('.mp4') && stopped, 'supported MP4 recorder exports and releases stream');
 
+
+  // Validate custom canvas dimensions and drive a small real fill through the UI.
+  const priorId = App.doc.id; App.doc.name = 'Saved before switching';
+  click('#btnNew');
+  const width=doc.querySelector('#modalBody input[aria-label="Canvas width"]');
+  const height=doc.querySelector('#modalBody input[aria-label="Canvas height"]');
+  width.value='9999'; height.value='64'; click('#modalBody .btn.primary');
+  ok(visible(doc.querySelector('#modal')) && doc.querySelector('.canvas-error').textContent, 'invalid custom dimensions are rejected');
+  width.value='64'; height.value='96'; click('#modalBody .btn.primary'); await tick();
+  ok(App.doc.width===64 && App.doc.height===96, 'custom canvas dimensions create a document');
+  const previous = await Q.Store.load(priorId);
+  ok(previous && previous.name === 'Saved before switching', 'switching artworks saves the previous document first');
+  click('#btnFill');
+  let fillCalls=0; const originalFill=App.view.onFill; App.view.onFill=()=>{ fillCalls++; };
+  pointer(view,'pointerdown',400,300,{id:71}); pointer(view,'pointerdown',500,300,{id:72});
+  pointer(view,'pointerup',400,300,{id:71}); pointer(view,'pointerup',500,300,{id:72});
+  ok(fillCalls===0, 'two-finger gestures do not trigger fill');
+  pointer(view,'pointerdown',400,300,{id:73}); pointer(view,'pointercancel',400,300,{id:73});
+  ok(fillCalls===0, 'cancelled pointer does not trigger fill'); App.view.onFill=originalFill;
+  const beforeFill=App.doc.history.undoStack.length, point=App.view.toScreen(20,20);
+  pointer(view,'pointerdown',point.x,point.y,{id:70}); pointer(view,'pointerup',point.x,point.y,{id:70}); await wait(100);
+  ok(App.doc.history.undoStack.length===beforeFill+1, 'fill tool commits one undoable fill');
+  App.undo(); ok(App.doc.history.canRedo(), 'fill can be undone');
 
   await App.saveNow(false);
   console.log(failures ? `\n${failures} check(s) FAILED` : '\nall UI checks passed');

@@ -31,6 +31,7 @@
     this.onUndo = null;
     this.onRedo = null;
     this.onPick = null;
+    this.onFill = null;
     this.lastPointerType = 'touch';
     this.holdTimer = 0;
     this.holdStart = 0;
@@ -189,6 +190,16 @@
         c.moveTo(x,0); c.lineTo(x+h/slope,h);
         c.moveTo(x,0); c.lineTo(x-h/slope,h);
       }
+    } else if (guide.type === 'perspective1' || guide.type === 'perspective2' || guide.type === 'perspective3') {
+      const horizon = h * Q.clamp(Number(guide.horizon) || 0.5, 0.2, 0.8);
+      const spread = w * Q.clamp(Number(guide.spread) || 0.5, 0.2, 1);
+      const points = guide.type === 'perspective1' ? [{x:w/2,y:horizon}] : [{x:w/2-spread,y:horizon},{x:w/2+spread,y:horizon}];
+      if (guide.type === 'perspective3') points.push({x:w/2,y:-h*0.6});
+      c.moveTo(0,horizon); c.lineTo(w,horizon);
+      points.forEach(function (p) {
+        for (let x=0; x<=w; x+=spacing) { c.moveTo(p.x,p.y); c.lineTo(x,0); c.moveTo(p.x,p.y); c.lineTo(x,h); }
+        for (let y=0; y<=h; y+=spacing) { c.moveTo(p.x,p.y); c.lineTo(0,y); c.moveTo(p.x,p.y); c.lineTo(w,y); }
+      });
     } else if (guide.type === 'symmetry') {
       if (guide.symmetry === 'vertical' || guide.symmetry === 'quadrant' || guide.symmetry === 'radial') { c.moveTo(w/2,0); c.lineTo(w/2,h); }
       if (guide.symmetry === 'horizontal' || guide.symmetry === 'quadrant' || guide.symmetry === 'radial') { c.moveTo(0,h/2); c.lineTo(w,h/2); }
@@ -307,6 +318,7 @@
         this._eyedropAt(pos.x, pos.y);
         return;
       }
+      if (this.tool === 'fill') { this.pointers.get(e.pointerId).pendingFill = true; return; }
       this._startStroke(pos, e);
     } else if (this.pointers.size === 2) {
       if (this.stroke) { this.stroke.cancel(); this.stroke = null; this.dirty = true; }
@@ -366,6 +378,9 @@
       return;
     }
 
+    if (e.type !== 'pointercancel' && rec.pendingFill && Q.dist(rec.startX, rec.startY, rec.x, rec.y) < 6 && this.onFill) {
+      const point = this.toDoc(rec.x, rec.y); this.onFill(point.x, point.y); return;
+    }
     if (this.stroke && rec.id === this.strokePointerId) {
       const wasTap = Q.dist(rec.startX, rec.startY, rec.x, rec.y) < 6 && (Q.now() - rec.t) < 320;
       this._endStroke(wasTap);

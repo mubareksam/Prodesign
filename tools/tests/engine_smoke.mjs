@@ -69,6 +69,7 @@ load('core.js');
 load('doc.js');
 load('brushes.js');
 load('effects.js');
+load('fill.js');
 
 const Q = globalThis.Q;
 let checks = 0;
@@ -236,5 +237,17 @@ ok(scene.frames[0].group === '', 'frame group assignment is undoable');
 scene.history.redo();
 ok(scene.frames[0].group === 'Scene A', 'frame group assignment can be redone');
 
+
+console.log('scanline flood fill');
+const pixels = new Uint8ClampedArray(5 * 3 * 4);
+for (let y=0; y<3; y++) { const i=(y*5+2)*4; pixels[i]=pixels[i+1]=pixels[i+2]=0; pixels[i+3]=255; }
+const region = {width:5,height:3,data:pixels};
+const rect=Q.floodFill(region,0,1,[220,30,40],0);
+ok(rect.x===0 && rect.y===0 && rect.w===2 && rect.h===3, 'fill stops at an opaque boundary and reports dirty bounds');
+ok(pixels[0]===220 && pixels[3]===255 && pixels[(4*4)+3]===0, 'fill changes only connected pixels');
+ok(Q.floodFill(region,0,0,[220,30,40],0)===null, 'fill skips an identical colour');
+const shades={width:3,height:1,data:new Uint8ClampedArray([100,100,100,255, 105,105,105,255, 140,140,140,255])};
+Q.floodFill(shades,0,0,[0,0,0],10);
+ok(shades.data[4]===0 && shades.data[8]===140, 'fill tolerance includes similar colours only');
 
 console.log(`\nall ${checks} engine checks passed`);

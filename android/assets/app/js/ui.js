@@ -62,6 +62,23 @@
     const el = Q.el;
 
     el('#btnNew').addEventListener('click', function () { UI.newCanvasDialog(); });
+    el('#referenceClose').addEventListener('click', function () { UI.closeReference(); });
+    el('#referenceZoom').addEventListener('input', function () { UI.resizeReference(); });
+    const handle = el('#referenceHandle'); let dragging = null;
+    handle.addEventListener('pointerdown', function (e) {
+      if (e.target.closest('button')) return;
+      const panel = el('#referenceWindow'), r = panel.getBoundingClientRect();
+      dragging = { id:e.pointerId, x:e.clientX, y:e.clientY, left:r.left, top:r.top };
+      try { handle.setPointerCapture(e.pointerId); } catch (err) {} e.preventDefault();
+    });
+    handle.addEventListener('pointermove', function (e) {
+      if (!dragging || e.pointerId !== dragging.id) return;
+      const panel=el('#referenceWindow');
+      panel.style.left = Q.clamp(dragging.left + e.clientX - dragging.x, 0, Math.max(0, window.innerWidth - panel.offsetWidth)) + 'px';
+      panel.style.top = Q.clamp(dragging.top + e.clientY - dragging.y, 0, Math.max(0, window.innerHeight - 48)) + 'px'; panel.style.right='auto';
+    });
+    handle.addEventListener('pointerup', function () { dragging=null; });
+    handle.addEventListener('pointercancel', function () { dragging=null; });
     el('#btnGallery').addEventListener('click', function () { app().backToGallery(); });
 
     el('#btnUndo').addEventListener('click', function () { app().undo(); });
@@ -76,7 +93,14 @@
       const v = app().view;
       v.tool = v.tool === 'eyedrop' ? 'brush' : 'eyedrop';
       el('#btnEyedrop').classList.toggle('on', v.tool === 'eyedrop');
+      el('#btnFill').classList.remove('on');
       Q.hint(v.tool === 'eyedrop' ? 'Tap the canvas to pick a colour' : 'Brush mode', 1600);
+    });
+
+    el('#btnFill').addEventListener('click', function () {
+      const v=app().view; v.tool = v.tool === 'fill' ? 'brush' : 'fill';
+      el('#btnFill').classList.toggle('on', v.tool === 'fill'); el('#btnEyedrop').classList.remove('on');
+      Q.hint(v.tool === 'fill' ? 'Tap an area to fill the active layer' : 'Brush mode', 1800);
     });
 
     const size = el('#sizeSlider');
@@ -165,6 +189,7 @@
 
   UI.showGallery = function () {
     Q.el('#studio').classList.add('hidden');
+    UI.closeReference();
     Q.el('#gallery').classList.remove('hidden');
     UI.closeTray();
     Q.el('#timeline').classList.add('hidden');
@@ -190,6 +215,7 @@
       (d.frames.length > 1 ? d.frames.length + ' frames · ' : '') + d.layers.length + (d.layers.length > 1 ? ' layers' : ' layer');
     UI.syncBrushUi();
     UI.syncHistory();
+    UI.refreshReference();
     if (tray === 'layers') buildLayers(Q.el('#trayBody'));
     if (timelineOpen) buildTimeline();
   };
@@ -694,7 +720,9 @@
     grid.appendChild(item('Export MP4', ICON.film, function () { UI.closeTray(); app().exportMp4(); }));
     grid.appendChild(item('New canvas', ICON.plus, function () { UI.newCanvasDialog(); }));
     grid.appendChild(item('Drawing guides', ICON.sparkle, function () { UI.guideDialog(); }));
+    grid.appendChild(item('Canvas reference', ICON.photo, function () { UI.closeTray(); UI.openReference(); }));
     grid.appendChild(item('Effects', ICON.sparkle, function () { UI.effectsDialog(); }));
+    grid.appendChild(item('Fill settings', ICON.sparkle, function () { UI.fillSettings(); }));
     grid.appendChild(item('Add frame', ICON.film, function () { app().addFrame(true); }));
     grid.appendChild(item('Onion skin', ICON.sparkle, function () {
       if (!d) return;
@@ -722,6 +750,35 @@
     info.textContent = d ? ('Canvas ' + d.width + '×' + d.height + ' · ' + d.memoryMB() + ' MB · stored on device (' + Q.Store.mode() + ')') : '';
     root.appendChild(info);
   }
+
+  let referenceTimer = 0;
+  UI.resizeReference = function () {
+    const cv = Q.el('#referenceCanvas'); cv.style.width = (100 * Number(Q.el('#referenceZoom').value) / 100) + '%';
+  };
+  UI.openReference = function () {
+    if (!app().doc) return;
+    Q.el('#referenceWindow').classList.remove('hidden'); UI.resizeReference(); UI.refreshReference();
+  };
+  UI.closeReference = function () { clearTimeout(referenceTimer); Q.el('#referenceWindow').classList.add('hidden'); };
+  UI.refreshReference = function () {
+    if (Q.el('#referenceWindow').classList.contains('hidden')) return;
+    clearTimeout(referenceTimer);
+    referenceTimer = setTimeout(function () {
+      if (!app().doc || Q.el('#referenceWindow').classList.contains('hidden')) return;
+      const thumb = app().doc.thumbnail(app().doc.activeFrame, 260), cv = Q.el('#referenceCanvas');
+      cv.width = thumb.width; cv.height = thumb.height; cv.getContext('2d').drawImage(thumb, 0, 0);
+    }, 120);
+  };
+
+  UI.fillSettings = function () {
+    const card=Q.crel('div'); card.appendChild(Q.crel('h2',null,'Fill settings'));
+    card.appendChild(Q.crel('p','sub','Fill uses the selected colour on the active layer. Higher tolerance includes similar colours.'));
+    const row=Q.crel('div','field studio-field'); row.appendChild(Q.crel('label',null,'Tolerance'));
+    const slider=Q.crel('input'); slider.type='range'; slider.min=0; slider.max=128; slider.value=app().fillThreshold; slider.setAttribute('aria-label','Fill tolerance');
+    const val=Q.crel('div','val',slider.value); slider.addEventListener('input',function () { app().fillThreshold=Number(slider.value); Q.Store.meta('fillThreshold',app().fillThreshold); val.textContent=slider.value; });
+    row.appendChild(slider); row.appendChild(val); card.appendChild(row);
+    const actions=Q.crel('div','modal-actions'), done=Q.crel('button','btn primary','Done'); done.addEventListener('click',function () { UI.closeModal(); }); actions.appendChild(done); card.appendChild(actions); UI.openModal(card);
+  };
 
   UI.effectsDialog = function () {
     const card = Q.crel('div'); card.appendChild(Q.crel('h2', null, 'Effects'));
@@ -753,13 +810,19 @@
       select.value = current; select.addEventListener('change', function () { onChange(select.value); app().view.dirty = true; app().markDirty(); });
       row.appendChild(select); card.appendChild(row);
     }
-    selectField('Guide', [['off','Off'],['grid','2D grid'],['isometric','Isometric'],['symmetry','Symmetry']], d.guide.type, function (value) { d.guide.type = value; });
+    selectField('Guide', [['off','Off'],['grid','2D grid'],['isometric','Isometric'],['perspective1','1-point perspective'],['perspective2','2-point perspective'],['perspective3','3-point perspective'],['symmetry','Symmetry']], d.guide.type, function (value) { d.guide.type = value; });
     selectField('Symmetry', [['off','Off'],['vertical','Vertical'],['horizontal','Horizontal'],['quadrant','Quadrant'],['radial','Radial (8-fold)']], d.guide.symmetry, function (value) { d.guide.symmetry = value; if (value !== 'off') { d.guide.type = 'symmetry'; card.querySelector('select[aria-label="Guide"]').value = 'symmetry'; } });
     selectField('Layer assist', [['off','Off'],['on','On — selected layer']], d.layer().assisted ? 'on' : 'off', function (value) { d.setLayerProp(d.activeLayer,'assisted',value === 'on'); });
     const row = Q.crel('div', 'field studio-field'); row.appendChild(Q.crel('label', null, 'Grid spacing'));
     const range = Q.crel('input'); range.type='range'; range.min='32'; range.max='500'; range.value=d.guide.spacing; range.setAttribute('aria-label','Grid spacing');
     const val = Q.crel('div','val',String(range.value)); range.addEventListener('input', function () { d.guide.spacing=Number(range.value); val.textContent=range.value; app().view.dirty=true; app().markDirty(); });
     row.appendChild(range); row.appendChild(val); card.appendChild(row);
+    [['Horizon','horizon',20,80],['Point spread','spread',20,100]].forEach(function (field) {
+      const r=Q.crel('div','field studio-field'); r.appendChild(Q.crel('label',null,field[0]));
+      const input=Q.crel('input'); input.type='range'; input.min=field[2]; input.max=field[3]; input.value=Math.round((d.guide[field[1]] == null ? 0.5 : d.guide[field[1]])*100); input.setAttribute('aria-label',field[0]);
+      const value=Q.crel('div','val',input.value+'%'); input.addEventListener('input',function () { d.guide[field[1]]=Number(input.value)/100; value.textContent=input.value+'%'; app().view.dirty=true; app().markDirty(); });
+      r.appendChild(input); r.appendChild(value); card.appendChild(r);
+    });
     const actions=Q.crel('div','modal-actions'), done=Q.crel('button','btn primary','Done');
     done.addEventListener('click',function () { UI.closeModal(); UI.closeTray(); }); actions.appendChild(done); card.appendChild(actions); UI.openModal(card);
   };
@@ -919,7 +982,7 @@
     card.appendChild(Q.crel('p', 'sub', 'A paint, sketch and frame-by-frame animation studio for Android. Artwork is stored on this device only — nothing is uploaded.'));
     card.appendChild(Q.crel('p', 'sub', 'Developed by Qmer'));
     card.appendChild(Q.crel('p', 'sub', 'ቀለም (qalam) means “pen” or “ink”.'));
-    card.appendChild(Q.crel('p', 'sub', 'Version 1.4'));
+    card.appendChild(Q.crel('p', 'sub', 'Version 1.5'));
     const actions = Q.crel('div', 'modal-actions');
     const close = Q.crel('button', 'btn primary', 'Close');
     close.addEventListener('click', function () { UI.closeModal(); });
@@ -985,6 +1048,10 @@
     nameField.appendChild(nameInput);
     card.appendChild(nameField);
 
+    const widthInput = Q.crel('input'), heightInput = Q.crel('input');
+    [widthInput, heightInput].forEach(function (input) { input.type='number'; input.min='64'; input.max='4096'; input.className='select'; input.inputMode='numeric'; });
+    widthInput.value = chosen.w; heightInput.value = chosen.h;
+    widthInput.setAttribute('aria-label','Canvas width'); heightInput.setAttribute('aria-label','Canvas height');
     const grid = Q.crel('div', 'preset-grid');
     PRESETS.forEach(function (p) {
       const b = Q.crel('button', 'preset' + (p === chosen ? ' on' : ''));
@@ -995,21 +1062,30 @@
       txt.appendChild(Q.crel('div', 'pd', p.note));
       b.appendChild(pv); b.appendChild(txt);
       b.addEventListener('click', function () {
-        chosen = p;
+        chosen = p; widthInput.value = p.w; heightInput.value = p.h;
         Q.els('.preset', grid).forEach(function (n) { n.classList.remove('on'); });
         b.classList.add('on');
       });
       grid.appendChild(b);
     });
     card.appendChild(grid);
+    const dimensions = Q.crel('div', 'canvas-dimensions');
+    function dimension(label, input) { const field=Q.crel('label'); field.textContent=label; field.appendChild(input); dimensions.appendChild(field); }
+    dimension('Width (px)', widthInput); dimension('Height (px)', heightInput); card.appendChild(dimensions);
+    [widthInput, heightInput].forEach(function (input) { input.addEventListener('input', function () { Q.els('.preset', grid).forEach(function (n) { n.classList.remove('on'); }); }); });
+    const error = Q.crel('p', 'canvas-error'); error.setAttribute('role','alert'); card.appendChild(error);
 
     const actions = Q.crel('div', 'modal-actions');
     const cancel = Q.crel('button', 'btn ghost', 'Cancel');
     cancel.addEventListener('click', function () { UI.closeModal(); });
     const go = Q.crel('button', 'btn primary', 'Create');
     go.addEventListener('click', function () {
+      const w=Number(widthInput.value), h=Number(heightInput.value);
+      if (!Number.isInteger(w) || !Number.isInteger(h) || w < 64 || h < 64 || w > 4096 || h > 4096) {
+        error.textContent='Enter whole dimensions from 64 to 4096 pixels.'; return;
+      }
       UI.closeModal();
-      app().createDoc(chosen.w, chosen.h, nameInput.value.trim() || 'Untitled');
+      app().createDoc(w, h, nameInput.value.trim() || 'Untitled');
     });
     actions.appendChild(cancel); actions.appendChild(go);
     card.appendChild(actions);
