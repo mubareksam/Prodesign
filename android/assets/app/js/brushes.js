@@ -79,6 +79,34 @@
     }
   ];
 
+  // Additional variants share the same tested stamping engines but have distinct dynamics.
+  [
+    ['fineliner','Fine liner','inking',{size:3, pressureSize:0.15, streamline:0.4}],
+    ['calligraphy','Calligraphy','studio',{size:24, pressureSize:0.95, taperIn:0.3}],
+    ['dry-ink','Dry ink','technical',{size:12, grain:0.7, flow:0.65}],
+    ['graphite','Graphite','pencil',{size:9, grain:0.55, flow:0.55}],
+    ['pastel','Soft pastel','charcoal',{size:34, grain:0.65, flow:0.55}],
+    ['gouache','Gouache','water',{size:36, hardness:0.65, opacity:0.8, flow:0.7}],
+    ['wash','Light wash','water',{size:85, opacity:0.25, flow:0.2}],
+    ['spray','Spray','airbrush',{size:95, scatter:0.2, flow:0.08}],
+    ['highlighter','Highlighter','marker',{size:42, opacity:0.28, pressureSize:0}]
+  ].forEach(function (entry) {
+    const base = Q.BRUSHES.find(function (brush) { return brush.id === entry[2]; });
+    Q.BRUSHES.push(Object.assign({}, base, entry[3], { id: entry[0], name: entry[1] }));
+  });
+  Q.BRUSH_DEFAULTS = Q.BRUSHES.map(function (b) { return Object.assign({}, b); });
+  Q.restoreBrushSettings = function (saved) {
+    if (!saved || typeof saved !== 'object') return;
+    const fields = ['spacing', 'flow', 'opacity', 'hardness', 'grain', 'pressureSize', 'pressureAlpha', 'streamline'];
+    Q.BRUSHES.forEach(function (brush) {
+      const settings = saved[brush.id];
+      if (!settings || typeof settings !== 'object') return;
+      fields.forEach(function (key) {
+        if (typeof settings[key] === 'number' && isFinite(settings[key])) brush[key] = Q.clamp(settings[key], key === 'spacing' ? 0.02 : 0, 1);
+      });
+    });
+  };
+
   Q.brushById = function (id) {
     for (const b of Q.BRUSHES) if (b.id === id) return b;
     return Q.BRUSHES[0];
@@ -196,6 +224,8 @@
     this.lastT = pt.t || Q.now();
     this.dirty = null;
     this.pending = null;
+    this.curveAnchor = { x: pt.x, y: pt.y };
+    this.curvePrevious = { x: pt.x, y: pt.y };
 
     this._stamp(pt.x, pt.y, this.pressure, 0);
     this._flush();
@@ -220,22 +250,40 @@
     this.sx += (pt.x - this.sx) * (1 - s);
     this.sy += (pt.y - this.sy) * (1 - s);
 
-    const tx = this.sx, ty = this.sy;
-    const step = Math.max(0.7, this.size * (b.spacing || 0.06));
-    let d = Q.dist(this.lx, this.ly, tx, ty);
-    if (d < step) return;
+    // Quadratic midpoint interpolation rounds corners between sampled pointer
+    // events. Coalesced stylus events are used when available by the viewport.
+    const previous = this.curvePrevious;
+    const next = { x: this.sx, y: this.sy };
+    const midpoint = { x: (previous.x + next.x) / 2, y: (previous.y + next.y) / 2 };
+    this._curveTo(previous, midpoint);
+    this.curvePrevious = next;
+  };
 
+  Stroke.prototype._curveTo = function (control, end) {
+    const start = this.curveAnchor;
+    const length = Q.dist(start.x, start.y, control.x, control.y) + Q.dist(control.x, control.y, end.x, end.y);
+    // Bound interpolation overhead while keeping sharp, thin curves smooth.
+    const count = Math.max(1, Math.min(64, Math.ceil(length / Math.max(2, this.size * 0.4))));
+    for (let i = 1; i <= count; i++) {
+      const t = i / count, u = 1 - t;
+      this._lineTo(u*u*start.x + 2*u*t*control.x + t*t*end.x,
+                   u*u*start.y + 2*u*t*control.y + t*t*end.y);
+    }
+    this.curveAnchor = end;
+  };
+
+  Stroke.prototype._lineTo = function (tx, ty) {
+    const step = Math.max(0.7, this.size * (this.brush.spacing || 0.06));
+    const d = Q.dist(this.lx, this.ly, tx, ty);
+    if (d < step) return;
     const ux = (tx - this.lx) / d, uy = (ty - this.ly) / d;
     const n = Math.floor(d / step);
     for (let i = 1; i <= n; i++) {
-      const x = this.lx + ux * step * i;
-      const y = this.ly + uy * step * i;
       this.len += step;
-      this._stamp(x, y, this.pressure, this.speed);
+      this._stamp(this.lx + ux * step * i, this.ly + uy * step * i, this.pressure, this.speed);
     }
     this.lx += ux * step * n;
     this.ly += uy * step * n;
-    this._flush();
   };
 
   Stroke.prototype._width = function (pressure, speed) {
@@ -252,7 +300,27 @@
     return Math.max(0.6, w);
   };
 
+  Q.symmetryPoints = function (mode, x, y, width, height) {
+    const cx = width / 2, cy = height / 2;
+    if (mode === 'vertical') return [{x:x,y:y},{x:width-x,y:y}];
+    if (mode === 'horizontal') return [{x:x,y:y},{x:x,y:height-y}];
+    if (mode === 'quadrant') return [{x:x,y:y},{x:width-x,y:y},{x:x,y:height-y},{x:width-x,y:height-y}];
+    if (mode === 'radial') {
+      const out = [], dx = x-cx, dy = y-cy;
+      for (let i=0; i<8; i++) { const a=i*Math.PI/4; out.push({x:cx+dx*Math.cos(a)-dy*Math.sin(a),y:cy+dx*Math.sin(a)+dy*Math.cos(a)}); }
+      return out;
+    }
+    return [{x:x,y:y}];
+  };
+
   Stroke.prototype._stamp = function (x, y, pressure, speed) {
+    const layer = this.doc.layer && this.doc.layer();
+    const mode = layer && layer.assisted && this.doc.guide ? this.doc.guide.symmetry : 'off';
+    const points = Q.symmetryPoints(mode, x, y, this.doc.width, this.doc.height);
+    for (let i = 0; i < points.length; i++) this._stampOne(points[i].x, points[i].y, pressure, speed);
+  };
+
+  Stroke.prototype._stampOne = function (x, y, pressure, speed) {
     const b = this.brush;
     const w = this._width(pressure, speed);
     // a wet stroke builds up in the scratch buffer at "flow" and is composited
@@ -298,7 +366,7 @@
   Stroke.prototype._grow = function (x, y, w) {
     const pad = w * 0.62 + 3;
     const r = { x: x - pad, y: y - pad, w: pad * 2, h: pad * 2 };
-    if (!this.dirty) this.dirty = r;
+    if (!this.dirty) this.dirty = { x: r.x, y: r.y, w: r.w, h: r.h };
     else {
       const x2 = Math.max(this.dirty.x + this.dirty.w, r.x + r.w);
       const y2 = Math.max(this.dirty.y + this.dirty.h, r.y + r.h);
@@ -307,7 +375,7 @@
       this.dirty.w = x2 - this.dirty.x;
       this.dirty.h = y2 - this.dirty.y;
     }
-    if (!this.pending) this.pending = r;
+    if (!this.pending) this.pending = { x: r.x, y: r.y, w: r.w, h: r.h };
     else {
       const px2 = Math.max(this.pending.x + this.pending.w, r.x + r.w);
       const py2 = Math.max(this.pending.y + this.pending.h, r.y + r.h);
@@ -343,12 +411,8 @@
   };
 
   Stroke.prototype.end = function () {
+    if (this.curvePrevious) this._curveTo(this.curvePrevious, this.curvePrevious);
     this._flush();
-    if (this.wet) {
-      // make sure every pending pixel made it into the cel
-      this.pending = this.dirty ? { x: this.dirty.x, y: this.dirty.y, w: this.dirty.w, h: this.dirty.h } : null;
-      this._flush();
-    }
     this.doc.history.endPixels(this.dirty);
     return this.dirty;
   };

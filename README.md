@@ -1,13 +1,13 @@
 # Prodesign · Qalam
 
-Qalam is an offline painting and frame-animation app for Android, inspired by Procreate. It includes pressure-sensitive brushes, layers and blend modes, a colour picker, a timeline with onion skin, gesture shortcuts, autosave, and PNG/GIF export.
+Qalam is an offline painting and frame-animation app for Android, inspired by Procreate. It includes pressure-sensitive brushes, layers and blend modes, a colour picker, a timeline with onion skin, gesture shortcuts, basic guides and brush customization, autosave, PNG/GIF export, and capability-dependent MP4 export.
 
 ## Download and install
 
-- [Qalam 1.1 APK](artifacts/Qalam-1.1.apk) · Android 8.0 or later
-- [Download bundle](artifacts/Qalam-1.1-package.zip) · APK, README and documentation
+- [Qalam 1.2 APK](artifacts/Qalam-1.2.apk) · Android 8.0 or later
+- [Download bundle](artifacts/Qalam-1.2-package.zip) · APK, README and documentation
 
-Copy the APK to your device and open it with a file manager. You may need to allow installation from that source. Version 1.1 is signed with the same key as 1.0 and should install as an update, keeping your artwork; Android asks for confirmation and does not let the app silently uninstall or replace itself. Back up important artwork before updating. The app requests `VIBRATE` only and has no internet permission. See the [user guide](docs/qalam.md) for controls and export instructions.
+Copy the APK to your device and open it with a file manager. You may need to allow installation from that source. Version 1.2 is signed with the same key as 1.0 and 1.1 and should install as an update, keeping your artwork; Android asks for confirmation and does not let the app silently uninstall or replace itself. Back up important artwork before updating. The app requests `VIBRATE` only and has no internet permission. See the [user guide](docs/qalam.md) for controls and export instructions.
 
 **Signing:** The included APK and default build use the publicly available key in `tools/apksign/key.pem`. It is suitable only for testing, not a trusted production release: anyone can use it to sign an APK claiming to be this app. Use a private, securely stored signing key for a release; changing keys means Android will not accept it as an update to the included APK.
 
@@ -21,12 +21,13 @@ bash tools/fetch-toolchain.sh
 bash tools/build.sh
 ```
 
-The build writes `artifacts/Qalam-1.1.apk`, checks the Java reference sources, assembles and signs the APK, then verifies it. Builds need not be byte-for-byte identical. `QALAM_TOOLCHAIN` overrides the toolchain directory. The automated tests use a headless DOM/canvas harness; they do not replace testing on a real device.
+The build writes `artifacts/Qalam-1.2.apk`, checks the Java reference sources, assembles and signs the APK, then verifies it. Builds need not be byte-for-byte identical. `QALAM_TOOLCHAIN` overrides the toolchain directory. The automated tests use a headless DOM/canvas harness; they do not replace testing on a real device.
 
 ## Documentation
 
 - [User guide and architecture](docs/qalam.md)
 - [Procreate analysis and feature comparison](docs/procreate-analysis.md)
+- [Feature coverage and remaining work](docs/FEATURES.md)
 - [Implementation blueprint](docs/BLUEPRINT.md)
 
 The Android app and its supporting files were imported from the public `arena/38db308d-guzo` branch of `mubareksam/guzo` at commit `525d0de`.

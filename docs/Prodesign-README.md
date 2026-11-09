@@ -4,20 +4,20 @@ An offline painting and frame-animation studio for Android, modelled on Procreat
 brushes, layers, a colour wheel, a frame timeline with onion skin, Procreate's gesture
 vocabulary, and PNG/GIF export. No account, no ads, no network permission.
 
-**Download:** [`Qalam-1.1.apk`](../artifacts/Qalam-1.1.apk) (~201 KB)
+**Download:** [`Qalam-1.2.apk`](../artifacts/Qalam-1.2.apk) (~241 KB)
 
 | | |
 |---|---|
 | Package | `com.qalam.studio` |
-| Version | 1.1 (versionCode 2) |
+| Version | 1.2 (versionCode 3) |
 | Requires | Android 8.0+ (minSdk 26), built for targetSdk 33 |
 | Permissions | `VIBRATE` only — no internet, no storage, no location |
 | Signing | APK Signature Scheme v1 + v2, self-signed with a public test key |
-| SHA-256 | `160d2e2bf7c24d3849e4cc28551710898fe0f391780d90892770d64d5354f4db` |
+| SHA-256 | `9d40afdda2e58d8bafa79034782fa028c4b7c25a3031f5721bdb0e18603c3ac1` |
 
 ## Install
 
-1. Download `Qalam-1.1.apk` to the phone (or copy it over USB).
+1. Download `Qalam-1.2.apk` to the phone (or copy it over USB).
 2. Open it from the file manager. Android will ask you to allow installs from that
    app the first time ("Install unknown apps") — allow it, then install.
 3. Open **Qalam**.
@@ -30,7 +30,7 @@ once. That is expected for any app that doesn't come through the Play Store.
 **Canvas** — 2048², portrait, landscape, 1920×1080, 1280² animation and 1080×1920
 story presets; full-screen canvas with two-finger pan, pinch zoom and twist rotate.
 
-**Brushes** — 11 presets: Studio pen, Inking pen, Monoline, Technical pencil,
+**Brushes** — 20 presets, including: Studio pen, Inking pen, Monoline, Technical pencil,
 6B pencil, Marker, Airbrush, Charcoal, Watercolour, Hard eraser, Soft eraser. Stylus
 pressure drives width and opacity; speed drives taper; translucency accumulates so a
 stroke never darkens where it crosses itself.
@@ -44,7 +44,7 @@ live thumbnails and visibility toggles.
 12 most recent colours.
 
 **Animation** — frames live on the layer stack; add/duplicate/delete frames, scrub the
-timeline, play at 6–30 fps, onion skin (switches on automatically at the second frame).
+timeline, play at 1–30 fps, onion skin (switches on automatically at the second frame).
 
 **Gestures**
 
@@ -61,7 +61,7 @@ timeline, play at 6–30 fps, onion skin (switches on automatically at the secon
 
 **Saving & export** — everything autosaves on the device (≈2.5 s after a change, and
 when the app goes to the background). PNG export and GIF animation export (50/100/150 %
-scale, loop count) are written to `Pictures/Qalam`. Undo history holds 36 steps.
+scale, loop count) are written to `Pictures/Qalam`; MP4 export is available only on WebViews that support it. Undo history holds 36 steps.
 
 ## Documentation
 

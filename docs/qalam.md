@@ -3,14 +3,14 @@
 **Qalam** (from Arabic *qalam*, قلم — pen) is a self-contained Android drawing and
 frame-animation app modelled on Procreate: full-screen canvas, pressure-sensitive
 brushes, layers with blend modes, a colour wheel, a frame timeline with onion skin,
-Procreate's gesture vocabulary, and PNG/GIF export — all offline, with no account and
+Procreate's gesture vocabulary, PNG/GIF export and device-dependent MP4 export — all offline, with no account and
 no network permissions at all.
 
-- Package: `com.qalam.studio` · version 1.1 (versionCode 2)
+- Package: `com.qalam.studio` · version 1.2 (versionCode 3)
 - minSdk 26 (Android 8.0) · targetSdk 33 · armeabi-v7a/arm64/x86/x86_64 independent
   (everything is HTML/JS running inside the app's own `WebView`, so the APK has no
   native code)
-- APK: **`artifacts/Qalam-1.1.apk`** (~200 KB), signed with a v1+v2 scheme
+- APK: **`artifacts/Qalam-1.2.apk`** (~240 KB), signed with a v1+v2 scheme
 - The written analysis of Procreate that this app was specified from:
   [`docs/procreate-analysis.md`](procreate-analysis.md)
 
@@ -18,10 +18,10 @@ no network permissions at all.
 
 ## 1. Install
 
-1. Copy `artifacts/Qalam-1.1.apk` to the phone (USB, Drive, chat to yourself — anything).
+1. Copy `artifacts/Qalam-1.2.apk` to the phone (USB, Drive, chat to yourself — anything).
 2. Open it with the phone's file manager. Android will ask to allow installs from
    that app the first time ("Install unknown apps").
-3. Install and open **Qalam**. If version 1.0 is already installed, Android should offer an update that preserves its data. Back up important artwork first. Android does not allow this app to silently uninstall itself; do not uninstall it unless you have backed up its local artwork.
+3. Install and open **Qalam**. If version 1.0 or 1.1 is already installed, Android should offer an update that preserves its data. Back up important artwork first. Android does not allow this app to silently uninstall itself; do not uninstall it unless you have backed up its local artwork.
 
 No permissions are requested except `VIBRATE` (haptic ticks). There is no internet
 permission, so nothing can phone home.
@@ -54,10 +54,10 @@ Everything is autosaved on the device (`IndexedDB`, with a `localStorage` fallba
 Bottom bar: **Gallery · Layer · Brush · Colour · Timeline · Menu** (plus **Undo**,
 **Redo** and the eyedropper on the top bar, and a size/opacity strip).
 
-- **Brush tray** — 11 presets: Studio pen, Inking pen, Monoline, Technical pencil,
-  6B pencil, Marker, Airbrush, Charcoal, Watercolour, Hard eraser, Soft eraser.
-  Each has its own size, opacity, flow, hardness, grain, pressure and streamline
-  behaviour; the size and opacity sliders are global.
+- **Brush tray** — 20 presets, with labelled ink, pencil, paint and eraser icons.
+  Select a brush and open **Brush studio** to adjust spacing, flow, opacity, edge
+  hardness, pressure response and stabilization. Settings are saved per preset on
+  this device. This is a basic editor, not the full Procreate Brush Studio.
 - **Colour tray** — HSB wheel with a value/saturation square, HEX entry, 24 swatches
   and the 12 most recent colours.
 - **Layers tray** — add, duplicate, merge down, clear, delete, reorder (▲▼), rename,
@@ -65,11 +65,15 @@ Bottom bar: **Gallery · Layer · Brush · Colour · Timeline · Menu** (plus **
   Color dodge/burn, Hard/Soft light, Difference, Exclusion, Hue, Saturation, Color,
   Luminosity). Rows show a live thumbnail and an eye toggle.
 - **Timeline** — frames as rows of the layer stack: add/duplicate/delete frames,
-  scrub or tap to select, ▶ play/stop, fps chip (6 → 30), onion-skin toggle. Onion
-  skin switches itself on the moment a canvas gets a second frame.
-- **Menu** — Export PNG, Export animation (GIF), New canvas, Add/Delete frame,
-  Onion skin, Flip canvas, Rotate 90°, Zoom to fit, Reset view, Save now,
-  Gestures & help, About Qalam.
+  scrub or tap to select, ▶ play/stop and onion-skin toggle. **Settings** provides
+  1–30 fps, onion opacity, loop, ping-pong and one-shot playback. Onion skin shows
+  one previous and one next frame; it switches on when a second frame is added.
+- **Menu → Drawing guides** — show an adjustable 2D or isometric grid, or a
+  symmetry overlay. Choose vertical, horizontal, quadrant or eight-fold radial
+  symmetry and switch **Layer assist** on to mirror strokes on the selected layer.
+  The grid is visual only; it does not snap strokes. Guides are not exported.
+- **Menu** — PNG, GIF and capability-dependent MP4 export, drawing guides, canvas
+  controls, save and help.
 
 ## 4. Gestures
 
@@ -95,8 +99,13 @@ Bottom bar: **Gallery · Layer · Brush · Colour · Timeline · Menu** (plus **
   no native dependency) with a size choice (50/100/150 %) and loop count (forever /
   once / 3×), saved the same way as `Qalam-<timestamp>.gif`.
 
-Both paths need no storage permission: `MediaStore` inserts as the app, so the
-gallery app sees the file immediately.
+- **Export MP4** — records one animation loop in real time, up to 1280 pixels on
+  the longest side, using the device WebView's MP4 encoder. On Android 10+ it writes
+  to `Movies/Qalam`; Android 8–9 uses the app's external folder. Some WebViews do not
+  support MP4 recording; the app reports this rather than producing a mislabeled file.
+  This has not been tested on a physical device.
+
+No storage permission is needed: `MediaStore` inserts as the app on Android 10+.
 
 ## 6. How it is built (no Gradle, no Android SDK)
 
@@ -114,7 +123,7 @@ android/
     css/app.css              dark touch UI
     js/core.js               DOM/colour/canvas helpers, toasts, native bridge
     js/doc.js                Doc (layers, frames, cels, thumbnails) + History
-    js/brushes.js            11 presets, procedural sprites, Q.Stroke engine
+    js/brushes.js            20 presets, procedural sprites, Q.Stroke engine
     js/gif.js                quantiser, LZW, GifWriter
     js/view.js               viewport, input, gestures, QuickShape, eyedropper
     js/storage.js            IndexedDB store with localStorage fallback
@@ -129,10 +138,10 @@ tools/
   verify_apk.py              re-parses the APK: zip, arsc, dex, v2 signature
   make_icons.py              icon source -> all mipmap densities + adaptive icon
   apksign/sign.mjs           v1+v2 signer
-  tests/engine_smoke.mjs     37 engine checks (history, brushes, doc, GIF, …)
+  tests/engine_smoke.mjs     58 engine checks (history, brushes, doc, GIF, …)
   tests/gif_roundtrip.mjs    encodes a GIF and decodes it with an independent decoder
   tests/ui_smoke.mjs         jsdom boot + full UI drive (gallery -> export)
-artifacts/Qalam-1.1.apk           the signed, installable artefact
+artifacts/Qalam-1.2.apk           the signed, installable artefact
 docs/procreate-analysis.md   the Procreate study this app was built from
 docs/qalam.md                this file
 ```
@@ -162,7 +171,7 @@ Design notes worth knowing before changing code:
 
 ```bash
 bash tools/fetch-toolchain.sh     # once per machine: JVM, apktool, aapt2, jars, npm
-bash tools/build.sh               # -> artifacts/Qalam-1.1.apk (signed + verified)
+bash tools/build.sh               # -> artifacts/Qalam-1.2.apk (signed + verified)
 bash tools/check_reference.sh     # optional: javac-check the Java mirrors
 ```
 
@@ -178,7 +187,7 @@ bash tools/check_reference.sh     # optional: javac-check the Java mirrors
 
 ```bash
 cd tools/tests && npm install
-npm test        # engine_smoke (37 checks) + gif_roundtrip + ui_smoke
+npm test        # engine_smoke (58 checks) + gif_roundtrip + ui_smoke
 ```
 
 `ui_smoke.mjs` boots the real app in jsdom with a stubbed 2D context and drives the
@@ -195,28 +204,11 @@ install, not merely that a build command exited 0.
 
 ## 7. Known limits & roadmap
 
-In rough priority order, with the notes needed to implement each:
-
-1. **Fill / ColorDrop** — flood fill on the active cel with a threshold, sampled from
-   a "reference" layer (Procreate's model). Needs an iterative scanline fill over
-   `ImageData` and a threshold slider in the colour tray.
-2. **Selections** — rect/ellipse/freehand masks; `Doc` would keep a `selection`
-   canvas and `Q.Stroke` would clip through it (`ctx.save` + `clip`).
-3. **Smudge tool** — a `Stroke` variant that samples the cel under the stamp instead
-   of using the sprite, offset by the movement vector.
-4. **Brush Studio UI** — the engine already carries hardness, grain, flow, spacing,
-   pressure size/alpha, velocity, taper, jitter, scatter and streamline per brush;
-   this is a matter of exposing sliders and a "save as preset" row.
-5. **Alpha lock, clipping masks, layer groups** — alpha lock clips strokes to the
-   cel's existing alpha; clipping reads the layer below into a mask; groups need the
-   compositing loop in `Doc.renderFrame` to recurse.
-6. **MP4 export** — `MediaCodec` + `MediaMuxer` in `Bridge`, fed by the same frame
-   canvases that produce the GIF.
-7. **PSD export** — a layered PSD writer (uncompressed RAW or RLE rows) so the file
-   opens in Photoshop/Procreate.
-8. **Symmetry / perspective guides** — mirror the stroke points in `View._startStroke`
-   and draw the guide as an overlay.
-9. **Text layers**, **tilt/azimuth brush dynamics** (`AXIS_TILT`/`AXIS_ORIENTATION`
-   exposed through a `MotionEvent` bridge), **timelapse capture**, **JPEG/PDF export**.
-10. **Quick Menu** (four floating shortcuts) and a full-screen toggle for parity with
-    Procreate's four-finger tap.
+This is not a full Procreate replacement. Brush Studio edits existing presets only;
+custom tips/grains, dual brushes and import/export are not implemented. Perspective
+guides, snapping to grid, rectangle/arc QuickShape, reference windows, selections,
+layer masks/groups, text, fill, smudge, timelapse, PSD and many other requested
+features remain unimplemented. Onion skin is limited to one previous/next frame;
+frame durations and grouping are not yet supported. MP4 availability depends on the
+WebView and has not been verified on a physical Android phone. See
+[feature coverage](FEATURES.md) for details.

@@ -163,9 +163,12 @@
       fps: doc.fps,
       bg: doc.bg,
       onion: doc.onion,
+      onionAlpha: doc.onionAlpha,
+      playMode: doc.playMode,
+      guide: doc.guide,
       frameCount: doc.frames.length,
       layers: doc.layers.map(function (l) {
-        return { id: l.id, name: l.name, visible: l.visible, opacity: l.opacity, blend: l.blend };
+        return { id: l.id, name: l.name, visible: l.visible, opacity: l.opacity, blend: l.blend, assisted: !!l.assisted };
       }),
       activeFrame: doc.activeFrame,
       activeLayer: doc.activeLayer,
@@ -201,9 +204,9 @@
   }
 
   function deserialize(rec) {
-    const doc = new Q.Doc({ id: rec.id, name: rec.name, width: rec.w, height: rec.h, fps: rec.fps, bg: rec.bg, onion: rec.onion });
+    const doc = new Q.Doc({ id: rec.id, name: rec.name, width: rec.w, height: rec.h, fps: rec.fps, bg: rec.bg, onion: rec.onion, onionAlpha: rec.onionAlpha, playMode: rec.playMode, guide: rec.guide });
     doc.layers = (rec.layers || []).map(function (l) {
-      return { id: l.id || Q.uid(), name: l.name || 'Layer', visible: l.visible !== false, opacity: l.opacity == null ? 1 : l.opacity, blend: l.blend || 'source-over' };
+      return { id: l.id || Q.uid(), name: l.name || 'Layer', visible: l.visible !== false, opacity: l.opacity == null ? 1 : l.opacity, blend: l.blend || 'source-over', assisted: !!l.assisted };
     });
     if (!doc.layers.length) doc.layers = [Q.makeLayer('Layer 1')];
 

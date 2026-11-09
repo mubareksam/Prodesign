@@ -177,6 +177,13 @@ async function run() {
   cards[5].dispatchEvent(new win.Event('click', { bubbles: true }));
   await tick();
   ok(App.view.brush.id === Q.BRUSHES[5].id, 'brush selection applied: ' + App.view.brush.name);
+  ok(doc.querySelectorAll('#trayBody .brush-kind svg').length === Q.BRUSHES.length, 'brushes have identifiable category icons');
+  Q.UI.brushStudio();
+  const flow = doc.querySelector('#modalBody input[aria-label="Flow"]');
+  flow.value = '63'; flow.dispatchEvent(new win.Event('input', {bubbles:true}));
+  ok(App.view.brush.flow === 0.63 && Q.Store.meta('brushSettings').marker.flow === 0.63, 'brush studio saves brush settings');
+  click('#modalBody .btn.primary');
+
   const sizeBefore = App.view.size;
   const slider = doc.querySelector('#sizeSlider');
   slider.value = '48';
@@ -226,6 +233,15 @@ async function run() {
   ok(Q.rgbToHex(App.view.color) === '#22b8cf', 'hex field applied');
   Q.UI.closeTray();
 
+  console.log('drawing guides');
+  Q.UI.guideDialog();
+  const symmetry = doc.querySelector('#modalBody select[aria-label="Symmetry"]');
+  symmetry.value = 'quadrant'; symmetry.dispatchEvent(new win.Event('change', {bubbles:true}));
+  const assist = doc.querySelector('#modalBody select[aria-label="Layer assist"]');
+  assist.value = 'on'; assist.dispatchEvent(new win.Event('change', {bubbles:true}));
+  ok(App.doc.guide.symmetry === 'quadrant' && App.doc.layer().assisted, 'symmetry assist enabled on selected layer');
+  click('#modalBody .btn.primary');
+
   console.log('animation + timeline');
   click('#btnTimeline');
   ok(!doc.querySelector('#timeline').classList.contains('hidden'), 'timeline opens');
@@ -233,6 +249,14 @@ async function run() {
   click('#timeline .tl-add');
   ok(App.doc.frames.length === 2, 'frame added');
   ok(App.doc.onion === true, 'onion skin switched on automatically');
+  Q.UI.animationSettings();
+  const mode = doc.querySelector('#modalBody select[aria-label="Playback"]');
+  mode.value = 'pingpong'; mode.dispatchEvent(new win.Event('change', {bubbles:true}));
+  const opacity = doc.querySelector('#modalBody input[aria-label="Onion opacity"]');
+  opacity.value = '40'; opacity.dispatchEvent(new win.Event('input', {bubbles:true}));
+  ok(App.doc.playMode === 'pingpong' && App.doc.onionAlpha === 0.4, 'animation settings control mode and onion opacity');
+  click('#modalBody .btn.primary');
+
   await tick();
   ok(doc.querySelectorAll('#timeline .tl-frame').length === 2, 'timeline refreshed');
   App.togglePlay();
@@ -269,6 +293,7 @@ async function run() {
   ok(!doc.querySelector('#studio').classList.contains('hidden'), 'studio re-entered after opening');
   ok(App.doc.frames.length === 2, 'frames survived the round trip');
   ok(App.doc.layers.length === 2, 'layers survived the round trip');
+  ok(App.doc.guide.symmetry === 'quadrant' && App.doc.layer().assisted && App.doc.playMode === 'pingpong' && App.doc.onionAlpha === 0.4, 'guide, assist and animation settings survive the round trip');
 
   console.log('gestures');
   App.view.fit();
@@ -338,6 +363,22 @@ async function run() {
   Q.saveBytes = (dataUrl, mime, name) => { saved = { mime, name }; return true; };
   App.exportPng();
   ok(saved && saved.mime === 'image/png', 'PNG export routed to the native bridge');
+  // Simulate both unsupported devices and a recorder that produces MP4 data.
+  delete win.MediaRecorder;
+  App.exportMp4();
+  ok(doc.querySelector('#toast').textContent.includes('not supported'), 'unsupported MP4 encoding is reported');
+  let stopped = false;
+  win.HTMLCanvasElement.prototype.captureStream = () => ({getTracks: () => [{stop: () => { stopped = true; }}]});
+  win.MediaRecorder = class {
+    static isTypeSupported(mime) { return mime.startsWith('video/mp4'); }
+    constructor(stream, opts) { this.state = 'inactive'; this.mime = opts.mimeType; }
+    start() { this.state = 'recording'; }
+    stop() { this.state = 'inactive'; this.ondataavailable({data:new win.Blob(['fake'])}); this.onstop(); }
+  };
+  win.FileReader = class { readAsDataURL() { this.result='data:video/mp4;base64,AAAA'; this.onload(); } };
+  saved = null; App.doc.fps = 30; App.exportMp4(); await wait(120);
+  ok(saved && saved.mime === 'video/mp4' && saved.name.endsWith('.mp4') && stopped, 'supported MP4 recorder exports and releases stream');
+
 
   await App.saveNow(false);
   console.log(failures ? `\n${failures} check(s) FAILED` : '\nall UI checks passed');

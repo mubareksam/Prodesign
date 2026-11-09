@@ -1,5 +1,7 @@
 # What Procreate does — a working analysis
 
+> Historical study: the Qalam feature matrix below predates version 1.2. See [FEATURES.md](FEATURES.md) for current coverage and limitations.
+
 *Written as the spec for **Qalam** (this repo's Android painting/animation app): read
 Procreate's behaviour, then decide what to copy, what to approximate and what to leave
 out. Facts are drawn from Savage Interactive's own documentation and store listings,
