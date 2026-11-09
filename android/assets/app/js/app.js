@@ -476,7 +476,7 @@
     if (audio) { try { audio.pause(); audio.removeAttribute('src'); audio.load(); } catch(e) {} }
     clearTimeout(App.playTimer);
     App.playTimer = 0;
-    if (App.view) App.view.locked = false;
+    if (App.view) { App.view.locked = false; App.view.dirty = true; }
     Q.UI.refreshTimeline();
   };
 
@@ -764,7 +764,7 @@
     function fail(message) { if (finished) return; finished = true; try { if (recorder && recorder.state !== 'inactive') recorder.stop(); } catch (e) {} cleanup(); Q.toast(message, 4000); }
     function paint(index) {
       ctx.fillStyle = d.bg; ctx.fillRect(0, 0, w, h);
-      ctx.save(); ctx.scale(w / d.width, h / d.height); d.composite(ctx, index); ctx.restore();
+      ctx.save(); ctx.scale(w / d.width, h / d.height); d.compositeCamera(ctx, index); ctx.restore();
     }
     try {
       paint(order[0]); stream = canvas.captureStream(fps);
@@ -900,7 +900,7 @@
           try {
             const canvas=Q.canvas(w,h), ctx=canvas.getContext('2d');
             if (!canvas.captureStream) { fail('Video capture is not supported on this device'); return; }
-            function paint(index) { ctx.fillStyle=d.bg; ctx.fillRect(0,0,w,h); ctx.save(); ctx.scale(w/d.width,h/d.height); d.composite(ctx,index); ctx.restore(); }
+            function paint(index) { ctx.fillStyle=d.bg; ctx.fillRect(0,0,w,h); ctx.save(); ctx.scale(w/d.width,h/d.height); d.compositeCamera(ctx,index); ctx.restore(); }
             paint(order[0]); stream=canvas.captureStream(fps);
             const videoTracks=stream.getVideoTracks ? stream.getVideoTracks() : [];
             destination=context.createMediaStreamDestination(); const audioTracks=destination.stream.getAudioTracks();
@@ -972,7 +972,7 @@
       c.fillRect(0, 0, w, h);
       c.save();
       c.scale(w / d.width, h / d.height);
-      d.composite(c, i);
+      d.compositeCamera(c, i);
       c.restore();
       frames[i] = cv;
     }

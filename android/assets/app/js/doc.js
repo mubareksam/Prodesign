@@ -34,6 +34,23 @@
     if (mode==='inout') return t*t*(3-2*t);
     return t;
   };
+  Q.validCameraKey = function (key,width,height) {
+    return !!key && Number.isInteger(key.frame) && key.frame>=0 && key.frame<=10000 &&
+      Number.isFinite(key.x) && key.x>=0 && key.x<=width && Number.isFinite(key.y) && key.y>=0 && key.y<=height &&
+      Number.isFinite(key.zoom) && key.zoom>=0.25 && key.zoom<=4 && Number.isFinite(key.angle) && Math.abs(key.angle)<=1440 &&
+      ['linear','in','out','inout'].includes(key.easing);
+  };
+  Q.cameraPose = function (doc,frame) {
+    const keys=doc.cameraKeys;
+    if (!keys.length) return {x:doc.width/2,y:doc.height/2,zoom:1,angle:0,easing:'linear'};
+    if (frame<=keys[0].frame) return {...keys[0]};
+    if (frame>=keys[keys.length-1].frame) return {...keys[keys.length-1]};
+    for (let i=0;i<keys.length-1;i++) {
+      const a=keys[i], b=keys[i+1]; if (frame>b.frame) continue;
+      const t=Q.motionEase((frame-a.frame)/(b.frame-a.frame),a.easing), lerp=k=>a[k]+(b[k]-a[k])*t;
+      return {x:lerp('x'),y:lerp('y'),zoom:lerp('zoom'),angle:lerp('angle'),easing:a.easing};
+    }
+  };
   let seq = 1;
   function makeLayer(name) { return { id: Q.uid(), name: name || `Layer ${++seq}`, visible: true, opacity: 1, blend: 'source-over' }; }
   class History {
@@ -41,7 +58,7 @@
     notify() { if (this.onchange) this.onchange(); }
     structSnapshot() {
       const d = this.doc;
-      return { layers: d.layers.map(l => ({ ...l })), frames: d.frames.map(f => ({cels: f.cels.slice(), duration: f.duration || 1, group: f.group || '', skipped: !!f.skipped})), activeLayer: d.activeLayer, activeFrame: d.activeFrame, bg: d.bg, playRange: d.playRange ? {...d.playRange} : null, motionGuide:d.motionGuide.map(p=>({...p})), motionGuideVisible:d.motionGuideVisible, audioTrack:d.audioTrack ? {...d.audioTrack} : null };
+      return { layers: d.layers.map(l => ({ ...l })), frames: d.frames.map(f => ({cels: f.cels.slice(), duration: f.duration || 1, group: f.group || '', skipped: !!f.skipped})), activeLayer: d.activeLayer, activeFrame: d.activeFrame, bg: d.bg, playRange: d.playRange ? {...d.playRange} : null, motionGuide:d.motionGuide.map(p=>({...p})), motionGuideVisible:d.motionGuideVisible, cameraEnabled:d.cameraEnabled, cameraKeys:d.cameraKeys.map(k=>({...k})), audioTrack:d.audioTrack ? {...d.audioTrack} : null };
     }
     applyStruct(s) {
       const d = this.doc;
@@ -49,6 +66,7 @@
       d.bg = s.bg || '#ffffff'; d.playRange = s.playRange ? {...s.playRange} : null;
       d.motionGuide = (s.motionGuide || []).map(p=>({...p})); d.motionGuideVisible=!!s.motionGuideVisible;
       d.audioTrack = s.audioTrack ? {...s.audioTrack} : null;
+      d.cameraEnabled=!!s.cameraEnabled; d.cameraKeys=(s.cameraKeys || []).map(k=>({...k}));
       d.activeLayer = Q.clamp(s.activeLayer, 0, d.layers.length - 1); d.activeFrame = Q.clamp(s.activeFrame, 0, d.frames.length - 1);
     }
     struct(fn) { const before = this.structSnapshot(), result = fn.call(this.doc); this.push({ type:'struct', before, after:this.structSnapshot() }); return result; }
@@ -89,6 +107,10 @@
       this.playRange = opts.playRange && Number.isInteger(opts.playRange.start) && Number.isInteger(opts.playRange.end) ? {start:opts.playRange.start,end:opts.playRange.end} : null;
       this.motionGuide=Array.isArray(opts.motionGuide) ? opts.motionGuide.slice(0,512).filter(p=>p && Number.isFinite(p.x) && Number.isFinite(p.y)).map(p=>({x:Q.clamp(p.x,0,this.width),y:Q.clamp(p.y,0,this.height)})) : [];
       this.motionGuideVisible=opts.motionGuideVisible !== false;
+      this.cameraEnabled=!!opts.cameraEnabled;
+      this.cameraKeys=[];
+      if (Array.isArray(opts.cameraKeys)) opts.cameraKeys.slice(0,60).forEach(k=>{ if (Q.validCameraKey(k,this.width,this.height)) { const key={frame:k.frame,x:k.x,y:k.y,zoom:k.zoom,angle:k.angle,easing:k.easing}; this.cameraKeys=this.cameraKeys.filter(existing=>existing.frame!==key.frame); this.cameraKeys.push(key); } });
+      this.cameraKeys.sort((a,b)=>a.frame-b.frame);
       this.audioTrack=Q.validAudioTrack(opts.audioTrack) ? {name:opts.audioTrack.name,data:opts.audioTrack.data,muted:!!opts.audioTrack.muted} : null;
       this.playMode = opts.playMode || 'loop'; this.onionFrames = Q.clamp(opts.onionFrames || 1, 1, 4);
       this.onionPrevFrames = Q.clamp(opts.onionPrevFrames == null ? this.onionFrames : Math.round(opts.onionPrevFrames),0,4);
@@ -171,7 +193,7 @@
     deleteFrame(i) {
       if (this.frames.length < 2) { Q.toast('A canvas needs at least one frame'); return; }
       if (i < 0 || i >= this.frames.length) return;
-      return this.history.struct(function () { this.frames.splice(i,1); this.activeFrame = Q.clamp(this.activeFrame,0,this.frames.length-1); this.normalizePlayRange(); });
+      return this.history.struct(function () { this.frames.splice(i,1); this.activeFrame = Q.clamp(this.activeFrame,0,this.frames.length-1); this.normalizePlayRange(); this.normalizeCameraKeys(); });
     }
     moveFrame(i,dir) { const j = i+dir; if (i < 0 || i >= this.frames.length || j < 0 || j >= this.frames.length) return; return this.history.struct(function () { this.frames.splice(j,0,this.frames.splice(i,1)[0]); this.activeFrame=j; }); }
     normalizePlayRange() {
@@ -274,10 +296,23 @@
         const count=end-start+1, current=this.activeFrame;
         this.frames.splice(start,count);
         this.activeFrame=current<start ? current : current>end ? current-count : Math.min(start,this.frames.length-1);
-        this.normalizePlayRange();
+        this.normalizePlayRange(); this.normalizeCameraKeys();
       });
       return true;
     }
+    normalizeCameraKeys() { this.cameraKeys=this.cameraKeys.filter(k=>k.frame<this.frames.length); }
+    setCameraKey(key) {
+      if (!Q.validCameraKey(key,this.width,this.height) || key.frame>=this.frames.length) return false;
+      if (!this.cameraKeys.some(k=>k.frame===key.frame) && this.cameraKeys.length>=60) return false;
+      const copy={frame:key.frame,x:key.x,y:key.y,zoom:key.zoom,angle:key.angle,easing:key.easing};
+      this.history.struct(function () { this.cameraKeys=this.cameraKeys.filter(k=>k.frame!==copy.frame); this.cameraKeys.push(copy); this.cameraKeys.sort((a,b)=>a.frame-b.frame); this.cameraEnabled=true; }); return true;
+    }
+    removeCameraKey(frame) {
+      if (!this.cameraKeys.some(k=>k.frame===frame)) return false;
+      this.history.struct(function () { this.cameraKeys=this.cameraKeys.filter(k=>k.frame!==frame); }); return true;
+    }
+    clearCameraKeys() { if (!this.cameraKeys.length) return false; this.history.struct(function () { this.cameraKeys=[]; }); return true; }
+    setCameraEnabled(enabled) { enabled=!!enabled; if (this.cameraEnabled===enabled) return false; this.history.struct(function () { this.cameraEnabled=enabled; }); return true; }
     setAudioTrack(track) {
       if (track !== null && !Q.validAudioTrack(track)) return false;
       const clean=track ? {name:track.name,data:track.data,muted:!!track.muted} : null;
@@ -351,6 +386,14 @@
         }
         i=end;
       }
+    }
+    // Camera affects only animation playback/video/GIF, never editable pixels.
+    compositeCamera(ctx,frameIdx) {
+      if (!this.cameraEnabled || !this.cameraKeys.length) { this.composite(ctx,frameIdx); return; }
+      const pose=Q.cameraPose(this,frameIdx);
+      ctx.save(); ctx.beginPath(); ctx.rect(0,0,this.width,this.height); ctx.clip();
+      ctx.translate(this.width/2,this.height/2); ctx.scale(pose.zoom,pose.zoom); ctx.rotate(-pose.angle*Math.PI/180); ctx.translate(-pose.x,-pose.y);
+      ctx.beginPath(); ctx.rect(0,0,this.width,this.height); ctx.clip(); this.composite(ctx,frameIdx); ctx.restore();
     }
     renderFrame(canvas,frameIdx,opts = {}) {
       const c = canvas.getContext('2d'); c.setTransform(1,0,0,1,0,0); c.globalAlpha=1; c.globalCompositeOperation='source-over'; c.clearRect(0,0,canvas.width,canvas.height);

@@ -444,4 +444,49 @@ for (const mode of ['linear','in','out','inout']) {
  ok(failed && d.cel(1,0,false)===null && d.history.undoStack.length===0 && pixel(d.cel(0,0,false),1,1)[3]===255, 'transform allocation failure is atomic');
 }
 
+
+{
+ const d=setup(); for(let i=1;i<5;i++) d.addFrame(false); d.history.clear();
+ const first={frame:0,x:8,y:8,zoom:1,angle:0,easing:'in'}, last={frame:4,x:12,y:4,zoom:2,angle:90,easing:'linear'};
+ ok(d.setCameraKey(last) && d.setCameraKey(first) && d.cameraEnabled && d.cameraKeys[0].frame===0, 'camera keys are sorted and enable the camera');
+ const middle=Q.cameraPose(d,2); ok(middle.x===9 && middle.y===7 && middle.zoom===1.25 && middle.angle===22.5, 'camera interpolates center, zoom and rotation using the earlier key easing');
+ ok(Q.cameraPose(d,-1).x===8 && Q.cameraPose(d,10).x===12, 'camera holds first and last pose beyond keys');
+ d.frames[1].duration=5; d.frames[1].skipped=true; ok(Q.cameraPose(d,2).x===9, 'camera timing is frame-index based regardless of holds and skips');
+ const mid={frame:2,x:4,y:8,zoom:1,angle:-45,easing:'out'}; d.setCameraKey(mid); ok(Q.cameraPose(d,2).x===4 && Q.cameraPose(d,3).x===10, 'camera supports an editable intermediate key and outgoing easing');
+ const hist=d.history.undoStack.length; ok(!d.setCameraKey({...mid,x:-1}) && !d.setCameraKey({...mid,zoom:0}) && !d.setCameraKey({...mid,angle:Infinity}) && !d.setCameraKey({...mid,easing:'wrong'}) && !d.setCameraKey({...mid,frame:5}) && d.history.undoStack.length===hist, 'invalid camera settings are rejected without history changes');
+ d.removeCameraKey(2); ok(d.cameraKeys.length===2, 'camera key can be removed'); d.history.undo(); ok(d.cameraKeys.length===3 && Q.cameraPose(d,2).x===4, 'camera key removal is undoable');
+ d.setCameraEnabled(false); ok(!d.cameraEnabled, 'camera can be disabled non-destructively'); d.history.undo(); ok(d.cameraEnabled, 'camera toggle can be undone');
+ d.deleteFrame(4); ok(!d.cameraKeys.some(k=>k.frame===4), 'deleting frames removes keys outside timeline'); d.history.undo(); ok(d.cameraKeys.some(k=>k.frame===4), 'undo restores out-of-range key after frame deletion');
+ d.deleteFrameRange(1,4); ok(d.cameraKeys.length===1 && d.cameraKeys[0].frame===0, 'batch frame deletion trims keys outside timeline'); d.history.undo(); ok(d.cameraKeys.length===3, 'batch deletion undo restores camera keys');
+}
+{
+ const d=setup(), src=d.activeCel(true); src.getContext('2d').fillStyle='#ff0000'; src.getContext('2d').fillRect(10,7,2,2);
+ const cv=createCanvas(16,16), ctx=cv.getContext('2d'); d.setCameraKey({frame:0,x:10,y:8,zoom:1,angle:0,easing:'linear'});
+ d.compositeCamera(ctx,0); ok(pixel(cv,8,7)[0]===255 && pixel(cv,10,7)[3]===0, 'camera output pans artwork without changing pixels');
+ ok(pixel(src,10,7)[0]===255 && pixel(d.flatten(0,{background:false}),10,7)[0]===255, 'source cel and PNG flatten ignore camera');
+ d.setCameraEnabled(false); ctx.clearRect(0,0,16,16); d.compositeCamera(ctx,0); ok(pixel(cv,10,7)[0]===255 && pixel(cv,8,7)[3]===0, 'disabled camera renders original artwork');
+ d.setCameraKey({frame:0,x:8,y:8,zoom:2,angle:0,easing:'linear'}); ctx.clearRect(0,0,16,16); d.compositeCamera(ctx,0);
+ ok(pixel(cv,13,7)[0]===255 && pixel(cv,10,7)[3]===0, 'camera zoom renders around chosen center');
+ d.setCameraKey({frame:0,x:8,y:8,zoom:1,angle:90,easing:'linear'}); ctx.clearRect(0,0,16,16); d.compositeCamera(ctx,0);
+ ok(pixel(cv,8,5)[0]===255, 'camera rotation inversely rotates the artwork about the camera center');
+ const canvas=createCanvas(16,16), view=Object.create(Q.View.prototype); Object.assign(view,{doc:d,canvas,ctx:canvas.getContext('2d'),dpr:1,scale:1,rot:0,tx:0,ty:0,stroke:null});
+ App.playing=false; view.render(); ok(pixel(canvas,10,7)[0]===255 && pixel(canvas,8,5)[0]===255 && pixel(canvas,8,5)[1]===255, 'editing view remains untransformed');
+ App.playing=true; view.render(); ok(pixel(canvas,8,5)[0]===255 && pixel(canvas,8,5)[1]===0 && pixel(canvas,10,7)[1]===255, 'playback view displays camera transform'); App.playing=false;
+}
+{
+ const d=setup(), base=d.activeCel(true); base.getContext('2d').fillRect(10,6,4,4); d.addLayer(); const clipped=d.activeCel(true); clipped.getContext('2d').fillStyle='#ff0000'; clipped.getContext('2d').fillRect(8,4,8,8); d.setLayerClipped(1,true);
+ d.setCameraKey({frame:0,x:10,y:8,zoom:1,angle:0,easing:'linear'}); const cv=createCanvas(16,16); d.compositeCamera(cv.getContext('2d'),0);
+ ok(pixel(cv,9,7)[0]===255 && pixel(cv,5,7)[3]===0, 'camera preserves non-destructive layer clipping');
+}
+
+
+{
+ const d=setup(), c=d.activeCel(true).getContext('2d'); c.fillStyle='#ff0000'; c.fillRect(10,7,2,2); d.addFrame(true); d.setCameraKey({frame:0,x:10,y:8,zoom:1,angle:0,easing:'linear'});
+ const oldGif=Q.encodeGif, oldSave=Q.saveBytes; let frames=null; Q.encodeGif=(list)=>{frames=list;return Promise.resolve({dataUrl:'data:image/gif;base64,AA=='});}; Q.saveBytes=()=>true;
+ App.exportGif({}); await new Promise(r=>setTimeout(r,20));
+ ok(frames && pixel(frames[0],8,7)[0]===255 && pixel(frames[0],8,7)[1]===0 && pixel(frames[0],10,7)[1]===255, 'GIF frame raster actually contains the camera-composited view');
+ const sheet=Q.renderSpriteSheet(d,2,1,true); ok(pixel(sheet,10,7)[0]===255 && pixel(sheet,8,7)[3]===0, 'sprite sheet keeps raw source coordinates even with camera enabled');
+ Q.encodeGif=oldGif; Q.saveBytes=oldSave;
+}
+
 console.log(`all ${n} raster integration checks passed`);

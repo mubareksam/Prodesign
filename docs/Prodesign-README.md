@@ -4,20 +4,20 @@ Developed by **Qmer**. An offline painting and frame-animation studio for Androi
 brushes, layers, a colour wheel, a frame timeline with onion skin, Procreate's gesture
 vocabulary, and PNG/GIF export. No account, no ads, no network permission.
 
-**Download:** [`Qalam-2.9.apk`](../artifacts/Qalam-2.9.apk) (~276 KB)
+**Download:** [`Qalam-3.0.apk`](../artifacts/Qalam-3.0.apk) (~279 KB)
 
 | | |
 |---|---|
 | Package | `com.qalam.studio` |
-| Version | 2.9 (versionCode 20) |
+| Version | 3.0 (versionCode 21) |
 | Requires | Android 8.0+ (minSdk 26), built for targetSdk 33 |
 | Permissions | `VIBRATE` only — no internet, no storage, no location |
 | Signing | APK Signature Scheme v1 + v2, self-signed with a public test key |
-| SHA-256 | `0a5c7b2d72d149cdde48d1fd9ed257224b35e535fda1aac11aa2d8fd707d0354` |
+| SHA-256 | `23b5c1afa979d85ef7c3852a0ae24c97ce5d3e839afc1d974be607f03f085d2d` |
 
 ## Install
 
-1. Download `Qalam-2.9.apk` to the phone (or copy it over USB).
+1. Download `Qalam-3.0.apk` to the phone (or copy it over USB).
 2. Open it from the file manager. Android will ask you to allow installs from that
    app the first time ("Install unknown apps") — allow it, then install.
 3. Open **Qalam**.
@@ -68,7 +68,7 @@ timeline, play at 1–30 fps with frame holds, and configurable onion skins.
 label, hold, reverse, duplicate, skip or include a frame range with undo. Onion skins
 have independent directional counts, colour, layer and stacking options. Skipped frames
 are omitted from playback and GIF/MP4, but retained in PNG sequences and sprite sheets.
-Labels are not nested groups. A saved motion guide can generate translated raster cels along its path with easing; the guide overlay itself does not appear in exports. Two-pose transform generation also interpolates movement, scale and rotation around a chosen pivot with easing. Both tools replace cels on the current layer within a chosen range after confirmation and can be undone; neither is a live keyframe track. A single imported audio track (2 MiB) supports forward preview and optional AAC-in-MP4 export on compatible WebViews. Audio export is capped at 120 seconds, does not support ping-pong and has not been tested on a physical device; verify saved playback. PNG/GIF remain silent. Cycle timing is displayed on the timeline. Copy a cel
+Labels are not nested groups. An editable, non-destructive camera track animates center, zoom and rotation for playback and GIF/MP4; PNGs and sprite sheets remain raw. Camera keys belong to frame positions and can be saved and undone. A saved motion guide can generate translated raster cels along its path with easing; the guide overlay itself does not appear in exports. Two-pose transform generation also interpolates movement, scale and rotation around a chosen pivot with easing. Both tools replace cels on the current layer within a chosen range after confirmation and can be undone; neither is a live keyframe track. A single imported audio track (2 MiB) supports forward preview and optional AAC-in-MP4 export on compatible WebViews. Audio export is capped at 120 seconds, does not support ping-pong and has not been tested on a physical device; verify saved playback. PNG/GIF remain silent. Cycle timing is displayed on the timeline. Copy a cel
 across frames or delete a frame range with confirmation and undo; cel copying is
 limited to 64 MiB of new pixel data per operation.
 PNG sprite sheets include every frame once, without timing metadata.

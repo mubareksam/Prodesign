@@ -447,3 +447,6 @@ select, .select {
 .transform-field { min-width: 0; display: flex; flex-direction: column; gap: 4px; }
 .transform-field label { font-size: 12px; color: var(--txt-2); }
 .transform-field input { min-width: 0; width: 100%; }
+.camera-preview { display: block; max-width: 100%; max-height: 180px; margin: 0 auto 8px; border-radius: 8px; background: #333; }
+.camera-key-list { display: flex; flex-wrap: wrap; gap: 6px; margin: 6px 0 12px; }
+.camera-badge { display: block; color: #ffd99e; font-size: 9px; line-height: 1.2; }

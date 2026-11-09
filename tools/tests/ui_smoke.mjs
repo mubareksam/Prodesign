@@ -889,7 +889,10 @@ async function run() {
   App.doc.setAudioMuted(true); App.exportMp4WithAudio(); ok(!savedAudio && doc.querySelector('#toast').textContent.includes('unmute'), 'muted audio must be unmuted before exporting'); App.doc.setAudioMuted(false);
   App.doc.playMode='pingpong'; App.exportMp4WithAudio(); ok(doc.querySelector('#toast').textContent.includes('ping-pong') && !App.cancelAudioExport, 'audio MP4 rejects ping-pong instead of silently dropping sound');
   App.doc.playMode='loop'; audioSupport=false; App.exportMp4WithAudio(); ok(doc.querySelector('#toast').textContent.includes('not supported') && !savedAudio, 'audio MP4 requires explicit AAC codec support'); audioSupport=true;
+  App.doc.setCameraKey({frame:0,x:32,y:32,zoom:1,angle:0,easing:'linear'}); let audioCameraCalls=[]; const originalAudioCamera=App.doc.compositeCamera;
+  App.doc.compositeCamera=function(ctx,index) { audioCameraCalls.push(index); return originalAudioCamera.call(this,ctx,index); };
   paintedAudio=[]; App.exportMp4WithAudio(); await wait(210);
+  ok(audioCameraCalls.join(',')==='2,3', 'MP4 with audio also renders frames through the camera'); App.doc.compositeCamera=originalAudioCamera;
   ok(savedAudio && savedAudio.mime==='video/mp4' && savedAudio.name.endsWith('-audio.mp4') && recorderTracks.join(',')==='video,audio', 'audio MP4 connects video and audio tracks and saves MP4');
   ok(startedOffsets.length===1 && Math.abs(startedOffsets[0]-2/30)<0.00001 && paintedAudio.filter(p=>p.ctx===exportCtx).map(p=>p.index).join(',')==='2,3', 'audio MP4 follows playback range, skips, holds and absolute audio offset');
   ok(stoppedTracks>=2 && closedContexts===1 && !App.cancelAudioExport && !doc.querySelector('#progressCard'), 'completed audio MP4 releases streams and context');
@@ -907,6 +910,39 @@ async function run() {
   App.exportMp4WithAudio(); Object.defineProperty(doc,'visibilityState',{value:'hidden',configurable:true}); doc.dispatchEvent(new win.Event('visibilitychange')); await wait(70); ok(!savedAudio && !App.cancelAudioExport, 'backgrounding cancels an audio export'); Object.defineProperty(doc,'visibilityState',{value:'visible',configurable:true});
   App.exportMp4WithAudio(); App.createDoc(64,64,'Switched during export'); await wait(70); ok(!savedAudio && !App.cancelAudioExport, 'switching projects cancels a pending audio export');
   win.AudioContext=oldAudioCtx; win.MediaRecorder=oldRecorder; win.HTMLCanvasElement.prototype.captureStream=oldCapture; Q.saveBytes=oldSave; win.FileReader=oldFileReader;
+  }
+
+  {
+  console.log('3.0 editable camera animation');
+  App.createDoc(64,64,'Camera project'); App.doc.activeCel(true); App.addFrame(true); App.addFrame(true); App.selectFrame(0); App.doc.history.clear();
+  if (doc.querySelector('#timeline').classList.contains('hidden')) Q.UI.toggleTimeline();
+  click('#timeline [aria-label="Animation guides and audio"]'); ok(!!doc.querySelector('#timeline [aria-label="Camera keyframes"] svg'), 'camera track is accessible from animation controls');
+  click('#timeline [aria-label="Camera keyframes"]');
+  const get=label=>doc.querySelector('#modalBody [aria-label="'+label+'"]'), action=label=>Array.from(doc.querySelectorAll('#modalBody button')).find(x=>x.textContent===label).click();
+  ok(!!doc.querySelector('#modalBody canvas[aria-label="Saved camera preview for current frame"]') && doc.querySelector('#modalBody').textContent.includes('not unsaved field changes'), 'camera dialog shows a saved-settings preview');
+  get('Camera zoom (%)').value='0'; action('Add camera key'); ok(doc.querySelector('.canvas-error').textContent.includes('zoom') && !App.doc.cameraKeys.length, 'invalid camera key is rejected');
+  get('Camera zoom (%)').value='100'; get('Camera center X').value=''; action('Add camera key'); ok(doc.querySelector('.canvas-error').textContent.includes('every camera field'), 'blank camera values are rejected');
+  get('Camera center X').value='32'; get('Camera easing').value='in'; action('Add camera key');
+  ok(App.doc.cameraEnabled && App.doc.cameraKeys.length===1 && App.doc.cameraKeys[0].easing==='in' && !!doc.querySelector('#timeline .camera-badge'), 'camera key is saved, enabled and marked in timeline');
+  Q.UI.closeModal(); App.selectFrame(2); Q.UI.cameraDialog(); get('Camera center X').value='48'; get('Camera zoom (%)').value='200'; get('Camera rotation (°)').value='90'; action('Add camera key');
+  ok(App.doc.cameraKeys.length===2 && App.doc.cameraKeys[1].frame===2 && Q.cameraPose(App.doc,1).x===36, 'second key drives eased intermediate camera pose');
+  action('Disable camera'); ok(!App.doc.cameraEnabled && App.doc.cameraKeys.length===2, 'camera can be disabled without losing keys'); action('Enable camera'); ok(App.doc.cameraEnabled, 'camera can be re-enabled');
+  get('Camera center X').value='40'; action('Update camera key'); ok(App.doc.cameraKeys[1].x===40, 'camera key can be edited without baking pixels');
+  Q.UI.closeModal(); App.undo(); ok(App.doc.cameraKeys[1].x===48, 'camera key edit is undoable'); App.redo(); ok(App.doc.cameraKeys[1].x===40, 'camera key edit is redoable');
+  Q.UI.cameraDialog(); click('#modalBody [aria-label="Go to camera key frame 1"]'); ok(App.doc.activeFrame===0 && doc.querySelector('#modalBody h2').textContent.includes('frame 1'), 'camera key list jumps to selected frame'); Q.UI.closeModal();
+  await App.saveNow(false); const loaded=await Q.Store.load(App.doc.id); ok(loaded.cameraEnabled && loaded.cameraKeys.length===2 && loaded.cameraKeys[1].x===40 && loaded.cameraKeys[0].easing==='in', 'camera track survives save and reopen');
+  const records=JSON.parse(win.localStorage.getItem('qalam-projects')), record=records[App.doc.id]; delete record.cameraKeys; delete record.cameraEnabled; win.localStorage.setItem('qalam-projects',JSON.stringify(records));
+  const legacy=await Q.Store.load(App.doc.id); ok(!legacy.cameraEnabled && legacy.cameraKeys.length===0, 'older projects load with no camera track');
+  await App.saveNow(false); const stored=JSON.parse(win.localStorage.getItem('qalam-projects')); stored[App.doc.id].cameraKeys.push({frame:999,x:1,y:1,zoom:1,angle:0,easing:'linear'},{frame:1,x:1,y:1,zoom:0,angle:0,easing:'linear'}); win.localStorage.setItem('qalam-projects',JSON.stringify(stored));
+  const cleaned=await Q.Store.load(App.doc.id); ok(cleaned.cameraKeys.length===2 && cleaned.cameraKeys.every(k=>k.frame<cleaned.frames.length), 'invalid and out-of-timeline camera keys are rejected on load');
+  const oldCameraComposite=App.doc.compositeCamera, used=[]; App.doc.compositeCamera=function(ctx,i){used.push(i);return oldCameraComposite.call(this,ctx,i);};
+  const oldGif=Q.encodeGif, oldSave=Q.saveBytes; Q.encodeGif=()=>Promise.resolve({dataUrl:'data:image/gif;base64,AAAA'}); Q.saveBytes=()=>true; App.exportGif({}); await wait(25);
+  ok(used.join(',')==='0,1,2', 'GIF export renders each frame through the camera');
+  used.length=0; App.doc.fps=30; App.exportMp4(); await wait(150); ok(used.join(',')==='0,1,2', 'silent MP4 export renders frames through the camera');
+  used.length=0; App.exportPng(); ok(used.length===0, 'PNG export remains in original canvas coordinates');
+  Q.encodeGif=oldGif; Q.saveBytes=oldSave; App.doc.compositeCamera=oldCameraComposite;
+  App.view.dirty=false; App.togglePlay(); App.view.dirty=false; App.stopPlay(); ok(App.view.dirty, 'stopping camera playback redraws the editable canvas');
+  Q.UI.cameraDialog(); action('Clear all camera keys'); ok(doc.querySelector('#modalBody h2').textContent.includes('Clear camera keys'), 'clearing all camera keys asks for confirmation'); click('#modalBody .btn.danger'); ok(App.doc.cameraKeys.length===0, 'confirmed clear removes all camera keys'); Q.UI.closeModal(); App.undo(); ok(App.doc.cameraKeys.length===2, 'undo restores cleared camera keys');
   }
 
   await App.saveNow(false);

@@ -46,6 +46,13 @@ The supplied feature inventory is a roadmap, not a list of completed work.
   confirm audibility or sync; exports need to be checked by the user. PNG and GIF are
   silent. There is no waveform, trimming, offsets or multiple-track mixing. Actual
   device format support, picker, playback and audio export need physical-device testing.
+- A global non-destructive camera track supports up to 60 saved/undoable editable
+  frame-position keys with center, zoom, rotation and outgoing easing. It applies to
+  playback and GIF/MP4 export but not the drawing view, PNGs or sprite sheets. The
+  dialog preview uses saved settings, not unsaved fields. Interpolation is by frame
+  index, not time/holds; keys stay at positions when artwork is inserted or reordered,
+  and keys outside a shortened timeline are removed (undo restores them). The camera
+  has no per-layer transforms, rigging or live graphical keyframe controls.
 - One saved freehand motion guide can generate translated raster cels along its
   path in forward or reverse direction, with linear, ease-in, ease-out and in-out
   easing. A chosen source cel is copied into an existing range on the current layer,
@@ -116,4 +123,4 @@ Apple Pencil-specific controls are not applicable on Android. See the original
 [Procreate analysis](procreate-analysis.md) for background; its feature matrix
 predates version 2.5.
 
-Editable keyframe tracks, IK, camera animation, morphing, particle animation and multiple-track audio mixing are not implemented. Path-based translation and two-pose transforms are available as limited baked cel-generation tools. Onion skins are available as ghost frames. The canvas is finite raster, not infinite or resolution-independent.
+Per-layer editable keyframe tracks, IK, morphing, particle animation and multiple-track audio mixing are not implemented. One global editable camera track is available. Path-based translation and two-pose transforms are available as limited baked cel-generation tools. Onion skins are available as ghost frames. The canvas is finite raster, not infinite or resolution-independent.

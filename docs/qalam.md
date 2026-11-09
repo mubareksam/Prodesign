@@ -8,11 +8,11 @@ brushes, layers with blend modes, a colour wheel, a frame timeline with onion sk
 Procreate's gesture vocabulary, PNG/GIF export and device-dependent MP4 export — all offline, with no account and
 no network permissions at all.
 
-- Package: `com.qalam.studio` · version 2.9 (versionCode 20)
+- Package: `com.qalam.studio` · version 3.0 (versionCode 21)
 - minSdk 26 (Android 8.0) · targetSdk 33 · armeabi-v7a/arm64/x86/x86_64 independent
   (everything is HTML/JS running inside the app's own `WebView`, so the APK has no
   native code)
-- APK: **`artifacts/Qalam-2.9.apk`** (~276 KB), signed with a v1+v2 scheme
+- APK: **`artifacts/Qalam-3.0.apk`** (~279 KB), signed with a v1+v2 scheme
 - The written analysis of Procreate that this app was specified from:
   [`docs/procreate-analysis.md`](procreate-analysis.md)
 
@@ -20,7 +20,7 @@ no network permissions at all.
 
 ## 1. Install
 
-1. Copy `artifacts/Qalam-2.9.apk` to the phone (USB, Drive, chat to yourself — anything).
+1. Copy `artifacts/Qalam-3.0.apk` to the phone (USB, Drive, chat to yourself — anything).
 2. Open it with the phone's file manager. Android will ask to allow installs from
    that app the first time ("Install unknown apps").
 3. Install and open **Qalam**. If an earlier Qalam version is already installed, Android should offer an update that preserves its data. Back up important artwork first. Android does not allow this app to silently uninstall itself; do not uninstall it unless you have backed up its local artwork.
@@ -147,6 +147,27 @@ Bottom bar: **Gallery · Layer · Brush · Colour · Timeline · Menu** (plus **
   this track on a compatible device; see the export instructions below. Local storage
   fallback may run out of space sooner when audio is saved; export and back up work
   regularly. The picker, playback and audio export need physical-device testing.
+- **Timeline → Guides & audio → Camera keyframes** — select a timeline frame,
+  open the camera button and add or update its key: center X/Y in canvas pixels,
+  zoom (25–400%), rotation (−1440° to 1440°), and easing to the next key. Add
+  keys at other frames by selecting them in the timeline; the key list can jump to
+  existing keys, and the frame strip marks them. Positive camera rotation is
+  clockwise, so the artwork appears to turn counterclockwise. Values interpolate
+  by frame number using the earlier key's easing; before the first key and after
+  the last, its pose holds. Rotation uses the entered angles directly, so full
+  turns are possible. Frame holds freeze the current pose and skipped frames are
+  not displayed in playback; neither changes the interpolation positions.
+  The camera can be disabled without deleting keys. Add, edit, delete, clear and
+  enable/disable are saved and undoable. The dialog preview shows **saved** settings,
+  not unsaved field edits. Playback, GIF, silent MP4 and audio MP4 render through
+  the camera; blank areas use the canvas background. While drawing, the canvas,
+  onion skins and tools use original coordinates. PNG, PNG sequence and sprite
+  sheet exports also use original uncropped frames. Camera keys belong to frame
+  **positions**, not frame identities: insertions and reordering change which
+  drawing is under a key; deletion drops keys that fall beyond the new timeline,
+  and undo restores them. Maximum 60 keys. This is one global camera track, not
+  per-layer live keyframes, an IK rig or a vector camera system. Zoom/rotation
+  resample raster pixels; large canvas/clipping projects need device testing.
 - **Timeline → Guides & audio category → Motion guide** — draw or replace one
   freehand path (up to 512 points), show/hide it, or clear it. The guide is saved,
   undoable and editor-only. To animate, choose **Generate motion along guide**:
@@ -315,7 +336,7 @@ tools/
   tests/pixel_integration.mjs real raster and animation export checks
   tests/gif_roundtrip.mjs    encodes a GIF and decodes it with an independent decoder
   tests/ui_smoke.mjs         jsdom boot + full UI drive (gallery -> export)
-artifacts/Qalam-2.9.apk           the signed, installable artefact
+artifacts/Qalam-3.0.apk           the signed, installable artefact
 docs/procreate-analysis.md   the Procreate study this app was built from
 docs/qalam.md                this file
 ```
@@ -345,7 +366,7 @@ Design notes worth knowing before changing code:
 
 ```bash
 bash tools/fetch-toolchain.sh     # once per machine: JVM, apktool, aapt2, jars, npm
-bash tools/build.sh               # -> artifacts/Qalam-2.9.apk (signed + verified)
+bash tools/build.sh               # -> artifacts/Qalam-3.0.apk (signed + verified)
 bash tools/check_reference.sh     # optional: javac-check the Java mirrors
 ```
 
@@ -380,7 +401,7 @@ install, not merely that a build command exited 0.
 
 ## 7. Known limits & roadmap
 
-This is not a full Procreate replacement. Canvas sizes are finite (up to 4096 px per side), and artwork is raster: magnification up to 64× reveals pixels rather than creating infinite detail. Layer groups, multi-track audio mixing, editable keyframe tracks, IK, camera animation, morphing and particles are not implemented. Audio-in-MP4 export is conditional on device support and requires physical-device testing. Path and two-pose transform animation generate raster cels rather than live keyframes. Onion skins provide ghost frames. Brush Studio edits existing presets only;
+This is not a full Procreate replacement. Canvas sizes are finite (up to 4096 px per side), and artwork is raster: magnification up to 64× reveals pixels rather than creating infinite detail. Layer groups, multi-track audio mixing, per-layer editable keyframe tracks, IK, morphing and particles are not implemented. A global editable camera track is available for animation playback and GIF/MP4 export. Audio-in-MP4 export is conditional on device support and requires physical-device testing. Path and two-pose transform animation generate raster cels rather than live keyframes. Onion skins provide ghost frames. Brush Studio edits existing presets only;
 custom tips/grains, dual brushes and import/export are not implemented. Guide
 snapping, adjustable vanishing-point placement, rectangle/arc QuickShape, imported
 image references, automatic selection, feathered masks, interactive

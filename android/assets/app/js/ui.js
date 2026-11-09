@@ -56,6 +56,7 @@
     next: '<path d="M18 5v14M6 6l8 6-8 6z"/>',
     onion: '<circle cx="9" cy="12" r="6"/><circle cx="15" cy="12" r="6"/>',
     audio: '<path d="M10 17V5l9-2v12"/><circle cx="7" cy="18" r="3"/><circle cx="16" cy="16" r="3"/>',
+    camera: '<rect x="3" y="6" width="18" height="13" rx="2"/><circle cx="12" cy="12.5" r="3.5"/><path d="M7 6l1.5-2h4L14 6"/>',
     tween: '<rect x="3" y="7" width="7" height="7" rx="1"/><path d="M12 12h4M14 10l2 2-2 2"/><rect x="17" y="5" width="4" height="4" rx="1" transform="rotate(25 19 7)"/>'
   };
 
@@ -1036,6 +1037,7 @@
       tool('Toggle onion skin',ICON.onion,function () { d.onion=!d.onion; app().view.dirty=true; app().markDirty(true); buildTimeline(); },d.onion);
     } else {
       tool('Motion guide',ICON.motion,function () { UI.motionGuideDialog(); });
+      tool('Camera keyframes',ICON.camera,function () { UI.cameraDialog(); },d.cameraEnabled && d.cameraKeys.length>0);
       tool('Generate transform frames',ICON.tween,function () { UI.transformBakeDialog(); });
       tool('Manage audio',ICON.audio,function () { UI.audioDialog(); });
     }
@@ -1053,8 +1055,9 @@
       b.appendChild(small);
       b.appendChild(Q.crel('span', 'n', String(i + 1) + ((fr.duration || 1) > 1 ? ' · ' + fr.duration + '×' : '')));
       if (fr.skipped) { const badge=Q.crel('span','frame-skipped','Skipped'); b.appendChild(badge); }
+      const cameraKey=d.cameraKeys.some(k=>k.frame===i); if (cameraKey) { const badge=Q.crel('span','camera-badge','Camera key'); b.appendChild(badge); }
       if (fr.group) { const tag = Q.crel('span', 'frame-group'); tag.textContent = fr.group; b.appendChild(tag); }
-      b.setAttribute('aria-label', 'Frame ' + (i + 1) + (fr.group ? ', group ' + fr.group : '') + (outside ? ', outside playback range' : '') + (fr.skipped ? ', skipped in playback' : ''));
+      b.setAttribute('aria-label', 'Frame ' + (i + 1) + (fr.group ? ', group ' + fr.group : '') + (outside ? ', outside playback range' : '') + (fr.skipped ? ', skipped in playback' : '') + (cameraKey ? ', camera keyframe' : ''));
       b.addEventListener('click', function () { app().selectFrame(i); });
       b.addEventListener('dblclick', function () { UI.frameSheet(i); });
       b.addEventListener('contextmenu', function (e) { e.preventDefault(); UI.frameSheet(i); });
@@ -1164,6 +1167,44 @@
       action('Remove audio',function () { UI.confirm('Remove audio?', 'The audio track can be restored with Undo.',function () { d.setAudioTrack(null); app().markDirty(); UI.refreshTimeline(); }); });
     }
     card.appendChild(actions); const close=Q.crel('button','btn ghost','Close'); close.addEventListener('click',function () { UI.closeModal(); }); card.appendChild(close); UI.openModal(card);
+  };
+
+  UI.cameraDialog = function () {
+    app().stopPlay(); const d=app().doc; if (!d) return;
+    const frame=d.activeFrame, existing=d.cameraKeys.find(k=>k.frame===frame), pose=existing || Q.cameraPose(d,frame);
+    const card=Q.crel('div'); card.appendChild(Q.crel('h2',null,'Camera keyframes · frame '+(frame+1)));
+    card.appendChild(Q.crel('p','sub','Add or edit a camera key on the selected frame. The camera is non-destructive: it affects playback, GIF and MP4, but editing and PNG/sprite exports remain uncropped. Keys attach to frame positions, not drawings.'));
+    const state=Q.crel('p','sub','Camera '+(d.cameraEnabled && d.cameraKeys.length ? 'on' : 'off or empty')+' · '+d.cameraKeys.length+' key'+(d.cameraKeys.length===1?'':'s')+(existing ? ' · this frame has a key' : ' · showing interpolated pose')); card.appendChild(state);
+    try {
+      const previewScale=192/Math.max(d.width,d.height), preview=Q.canvas(Math.max(1,Math.round(d.width*previewScale)),Math.max(1,Math.round(d.height*previewScale))), c=preview.getContext('2d');
+      c.fillStyle=d.bg; c.fillRect(0,0,preview.width,preview.height); c.save(); c.scale(preview.width/d.width,preview.height/d.height); d.compositeCamera(c,frame); c.restore();
+      preview.className='camera-preview'; preview.setAttribute('aria-label','Saved camera preview for current frame'); card.appendChild(preview);
+      card.appendChild(Q.crel('p','sub','Preview shows saved settings, not unsaved field changes.'));
+    } catch(e) { card.appendChild(Q.crel('p','sub','Camera preview could not be drawn on this device.')); }
+    const grid=Q.crel('div','transform-grid');
+    function field(label,value) { const row=Q.crel('div','transform-field'), text=Q.crel('label',null,label), input=Q.crel('input','select'); input.type='number'; input.step='any'; input.value=String(Math.round(value*100)/100); input.setAttribute('aria-label',label); row.appendChild(text); row.appendChild(input); grid.appendChild(row); return input; }
+    const x=field('Camera center X',pose.x), y=field('Camera center Y',pose.y), zoom=field('Camera zoom (%)',pose.zoom*100), angle=field('Camera rotation (°)',pose.angle); card.appendChild(grid);
+    const row=Q.crel('div','field studio-field'); row.appendChild(Q.crel('label',null,'Ease to next')); const easing=Q.crel('select'); easing.setAttribute('aria-label','Camera easing');
+    [['linear','Linear'],['in','Ease in'],['out','Ease out'],['inout','Ease in and out']].forEach(function (choice) { const option=Q.crel('option'); option.value=choice[0]; option.textContent=choice[1]; easing.appendChild(option); }); easing.value=pose.easing; row.appendChild(easing); card.appendChild(row);
+    card.appendChild(Q.crel('p','sub','Center is in canvas pixels; zoom 25–400%, rotation −1440° to 1440°. Positive rotation turns the camera clockwise, making artwork appear counterclockwise. Between keys, values interpolate by frame number using the earlier key’s easing. Holds and skips do not change interpolation.'));
+    const error=Q.crel('p','canvas-error'); error.setAttribute('role','alert'); card.appendChild(error);
+    function updated() { app().view.dirty=true; app().markDirty(); UI.refreshTimeline(); UI.cameraDialog(); }
+    const actions=Q.crel('div','menu-grid');
+    function button(label,fn) { const b=Q.crel('button','menu-item',label); b.addEventListener('click',fn); actions.appendChild(b); }
+    button(existing ? 'Update camera key' : 'Add camera key',function () {
+      if ([x,y,zoom,angle].some(v=>!v.value.trim() || !Number.isFinite(Number(v.value)))) { error.textContent='Enter a number in every camera field.'; return; }
+      const key={frame:frame,x:Number(x.value),y:Number(y.value),zoom:Number(zoom.value)/100,angle:Number(angle.value),easing:easing.value};
+      if (!d.setCameraKey(key)) { error.textContent='Center must be on the canvas, zoom 25–400%, rotation −1440° to 1440°; maximum 60 keys.'; return; }
+      updated(); Q.toast('Camera key saved · Undo to revert');
+    });
+    if (existing) button('Remove this camera key',function () { d.removeCameraKey(frame); updated(); });
+    if (d.cameraKeys.length) {
+      button(d.cameraEnabled ? 'Disable camera' : 'Enable camera',function () { d.setCameraEnabled(!d.cameraEnabled); updated(); });
+      button('Clear all camera keys',function () { UI.confirm('Clear camera keys?', 'All camera keys will be removed; undo can restore them.',function () { if (app().doc!==d) return; d.clearCameraKeys(); updated(); },'Clear'); });
+    }
+    card.appendChild(actions);
+    if (d.cameraKeys.length) { const label=Q.crel('h3','transform-heading','Jump to camera key'); card.appendChild(label); const keys=Q.crel('div','camera-key-list'); d.cameraKeys.forEach(function (k) { const b=Q.crel('button','chip','Frame '+(k.frame+1)); b.setAttribute('aria-label','Go to camera key frame '+(k.frame+1)); b.addEventListener('click',function () { UI.closeModal(); app().selectFrame(k.frame); UI.cameraDialog(); }); keys.appendChild(b); }); card.appendChild(keys); }
+    const close=Q.crel('button','btn ghost','Done'); close.addEventListener('click',function () { UI.closeModal(); }); card.appendChild(close); UI.openModal(card);
   };
 
   UI.motionGuideDialog = function () {

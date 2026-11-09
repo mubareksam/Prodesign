@@ -154,6 +154,13 @@
     c.fillRect(0, 0, doc.width, doc.height);
     c.restore();
 
+    // During playback show the non-destructive camera output without editing overlays.
+    if (Q.App && Q.App.playing && doc.cameraEnabled && doc.cameraKeys.length) {
+      doc.compositeCamera(c,doc.activeFrame);
+      c.lineWidth=1/this.scale; c.strokeStyle='rgba(255,255,255,0.12)'; c.strokeRect(0,0,doc.width,doc.height);
+      return;
+    }
+
     // Onion skins can appear beneath or above the current artwork.
     if (!doc.onionAbove) this._drawOnionSkins(c,doc);
     doc.composite(c, doc.activeFrame);
