@@ -571,6 +571,21 @@
     } catch (err) { Q.toast('Could not update frames on this device',4000); return false; }
   };
 
+  App.insertBlankFrames = function (after,count,hold) {
+    App.stopPlay(); const d=App.doc; if(!d || !d.insertBlankFrames(after,count,hold)) return false;
+    App.view.dirty=true; Q.UI.syncDoc(); Q.UI.refreshTimeline(); App.markDirty(); Q.toast('Blank frames inserted · Undo to remove'); return true;
+  };
+  App.clearCelRange = function (start,end) {
+    App.stopPlay(); const d=App.doc; if(!d) return 'No document';
+    const error=d.clearCelRange(start,end); if(error) return error;
+    App.view.dirty=true; Q.UI.syncDoc(); Q.UI.refreshTimeline(); App.markDirty(); Q.toast('Cels cleared · Undo to restore'); return null;
+  };
+  Q.findLabeledFrame = function (frames,current,label,direction) {
+    if(!Array.isArray(frames) || !frames.length || !Number.isInteger(current) || current<0 || current>=frames.length || typeof label!=='string' || !label || (direction!==1 && direction!==-1)) return -1;
+    for(let step=1;step<=frames.length;step++) { const index=(current+direction*step+frames.length)%frames.length; if(frames[index].group===label) return index; }
+    return -1;
+  };
+
   Q.playbackStats = function (doc) {
     const order=Q.playbackOrder(doc), ticks=order.reduce((sum,i)=>sum+(doc.frames[i].duration || 1),0);
     return {frames:Q.playableFrames(doc).length, ticks:ticks, seconds:ticks/Q.clamp(doc.fps,1,30)};

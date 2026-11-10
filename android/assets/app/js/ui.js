@@ -66,6 +66,7 @@
     railLayout: '<path d="M5 4v16M19 4v16M9 8h6M11 6L9 8l2 2M13 14h-4M13 12l2 2-2 2"/><circle cx="5" cy="8" r="2"/><circle cx="19" cy="16" r="2"/>',
     controls: '<path d="M4 7h16M4 17h16"/><circle cx="9" cy="7" r="2"/><circle cx="15" cy="17" r="2"/>',
     motion: '<path d="M4 18C4 7 9 6 12 12s5 6 8-6"/><circle cx="4" cy="18" r="2"/><circle cx="20" cy="6" r="2"/>',
+    findFrame: '<circle cx="10" cy="10" r="6"/><path d="M14.5 14.5L20 20M8 10h4M10 8v4"/>',
     frameOptions: '<rect x="3" y="4" width="18" height="16" rx="2"/><path d="M7 9h10M7 13h7M7 17h4"/>',
     batch: '<rect x="7" y="7" width="13" height="13" rx="2"/><path d="M4 16V5a1 1 0 011-1h11"/>',
     blankFrame: '<rect x="3" y="4" width="18" height="16" rx="2"/><path d="M12 8v8M8 12h8"/>',
@@ -1576,6 +1577,7 @@
     if (timelineCategory==='frames') {
       tool('Frame options',ICON.frameOptions,function () { UI.frameSheet(d.activeFrame); });
       tool('Batch frames',ICON.batch,function () { UI.batchFramesDialog(); });
+      tool('Find frame',ICON.findFrame,function () { UI.findFrameDialog(); });
       tool('Copy cel',ICON.copy,function () { UI.copyCelDialog(); });
       tool('Blank frame',ICON.blankFrame,function () { app().addFrame(false); });
       tool('Previous frame',ICON.previous,function () { app().selectFrame(Math.max(0,d.activeFrame-1)); });
@@ -1686,12 +1688,68 @@
       if (app().batchFrames(first-1,last-1,op,op==='label' ? label.value : ticks)) UI.closeModal();
     }); grid.appendChild(b); }
     action('Apply label','label'); action('Apply hold','hold'); action('Skip range','skip'); action('Include range','include'); action('Reverse range','reverse'); action('Duplicate range','duplicate'); card.appendChild(grid);
+    const extra=Q.crel('div','menu-grid');
+    const insert=Q.crel('button','menu-item'); insert.innerHTML=icon(ICON.blankFrame); insert.appendChild(document.createTextNode('Insert blank frames')); insert.addEventListener('click',function(){UI.insertBlankFramesDialog();}); extra.appendChild(insert);
+    const clearCels=Q.crel('button','menu-item'); clearCels.innerHTML=icon(ICON.clear); clearCels.appendChild(document.createTextNode('Clear cels in range')); clearCels.addEventListener('click',function(){UI.clearCelRangeDialog();}); extra.appendChild(clearCels); card.appendChild(extra);
     const del=Q.crel('button','btn danger','Delete range'); del.addEventListener('click',function () {
       const first=Number(start.value), last=Number(end.value);
       if (!start.value.trim() || !end.value.trim() || !Number.isInteger(first) || !Number.isInteger(last) || first<1 || last<first || last>d.frames.length || last-first+1>=d.frames.length) { error.textContent='Choose a valid range that leaves at least one frame.'; return; }
       UI.confirm('Delete frames '+first+'–'+last+'?', 'This removes all layers in these frames. You can undo this action.', function () { app().deleteFrameRange(first-1,last-1); });
     }); card.appendChild(del);
     const close=Q.crel('button','btn ghost','Close'); close.addEventListener('click',function () { UI.closeModal(); }); card.appendChild(close); UI.openModal(card);
+  };
+
+  UI.insertBlankFramesDialog = function () {
+    app().stopPlay(); const d=app().doc; if(!d) return; const originalFrames=d.frames.slice();
+    const card=Q.crel('div'); card.appendChild(Q.crel('h2',null,'Insert blank frames'));
+    card.appendChild(Q.crel('p','sub','Insert new blank frames with the chosen hold. Enter 0 to insert before the first frame. Playback range and camera/layer keys stay at their frame numbers, so their timing relative to drawings can change.'));
+    function field(label,value,min,max) { const row=Q.crel('div','field'); row.appendChild(Q.crel('label',null,label)); const input=Q.crel('input','select'); input.type='number'; input.min=min; input.max=max; input.step=1; input.value=value; input.setAttribute('aria-label',label); row.appendChild(input); card.appendChild(row); return input; }
+    const after=field('Insert after frame',d.activeFrame+1,0,d.frames.length), count=field('Number of blank frames',1,1,60), hold=field('New frame hold',1,1,60), error=Q.crel('p','canvas-error'); error.setAttribute('role','alert'); card.appendChild(error);
+    const actions=Q.crel('div','modal-actions'), cancel=Q.crel('button','btn ghost','Cancel'), insert=Q.crel('button','btn primary','Insert');
+    cancel.addEventListener('click',function(){ UI.batchFramesDialog(); }); insert.addEventListener('click',function(){
+      if(app().doc!==d || d.frames.length!==originalFrames.length || originalFrames.some((f,i)=>d.frames[i]!==f)) { error.textContent='Artwork or frames changed; reopen this dialog.'; return; }
+      const a=Number(after.value), n=Number(count.value), h=Number(hold.value);
+      if(!after.value.trim() || !count.value.trim() || !hold.value.trim() || !Number.isInteger(a) || a<0 || a>d.frames.length || !Number.isInteger(n) || n<1 || d.frames.length+n>60 || !Number.isInteger(h) || h<1 || h>60) { error.textContent='Enter a valid position, hold 1–60 and a count within the 60-frame limit.'; return; }
+      if(app().insertBlankFrames(a,n,h)) UI.closeModal(); else error.textContent='Could not insert frames.';
+    }); actions.appendChild(cancel); actions.appendChild(insert); card.appendChild(actions); UI.openModal(card); Q.el('#modalBody').scrollTop=0;
+  };
+
+  UI.clearCelRangeDialog = function () {
+    app().stopPlay(); const d=app().doc; if(!d) return; const layer=d.layer(), originalFrames=d.frames.slice();
+    const card=Q.crel('div'); card.appendChild(Q.crel('h2',null,'Clear cels in range'));
+    const description=Q.crel('p','sub'); description.textContent='Clear only the active layer ('+layer.name+') across an inclusive frame range, including skipped frames. Other layers, frame timing and metadata remain unchanged. Selection is ignored; undo restores the cels.'; card.appendChild(description);
+    function field(label,value) { const row=Q.crel('div','field'); row.appendChild(Q.crel('label',null,label)); const input=Q.crel('input','select'); input.type='number'; input.min=1; input.max=d.frames.length; input.step=1; input.value=value; input.setAttribute('aria-label',label); row.appendChild(input); card.appendChild(row); return input; }
+    const start=field('Clear first frame',1), end=field('Clear last frame',d.frames.length), error=Q.crel('p','canvas-error'); error.setAttribute('role','alert'); card.appendChild(error);
+    const actions=Q.crel('div','modal-actions'), cancel=Q.crel('button','btn ghost','Cancel'), clear=Q.crel('button','btn danger','Clear cels');
+    cancel.addEventListener('click',function(){UI.batchFramesDialog();}); clear.addEventListener('click',function(){
+      const a=Number(start.value), b=Number(end.value);
+      if(app().doc!==d || d.layer().id!==layer.id || d.frames.length!==originalFrames.length || originalFrames.some((f,i)=>d.frames[i]!==f)) { error.textContent='Artwork, layer or frames changed; reopen this dialog.'; return; }
+      if(!start.value.trim() || !end.value.trim() || !Number.isInteger(a) || !Number.isInteger(b) || a<1 || b<a || b>d.frames.length) { error.textContent='Enter a valid inclusive frame range.'; return; }
+      if(!d.layer().visible || d.layer().locked || d.layer().alphaLocked) { error.textContent='Show and unlock the layer and alpha first.'; return; }
+      if(!d.frames.slice(a-1,b).some(f=>!!f.cels[d.activeLayer])) { error.textContent='No cels to clear in this range.'; return; }
+      const frameRefs=d.frames.slice(a-1,b), li=d.activeLayer, celRefs=frameRefs.map(f=>f.cels[li]);
+      UI.confirm('Clear these cels?', 'This removes the active layer cels in frames '+a+'–'+b+'. Undo restores them.',function(){
+        if(app().doc!==d || d.activeLayer!==li || d.layer().id!==layer.id || frameRefs.some((f,i)=>d.frames[a-1+i]!==f || f.cels[li]!==celRefs[i])) { Q.toast('Artwork, layer or frames changed; reopen the dialog',4000); return; }
+        const result=app().clearCelRange(a-1,b-1); if(result) Q.toast(result,4000);
+      },'Clear cels');
+    }); actions.appendChild(cancel); actions.appendChild(clear); card.appendChild(actions); UI.openModal(card); Q.el('#modalBody').scrollTop=0;
+  };
+
+  UI.findFrameDialog = function () {
+    app().stopPlay(); const d=app().doc; if(!d) return;
+    const card=Q.crel('div'); card.appendChild(Q.crel('h2',null,'Find frame'));
+    card.appendChild(Q.crel('p','sub','Jump to a frame number or cycle through matching frame labels. Search includes skipped frames and frames outside the playback range; labels are tags, not groups.'));
+    const row=Q.crel('div','field'); row.appendChild(Q.crel('label',null,'Frame number')); const number=Q.crel('input','select'); number.type='number'; number.min=1; number.max=d.frames.length; number.step=1; number.value=d.activeFrame+1; number.setAttribute('aria-label','Frame number'); row.appendChild(number); card.appendChild(row);
+    const groupRow=Q.crel('div','field'); groupRow.appendChild(Q.crel('label',null,'Frame label')); const labels=Q.crel('select'); labels.setAttribute('aria-label','Frame label'); const groups=[...new Set(d.frames.map(f=>f.group).filter(g=>typeof g==='string' && g))].sort((a,b)=>a.localeCompare(b));
+    if(!groups.length) { const o=Q.crel('option'); o.value=''; o.textContent='No labels'; labels.appendChild(o); }
+    groups.forEach(function(g){ const o=Q.crel('option'); o.value=g; o.textContent=g; labels.appendChild(o); }); groupRow.appendChild(labels); card.appendChild(groupRow);
+    const status=Q.crel('p','canvas-error'); status.setAttribute('role','status'); card.appendChild(status);
+    function go(i) { if(app().doc!==d) { status.textContent='Artwork changed; reopen this dialog.'; return; } app().selectFrame(i); number.value=d.activeFrame+1; status.textContent='Frame '+(d.activeFrame+1)+' selected.'; }
+    const actions=Q.crel('div','palette-actions'), jump=Q.crel('button','btn primary','Go to frame'), prev=Q.crel('button','btn ghost','Previous label'), next=Q.crel('button','btn ghost','Next label'), close=Q.crel('button','btn ghost','Close');
+    jump.addEventListener('click',function(){const n=Number(number.value); if(!number.value.trim() || !Number.isInteger(n) || n<1 || n>d.frames.length) { status.textContent='Enter a frame number from 1 to '+d.frames.length+'.'; return; } go(n-1);});
+    function find(dir) { if(app().doc!==d) { status.textContent='Artwork changed; reopen this dialog.'; return; } const i=Q.findLabeledFrame(d.frames,d.activeFrame,labels.value,dir); if(i<0) status.textContent='No matching label.'; else go(i); }
+    prev.disabled=next.disabled=!groups.length; prev.addEventListener('click',function(){find(-1);}); next.addEventListener('click',function(){find(1);}); close.addEventListener('click',UI.closeModal);
+    [jump,prev,next,close].forEach(b=>actions.appendChild(b)); card.appendChild(actions); UI.openModal(card); Q.el('#modalBody').scrollTop=0;
   };
 
   UI.mp4Dialog = function () {
@@ -2022,7 +2080,7 @@
     card.appendChild(Q.crel('p', 'sub', 'A paint, sketch and frame-by-frame animation studio for Android. Artwork is stored on this device only — nothing is uploaded.'));
     card.appendChild(Q.crel('p', 'sub', 'Developed by Qmer'));
     card.appendChild(Q.crel('p', 'sub', 'ቀለም (qalam) means “pen” or “ink”.'));
-    card.appendChild(Q.crel('p', 'sub', 'Version 5.5'));
+    card.appendChild(Q.crel('p', 'sub', 'Version 5.6'));
     const actions = Q.crel('div', 'modal-actions');
     const close = Q.crel('button', 'btn primary', 'Close');
     close.addEventListener('click', function () { UI.closeModal(); });

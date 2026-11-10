@@ -1031,4 +1031,29 @@ console.log('5.5 palette extraction');
  ok(Q.sortPalette(['#0000ff','#777777','#ff0000'],'hue').join()==='#ff0000,#0000ff,#777777','palette hue sort places neutral colours last');
  ok(Q.sortPalette(['#ffffff','#111111','#888888'],'brightness').join()==='#111111,#888888,#ffffff','palette brightness sort orders by HSV value');
 }
+console.log('5.6 animation range editing');
+{
+ const d=new Q.Doc({width:8,height:8});
+ const first=d.activeCel(true); first.getContext('2d').fillStyle='#ff0000'; first.getContext('2d').fillRect(1,1,2,2);
+ d.addFrame(false); const second=d.activeCel(true); second.getContext('2d').fillStyle='#0000ff'; second.getContext('2d').fillRect(1,1,2,2); d.frames[1].duration=3; d.frames[1].group='Scene'; d.frames[1].skipped=true;
+ d.addLayer(); const other=d.activeCel(true); other.getContext('2d').fillStyle='#00ff00'; other.getContext('2d').fillRect(1,1,2,2); d.activeLayer=0;
+ d.setPlayRange(0,1); d.setCameraKey({frame:1,x:4,y:4,zoom:1,angle:0,easing:'linear'}); d.history.clear();
+ ok(!d.insertBlankFrames(-1,1,1) && !d.insertBlankFrames(0,59,1) && !d.insertBlankFrames(0,1,61) && d.history.undoStack.length===0,'invalid insertions are rejected without history');
+ ok(d.insertBlankFrames(1,2,4) && d.frames.length===4 && d.activeFrame===1 && d.frames[1].duration===4 && d.frames[2].duration===4 && d.frames[1].cels.every(c=>!c),'insertion adds sparse blank frames with hold and selects first');
+ ok(d.frames[3].cels[0]===second && d.frames[3].cels[1]===other && d.frames[3].skipped && d.frames[3].group==='Scene' && d.frames[3].duration===3,'insertion preserves shifted frame pixels, layers and metadata');
+ ok(d.playRange.end===1 && d.cameraKeys[0].frame===1,'insertion keeps playback range and keyframe positions fixed');
+ d.history.undo(); ok(d.frames.length===2 && d.frames[1].cels[0]===second && d.frames[1].cels[1]===other && d.playRange.end===1,'undo removes inserted frames and restores timeline');
+ d.history.redo(); ok(d.frames.length===4 && d.frames[3].cels[0]===second && d.frames[1].duration===4,'redo restores inserted frames');
+ d.history.clear(); const bad=d.clearCelRange(-1,1); ok(!!bad && d.history.undoStack.length===0,'invalid clear range produces no history');
+ d.layer().locked=true; ok(!!d.clearCelRange(0,3) && d.frames[0].cels[0]===first,'locked layer refuses clear'); d.layer().locked=false; d.layer().alphaLocked=true; ok(!!d.clearCelRange(0,3),'alpha lock refuses clear'); d.layer().alphaLocked=false; d.layer().visible=false; ok(!!d.clearCelRange(0,3),'hidden layer refuses clear'); d.layer().visible=true;
+ ok(d.clearCelRange(0,3)===null && !d.frames[0].cels[0] && !d.frames[3].cels[0] && d.frames[3].cels[1]===other && d.history.undoStack.length===1,'clear range affects only active layer including skipped frames in one history step');
+ ok(same(pixel(other,1,1),[0,255,0,255]) && d.frames[3].duration===3 && d.frames[3].group==='Scene','other layer pixels and frame metadata remain intact');
+ d.history.undo(); ok(same(pixel(d.frames[0].cels[0],1,1),[255,0,0,255]) && same(pixel(d.frames[3].cels[0],1,1),[0,0,255,255]),'clear undo restores original cel pixels'); d.history.redo(); ok(!d.frames[0].cels[0] && !d.frames[3].cels[0],'clear redo removes cels');
+ const history=d.history.undoStack.length; ok(!!d.clearCelRange(0,3) && d.history.undoStack.length===history,'empty clear range is a no-op');
+}
+{
+ const frames=[{group:'A'},{group:'B'},{group:'A',skipped:true},{group:''}];
+ ok(Q.findLabeledFrame(frames,0,'A',1)===2 && Q.findLabeledFrame(frames,0,'A',-1)===2 && Q.findLabeledFrame(frames,2,'A',1)===0,'label navigation wraps in both directions and includes skipped frames');
+ ok(Q.findLabeledFrame(frames,0,'B',1)===1 && Q.findLabeledFrame(frames,1,'B',1)===1 && Q.findLabeledFrame(frames,0,'missing',1)===-1 && Q.findLabeledFrame(frames,0,'A',0)===-1,'label navigation handles one or no match and invalid direction');
+}
 console.log(`all ${n} raster integration checks passed`);

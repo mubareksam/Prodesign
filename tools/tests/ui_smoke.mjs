@@ -450,7 +450,7 @@ async function run() {
 
   console.log('about');
   Q.UI.aboutSheet();
-  ok(doc.querySelector('#modalBody').textContent.includes('Developed by Qmer') && doc.querySelector('#modalBody').textContent.includes('Version 5.5'), 'About credits Qmer and shows current version');
+  ok(doc.querySelector('#modalBody').textContent.includes('Developed by Qmer') && doc.querySelector('#modalBody').textContent.includes('Version 5.6'), 'About credits Qmer and shows current version');
   Q.UI.closeModal();
 
   console.log('hardware back');
@@ -1520,6 +1520,27 @@ async function run() {
   const prior=Q.readSavedPalette().join(); proto.setItem=()=>{throw Error('quota');}; button('Extract layer colours').click(); ok(Q.readSavedPalette().join()===prior,'failed palette extraction save is atomic'); proto.setItem=original;
   Q.writeSavedPalette(Array.from({length:24},(_,i)=>'#'+i.toString(16).padStart(6,'0'))); button('Extract layer colours').click(); ok(Q.readSavedPalette().length===24,'extraction respects full palette capacity');
   Q.writeSavedPalette([]); App.createDoc(64,64,'Different palette target'); button('Extract layer colours').click(); ok(Q.readSavedPalette().length===0 && doc.querySelector('#toast').textContent.includes('Artwork changed'),'stale palette does not extract from a different artwork'); Q.extractCelColors=oldExtract; Q.UI.closeModal();
+  }
+
+  {
+  console.log('5.6 animation productivity');
+  const button=label=>[...doc.querySelectorAll('#modalBody button')].find(b=>b.textContent.trim()===label);
+  App.createDoc(64,64,'Animation tools'); const d=App.doc; d.activeCel(true); d.addFrame(false); d.activeCel(true); d.frames[0].group='<img src=x>'; d.frames[1].group='<img src=x>'; d.frames[1].skipped=true; d.history.clear();
+  Q.UI.batchFramesDialog(); ok(button('Insert blank frames') && button('Clear cels in range'),'batch panel exposes insertion and cel clearing'); button('Insert blank frames').click();
+  doc.querySelector('[aria-label="Insert after frame"]').value='0'; doc.querySelector('[aria-label="Number of blank frames"]').value='100'; button('Insert').click(); ok(d.frames.length===2 && doc.querySelector('.canvas-error').textContent.includes('60-frame'),'insertion dialog rejects exceeding frame limit');
+  doc.querySelector('[aria-label="Number of blank frames"]').value='2'; doc.querySelector('[aria-label="New frame hold"]').value='3'; button('Insert').click(); ok(d.frames.length===4 && d.frames[0].duration===3 && !d.frames[0].cels[0] && d.activeFrame===0,'insert dialog creates blank frames before first');
+  App.undo(); ok(d.frames.length===2 && d.frames[1].skipped && d.frames[0].cels[0],'insert undo restores existing drawings'); App.redo(); ok(d.frames.length===4 && d.frames[2].group==='<img src=x>','insert redo restores frames and labels');
+  Q.UI.findFrameDialog(); ok(doc.querySelector('[aria-label="Frame label"] option').textContent==='<img src=x>' && !doc.querySelector('[aria-label="Frame label"] img'),'frame labels are displayed safely as text');
+  button('Next label').click(); ok(d.activeFrame===2,'next label finds the next tagged frame'); button('Next label').click(); ok(d.activeFrame===3,'label navigation includes skipped frames'); button('Next label').click(); ok(d.activeFrame===2,'label navigation wraps');
+  doc.querySelector('[aria-label="Frame number"]').value='1'; button('Go to frame').click(); ok(d.activeFrame===0,'frame number navigation selects exact frame'); doc.querySelector('[aria-label="Frame number"]').value='99'; button('Go to frame').click(); ok(d.activeFrame===0 && doc.querySelector('#modalBody [role="status"]').textContent.includes('Enter a frame number'),'invalid frame number is rejected'); Q.UI.closeModal();
+  Q.UI.batchFramesDialog(); button('Clear cels in range').click(); doc.querySelector('[aria-label="Clear first frame"]').value='3'; doc.querySelector('[aria-label="Clear last frame"]').value='4'; button('Clear cels').click(); ok(d.frames[2].cels[0] && d.frames[3].cels[0] && doc.querySelector('#modalBody h2').textContent==='Clear these cels?','cel range clear requires confirmation'); click('#modalBody .btn.danger'); ok(!d.frames[2].cels[0] && !d.frames[3].cels[0] && d.frames[3].skipped,'confirmed clear removes current layer cels including skipped frame');
+  App.undo(); ok(d.frames[2].cels[0] && d.frames[3].cels[0],'clear can be undone'); App.redo(); ok(!d.frames[2].cels[0] && !d.frames[3].cels[0],'clear can be redone'); App.undo();
+  d.layer().locked=true; Q.UI.clearCelRangeDialog(); button('Clear cels').click(); ok(doc.querySelector('.canvas-error').textContent.includes('unlock') && d.frames[2].cels[0],'locked layer cannot be cleared'); d.layer().locked=false; button('Clear cels').click(); d.addLayer(); click('#modalBody .btn.danger'); ok(d.frames[2].cels[0] && doc.querySelector('#toast').textContent.includes('changed'),'stale clear confirmation cannot affect a different layer');
+  d.activeLayer=0; await App.saveNow(false); const loaded=await Q.Store.load(d.id); ok(loaded.frames.length===4 && loaded.frames[0].duration===3 && loaded.frames[3].skipped && loaded.frames[3].group==='<img src=x>' && !!loaded.frames[3].cels[0],'inserted frames and original artwork survive save and reopen');
+  Q.UI.insertBlankFramesDialog(); d.addFrame(false); button('Insert').click(); ok(doc.querySelector('.canvas-error').textContent.includes('frames changed'),'insertion rejects a stale frame list'); Q.UI.closeModal();
+  Q.UI.clearCelRangeDialog(); d.addFrame(false); button('Clear cels').click(); ok(doc.querySelector('.canvas-error').textContent.includes('frames changed'),'cel clear rejects a stale frame list before confirmation'); Q.UI.closeModal();
+  Q.UI.clearCelRangeDialog(); button('Clear cels').click(); const index=d.frames.findIndex(f=>f.cels[0]), otherIndex=d.frames.findIndex((f,i)=>i!==index && f.cels[0]), oldCel=d.frames[index].cels[0]; d.frames[index].cels[0]=null; click('#modalBody .btn.danger'); ok(d.frames[otherIndex].cels[0] && doc.querySelector('#toast').textContent.includes('changed'),'clear refuses when targeted cel changes after confirmation'); d.frames[index].cels[0]=oldCel;
+  Q.UI.findFrameDialog(); App.createDoc(64,64,'Different document'); button('Next label').click(); ok(doc.querySelector('#modalBody [role="status"]').textContent.includes('Artwork changed'),'frame navigator refuses a stale artwork'); Q.UI.closeModal();
   }
 
   await App.saveNow(false);

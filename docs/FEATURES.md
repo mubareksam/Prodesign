@@ -5,6 +5,18 @@ The supplied feature inventory is a roadmap, not a list of completed work.
 
 ## Available now
 
+- Insert multiple blank frames with a chosen hold, anywhere in the timeline, in
+  one undo step (60-frame limit). Existing frame pixels and metadata remain;
+  playback range and camera/layer keys remain at their numeric positions, so
+  their timing relative to drawings may change. Undo/redo restores the timeline.
+- Confirmed clear of the active layer's cels across an inclusive frame range,
+  including skipped frames, ignores selections and leaves other layers and frame
+  metadata alone. Hidden, locked and alpha-locked layers are refused. Undo keeps
+  the old cels in history; that retained memory is not a copy/export or backup.
+- Find frame jumps to a frame number or cycles through an exact saved frame label,
+  wrapping and including skipped/out-of-playback-range frames. Labels are tags,
+  not nested frame groups. Selection/navigation itself does not alter artwork.
+
 - Favorite built-in or custom brushes in Brush Studio; a Favorites filter and
   star marker identify them in the brush library. Favorites are device-local,
   not saved in artwork, and deleted custom brushes no longer appear in the list.

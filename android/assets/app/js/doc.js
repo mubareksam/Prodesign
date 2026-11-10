@@ -283,6 +283,20 @@
     }
     clearLayer(i) { if (i < 0 || i >= this.layers.length) return; if (this.layers[i].locked || this.layers[i].alphaLocked) { Q.toast('Unlock the layer and alpha first'); return; } return this.history.struct(function () { for (const f of this.frames) f.cels[i] = null; }); }
     addFrame(duplicate) { return this.history.struct(function () { const at = this.activeFrame+1; this.frames.splice(at,0,{ cels:duplicate ? this.cloneCels(this.frames[this.activeFrame].cels) : this.blankCels(), duration: duplicate ? (this.frames[this.activeFrame].duration || 1) : 1, group: duplicate ? (this.frames[this.activeFrame].group || '') : '', skipped: duplicate ? !!this.frames[this.activeFrame].skipped : false }); this.activeFrame=at; }); }
+    // Insert sparse blank frames without copying or changing existing cel pixels.
+    // Keys and playback range are positional, consistent with other frame edits.
+    insertBlankFrames(after,count,hold) {
+      if(!Number.isInteger(after) || after<0 || after>this.frames.length || !Number.isInteger(count) || count<1 || this.frames.length+count>60 || !Number.isInteger(hold) || hold<1 || hold>60) return false;
+      const blanks=Array.from({length:count},()=>({cels:this.blankCels(),duration:hold,group:'',skipped:false}));
+      this.history.struct(function(){ this.frames.splice(after,0,...blanks); this.activeFrame=after; }); return true;
+    }
+    clearCelRange(start,end) {
+      if(!Number.isInteger(start) || !Number.isInteger(end) || start<0 || end<start || end>=this.frames.length) return 'Invalid frame range';
+      const layer=this.layer(); if(!layer || !layer.visible) return 'Show the active layer first';
+      if(layer.locked || layer.alphaLocked) return 'Unlock the layer and alpha first';
+      const li=this.activeLayer; if(!this.frames.slice(start,end+1).some(f=>!!f.cels[li])) return 'No cels to clear in this range';
+      this.history.struct(function(){ for(let i=start;i<=end;i++) this.frames[i].cels[li]=null; }); return null;
+    }
     setFrameDuration(i, duration) { if (!this.frames[i]) return; return this.history.struct(function () { this.frames[i].duration = Q.clamp(Math.round(duration) || 1,1,60); }); }
     setFrameSkipped(i,skipped) { if (!this.frames[i] || !!this.frames[i].skipped === !!skipped) return; return this.history.struct(function () { this.frames[i].skipped=!!skipped; }); }
     setFrameGroup(i, group) { if (!this.frames[i]) return; const name = String(group || '').trim().slice(0, 32); if (this.frames[i].group === name) return; return this.history.struct(function () { this.frames[i].group = name; }); }
