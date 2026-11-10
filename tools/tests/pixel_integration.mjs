@@ -1152,7 +1152,7 @@ console.log('6.0 canvas mesh transforms');
  d.history.undo();App.view.selection={x:3,y:3,w:3,h:3};App.beginCanvasTransform();App.view.meshTransform.points=App.view.meshTransform.points.map(p=>({x:p.x+4,y:p.y}));const get=ctx.getImageData.bind(ctx);ctx.getImageData=()=>{throw Error('memory');};const r=App.applyCanvasTransform();ctx.getImageData=get;ok(r.error && pixel(c,4,4)[3]===alpha && !d.history.canUndo(),'readback failure leaves pixels and history unchanged');
 }
 {
- const d=setup();d.activeCel(true); App.view.selection={x:0,y:0,w:16,h:16,shape:'ellipse'};ok(App.beginCanvasTransform().error.includes('rectangular'),'mesh rejects nonrectangular selection'); App.view.selection=null; d.layer().alphaLocked=true;ok(App.beginCanvasTransform().error.includes('alpha'),'mesh rejects alpha-locked layers');
+ const d=setup();d.activeCel(true); App.view.selection=null; d.layer().alphaLocked=true;ok(App.beginCanvasTransform().error.includes('alpha'),'mesh rejects alpha-locked layers');
  const big=new Q.Doc({width:2048,height:2048});big.activeCel(true);App.doc=big;App.view={selection:null,locked:false};ok(App.beginCanvasTransform().error.includes('2 megapixels'),'mesh limits oversized sources before starting');
 }
 console.log('6.1 smooth resampling and preview');
@@ -1177,5 +1177,44 @@ console.log('6.1 smooth resampling and preview');
 }
 {
  const d=setup(),base=d.activeCel(true),bc=base.getContext('2d');bc.fillStyle='#f00';bc.fillRect(0,0,8,16);d.addLayer();const clip=d.activeCel(true);d.layer().clipped=true;d.layer().opacity=0.5;const p=Q.canvas(8,8);p.getContext('2d').fillStyle='#00f';p.getContext('2d').fillRect(0,0,8,8);const cv=Q.canvas(16,16);d.composite(cv.getContext('2d'),0,{previewIndex:1,previewCanvas:p});const inside=pixel(cv,3,3),outside=pixel(cv,12,3);ok(inside[0]>0 && inside[2]>0 && outside[3]===0 && d.activeCel(false)===clip,'temporary preview honors clipped base and layer opacity');
+}
+console.log('6.2 masked canvas transforms');
+for (const [name,sel] of [
+ ['ellipse',Q.ellipseSelection({x:1,y:1},{x:7,y:7},16,16)],
+ ['lasso',Q.lassoSelection([{x:1,y:1},{x:7,y:1},{x:1,y:7}],16,16)],
+ ['wand/run mask',{x:1,y:1,w:6,h:6,runs:[{x:1,y:1,w:2},{x:5,y:1,w:2},{x:1,y:2,w:2},{x:5,y:2,w:2},{x:2,y:4,w:3},{x:2,y:5,w:3}]}]
+]) {
+ const d=setup(),cel=d.activeCel(true),ctx=cel.getContext('2d');ctx.fillStyle='#ff0000';ctx.fillRect(1,1,6,6);ctx.fillStyle='#0000ff';ctx.fillRect(9,9,6,6);App.view.selection=sel;d.history.clear();const mask=Q.selectionMask(sel),original=[...ctx.getImageData(0,0,16,16).data];
+ ok(!App.beginCanvasTransform().error,name+' selection opens canvas transform');const t=App.view.meshTransform;t.sampling='nearest';t.points=t.points.map(p=>({x:p.x+8,y:p.y+8}));ok(!App.applyCanvasTransform().error,name+' transform applies');
+ let good=true;const target=App.view.selection,tm=Q.selectionMask(target);
+ for(let y=0;y<6;y++) for(let x=0;x<6;x++) {const chosen=!!mask[y*6+x],source=pixel(cel,x+1,y+1),dest=pixel(cel,x+9,y+9),tx=x+9-target.x,ty=y+9-target.y,selected=tx>=0 && ty>=0 && tx<target.w && ty<target.h && (!tm || !!tm[ty*target.w+tx]);if((chosen ? source[3]!==0 || dest[0]!==255 || !selected : source[0]!==255 || dest[2]!==255 || selected)) good=false;}
+ ok(good,name+' transform moves only selected pixels and retains the matching selection footprint');d.history.undo();ok(ctx.getImageData(0,0,16,16).data.every((v,i)=>v===original[i]),name+' transform undo restores exact source and destination');d.history.redo();ok(d.history.undoStack.length===1,name+' transform redo remains one history step');
+}
+{
+ const d=setup(),cel=d.activeCel(true),ctx=cel.getContext('2d');ctx.fillStyle='#f00';ctx.fillRect(3,3,6,6);App.view.selection={x:3,y:3,w:6,h:6};d.history.clear();App.beginCanvasTransform();const t=App.view.meshTransform;t.points[2].x+=3;t.points=Q.transformQuad(t.points);ok(!App.applyCanvasTransform().error && !!App.view.selection.runs,'distorted rectangle follows the actual non-rectangular footprint');
+}
+{
+ const d=setup();d.activeCel(true).getContext('2d').fillRect(1,1,6,6);const sel=Q.ellipseSelection({x:1,y:1},{x:7,y:7},16,16);App.view.selection=sel;d.history.clear();App.beginCanvasTransform();let t=App.view.meshTransform;t.points=t.points.map(p=>({x:p.x+4,y:p.y}));sel.ellipse.rx=1;ok(App.applyCanvasTransform().error && !d.history.canUndo(),'in-place selection change invalidates the pending transform');
+ App.view.selection=Q.ellipseSelection({x:1,y:1},{x:7,y:7},16,16);App.beginCanvasTransform();t=App.view.meshTransform;t.points=t.points.map(p=>({x:p.x+20,y:p.y}));ok(App.applyCanvasTransform().error.includes('empty') && !d.history.canUndo(),'moving the entire selected mask off-canvas is rejected atomically');
+}
+{
+ const r={x:0,y:0,w:128,h:128},mask=new Uint8Array(r.w*r.h);for(let y=0;y<128;y++)for(let x=0;x<128;x++)mask[y*128+x]=(x+y)%2;const p=Q.transformGrid(r);ok(Q.meshSelection(r,mask,p,r).error.includes('4096'),'fragmented transformed selections are rejected before edits');
+}
+{
+ const d=setup(),cel=d.activeCel(true),ctx=cel.getContext('2d');ctx.fillStyle='#f00';ctx.fillRect(1,1,6,6);App.view={doc:d,selection:Q.ellipseSelection({x:1,y:1},{x:7,y:7},16,16),locked:false,requestMeshPreview:Q.View.prototype.requestMeshPreview};App.beginCanvasTransform();const t=App.view.meshTransform;t.points=t.points.map(p=>({x:p.x+8,y:p.y+8}));App.view.requestMeshPreview();await new Promise(r=>setTimeout(r,200));ok(t.preview && pixel(t.preview,1,1)[0]===255 && pixel(t.preview,4,4)[3]===0 && pixel(t.preview,12,12)[0]===255 && pixel(t.preview,9,9)[3]===0,'preview respects ellipse mask and leaves unselected corner pixels');
+}
+{
+ const d=new Q.Doc({width:128,height:256});App.doc=d;App.view={selection:{x:0,y:0,w:128,h:128,runs:[]},locked:false};const c=d.activeCel(true);c.getContext('2d').fillRect(0,0,128,256);for(let y=0;y<128;y+=2)for(let x=0;x<128;x+=2)App.view.selection.runs.push({x,y,w:1});d.history.clear();ok(App.view.selection.runs.length===4096 && !App.beginCanvasTransform().error,'complex but valid selection can start transform');const t=App.view.meshTransform;t.points=Q.transformGrid({x:0,y:0,w:128,h:256});const err=App.applyCanvasTransform();ok(err.error && err.error.includes('4096') && !d.history.canUndo() && pixel(c,0,0)[3]===255 && pixel(c,1,1)[3]===255,'excessive transformed runs reject the whole operation without changing artwork');
+}
+{
+ const d=setup(),c=d.activeCel(true);App.view.selection=Q.ellipseSelection({x:1,y:1},{x:7,y:7},16,16);const old=Q.selectionMask;Q.selectionMask=()=>{throw Error('allocation');};const result=App.beginCanvasTransform();Q.selectionMask=old;ok(result.error && !d.history.canUndo() && !App.view.meshTransform && pixel(c,1,1)[3]===0,'mask allocation failure refuses to start without editing');
+}
+console.log('6.2 direct flip controls');
+{
+ const d=setup(),cel=d.activeCel(true),ctx=cel.getContext('2d');let im=ctx.createImageData(2,2);im.data.set([255,0,0,255,0,255,0,255,0,0,255,255,255,255,0,255]);ctx.putImageData(im,2,2);d.history.clear();App.view.selection={x:2,y:2,w:2,h:2};App.beginCanvasTransform();let t=App.view.meshTransform;t.sampling='nearest';t.flipX=true;ok(!App.applyCanvasTransform().error && same(pixel(cel,2,2),[0,255,0,255]) && same(pixel(cel,3,2),[255,0,0,255]),'horizontal flip changes pixels without moving handles');d.history.undo();ok(same(pixel(cel,2,2),[255,0,0,255]),'flip undo restores original');
+ App.view.selection={x:2,y:2,w:2,h:2};App.beginCanvasTransform();t=App.view.meshTransform;t.flipX=true;t.flipY=true;ok(!App.applyCanvasTransform().error && same(pixel(cel,2,2),[255,255,0,255]) && same(pixel(cel,3,3),[255,0,0,255]),'horizontal and vertical flips combine');
+}
+{
+ const d=setup(),cel=d.activeCel(true),ctx=cel.getContext('2d');ctx.fillStyle='#f00';ctx.fillRect(1,1,6,6);App.view.selection={x:1,y:1,w:6,h:6,runs:[{x:1,y:1,w:2},{x:1,y:2,w:2},{x:1,y:3,w:2},{x:1,y:4,w:2},{x:1,y:5,w:2},{x:1,y:6,w:6}]};d.history.clear();App.beginCanvasTransform();const t=App.view.meshTransform;t.flipX=true;t.sampling='nearest';ok(!App.applyCanvasTransform().error && pixel(cel,1,1)[3]===0 && pixel(cel,5,1)[0]===255 && pixel(cel,3,1)[0]===255,'masked flip cuts only selected source and composites onto untouched destination');const s=App.view.selection,m=Q.selectionMask(s);ok(!!m && !m[0] && !!m[5],'masked flip mirrors the hard selection footprint');
 }
 console.log(`all ${n} raster integration checks passed`);

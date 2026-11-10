@@ -77,7 +77,8 @@ The supplied feature inventory is a roadmap, not a list of completed work.
   selection; the result is a hard run mask with a bounding-box outline. Canvas
   size is capped at 4 megapixels and results at 4096 runs. Empty results are
   refused; select Deselect to clear. Magic wand still replaces. Non-rectangular
-  transforms remain unavailable; combining can briefly block on large masks.
+  standalone and numeric transforms remain rectangle-only, while Canvas transform
+  supports run masks; combining can briefly block on large masks.
 - Each device-local saved palette stores up to 24 unique colours; swatches can be
   added, selected, removed or cleared with confirmation. Palettes are not saved
   inside projects; text-based HEX transfer is available, but no palette file format
@@ -90,7 +91,8 @@ The supplied feature inventory is a roadmap, not a list of completed work.
 - Ellipse selection uses a native curved path, temporary across the open artwork;
   it clips painting, smudge, fill, effects and clipboard operations. It supports
   inversion subject to the existing 4 MP/4096-run limits. Non-rectangular flips
-  and transforms remain unavailable. Selection edges are not feathered.
+  and numeric transforms remain unavailable; Canvas transform supports the mask.
+  Selection edges are not feathered.
 - Layer colour tags (six colours or none) appear in the Layers list, are stored,
   undoable and copied with layers; they do not alter artwork or exports.
 - JPEG export flattens the current frame over the background at 50/75/90/100%
@@ -145,7 +147,8 @@ The supplied feature inventory is a roadmap, not a list of completed work.
   switching artwork. It does not toggle transparent export.
 - Invert rectangle, ellipse, lasso or wand selections into a hard run mask. It is temporary,
   has a bounding-box outline, and supports selection-clipped painting/fills/effects;
-  transforms remain rectangle-only. Empty inverse, >4-megapixel canvas or >4096
+  Canvas transform supports the mask; numeric transforms remain rectangle-only.
+  Empty inverse, >4-megapixel canvas or >4096
   runs are refused without changing the selection; lasso edges use a 50% threshold.
 - Light/dark interface appearance is saved locally and leaves artwork and exports
   unchanged; the workspace outside the canvas and system bars remain dark. Real
@@ -265,13 +268,13 @@ The supplied feature inventory is a roadmap, not a list of completed work.
   operation; history and existing cels consume additional memory.
 - Temporary rectangular, ellipse, freehand lasso and connected-colour magic-wand selections clip brushes, erasers, flood
   fill and effects. All support fill/clear and copy to a new layer. Rectangle-only
-  flips, 180° rotation and numeric move/scale are undoable; ellipse, lasso and wand transforms are
-  refused. Effects calculate within the bounding rectangle then mask output, so
+  flips, 180° rotation and numeric move/scale are undoable; Canvas transform supports
+  ellipse, lasso and wand masks, while the standalone numeric transforms do not. Effects calculate within the bounding rectangle then mask output, so
   blur can sample outside an ellipse, lasso or wand mask. Selections are not saved or feathered and the
   outline is not restored by pixel undo. A separate precise transform accepts numeric
   dimensions, centre offsets and free rotation with an approximate active-cel preview,
   smooth/nearest sampling and a 64 MiB temporary allocation limit. Its rotated selection
-  becomes an axis-aligned bounding box. No draggable handles or custom pivots.
+  becomes an axis-aligned bounding box. It has no draggable handles or custom pivots.
 - Layer solo saves and restores per-layer visibility in one undoable operation; it persists across save/reopen. Clipped solo keeps its base visible. Manual visibility edits made during solo are replaced on restoration; newly added layers are left unchanged. Solo affects exports and thumbnails while active.
 - Hold the colour swatch to swap the previous colour; drag still performs colour drop. The eraser button toggles an eraser or, on hold, creates a temporary copy of the current paint brush's texture and dynamics. Brush tray offers up to six device-local size presets shared across brushes.
 - Cut/copy/paste uses an internal session-only clipboard, supports rectangle, ellipse, lasso
@@ -303,18 +306,22 @@ The supplied feature inventory is a roadmap, not a list of completed work.
   frame. Copy one non-empty current-layer cel to a range of frames with confirmation
   and undo; allocation is capped at 64 MiB per operation and locked/alpha-locked
   layers are protected. Other layers and frame metadata are unchanged.
-- Canvas transform provides direct uniform/freeform scale, rotate, four-corner
-  distortion and a basic nine-point piecewise-affine warp, plus translation. Style
-  changes preserve the grid (distort corner moves rebuild the interior). A throttled
-  preview composites an approximate cel up to 384 px on its longest side. Smooth
-  alpha-aware bilinear and pixelated nearest sampling are available for full-resolution
-  Apply. It commits one undoable current-layer edit; undo does not restore selection.
+- Canvas transform supports rectangle, ellipse, lasso, wand and combined hard masks,
+  or the whole current cel. It provides direct uniform/freeform scale, rotate,
+  four-corner distortion, a basic nine-point warp, translation and horizontal/vertical
+  source flips. Styles and flips can be combined; a distort corner move rebuilds the
+  interior grid. A throttled preview composites an approximate cel up to 384 px on
+  its longest side; fine details may differ. Smooth alpha-aware bilinear or pixelated
+  nearest sampling apply at full resolution. One pixel undo step restores artwork,
+  not the temporary selection. The selected area follows as a hard nearest-sampled
+  footprint with a bounds-only outline; smooth edge pixels may extend outside it.
+  Empty or over-4096-run resulting selections are refused before any changes.
   Canvas gestures/drawing are disabled while open; other UI actions cancel it.
-  Rectangles or whole cels only; rejects folded meshes, hidden/locked/alpha-locked
-  layers and areas over 2 MP or the estimated 64 MiB buffer limit. Actual memory
-  may be higher; preview and final rendering can pause on the main thread. Edges
-  can alias, off-canvas pixels are cropped, and the preview can miss fine detail.
-  This is not perspective-correct or full Procreate warp.
+  Hidden/locked/alpha-locked layers and areas over 2 MP or the estimated 64 MiB
+  buffer limit are refused; smaller areas can also be refused. Actual memory may be
+  higher; preview and final rendering can pause on the main thread. Off-canvas
+  pixels are cropped, edges can alias, and this is not perspective-correct or full
+  Procreate warp. Numeric and standalone transforms still require rectangles.
 - Fill, colour drop and Magic wand share device-local active-layer/visible-layer sampling and connected/all-matching choices. Visible sampling composites the current frame without background or playback transforms; fill edits only the active layer, respects selection and alpha lock, and is undoable. Wand replaces the selection, with a 4096-run limit and bounds-only indicator. New modes have a 4 MP and estimated 64 MiB temporary-memory limit (actual memory can be higher) and may pause the main thread; they are not separately marked reference layers.
 - Effects have a small approximate, downsampled current-cel preview that updates with the strength slider; applying edits pixels, not a persistent live effect.
 - Undoable per-frame layer effects: Gaussian-like blur (three box passes), horizontal motion blur, sharpen,

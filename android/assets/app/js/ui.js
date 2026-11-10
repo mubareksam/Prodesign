@@ -1299,8 +1299,11 @@
     const status=Q.crel('div','mesh-status','Original artwork');status.setAttribute('role','status');panel.appendChild(status);v.meshTransform.statusNode=status;
     modes.addEventListener('change',function(){const t=v.meshTransform;if(!t)return;t.mode=modes.value;v.meshPointer=null;v.dirty=true;description.textContent=(modes.value==='warp' ? 'Drag any grid point to warp' : modes.value==='rotate' ? 'Drag corners to rotate around the centre' : modes.value==='distort' ? 'Drag corners to distort (rebuilds inner grid)' : modes.value==='freeform' ? 'Drag corners to resize freely' : 'Drag corners to scale uniformly')+'. Drag elsewhere to move. Preview is approximate; pixels change on Apply.';});
     quality.addEventListener('change',function(){if(v.meshTransform){v.meshTransform.sampling=quality.value;v.requestMeshPreview();}});
+    const flips=Q.crel('div','mesh-flips');flips.appendChild(Q.crel('span','mesh-quality-label','Flip source'));
+    function flipButton(label,key,vertical) {const b=Q.crel('button','mini-btn mesh-flip');b.type='button';b.innerHTML=icon(ICON.flip);if(vertical) b.querySelector('svg').style.transform='rotate(90deg)';b.setAttribute('aria-label',label);b.setAttribute('title',label);b.setAttribute('aria-pressed','false');b.addEventListener('click',function(){const t=v.meshTransform;if(!t)return;t[key]=!t[key];b.setAttribute('aria-pressed',String(t[key]));v.requestMeshPreview();});flips.appendChild(b);return b;}
+    const flipH=flipButton('Flip source horizontally','flipX',false),flipV=flipButton('Flip source vertically','flipY',true);panel.appendChild(flips);
     const buttons=Q.crel('div','mesh-buttons'),reset=Q.crel('button','btn ghost','Reset'),cancel=Q.crel('button','btn ghost','Cancel'),apply=Q.crel('button','btn primary','Apply');
-    reset.addEventListener('click',function(){if(v.meshTransform){v.meshTransform.points=Q.transformGrid(v.meshTransform.src);v.meshPointer=null;v.requestMeshPreview();v.dirty=true;}}); cancel.addEventListener('click',UI.cancelCanvasTransform);
+    reset.addEventListener('click',function(){if(v.meshTransform){v.meshTransform.points=Q.transformGrid(v.meshTransform.src);v.meshTransform.flipX=false;v.meshTransform.flipY=false;flipH.setAttribute('aria-pressed','false');flipV.setAttribute('aria-pressed','false');v.meshPointer=null;v.requestMeshPreview();v.dirty=true;}}); cancel.addEventListener('click',UI.cancelCanvasTransform);
     apply.addEventListener('click',function(){const r=app().applyCanvasTransform();if(r.error) {Q.toast(r.error,4000);return;} UI.cancelCanvasTransform();Q.toast('Transform applied · Undo to revert',3000);});
     buttons.appendChild(reset);buttons.appendChild(cancel);buttons.appendChild(apply);panel.appendChild(buttons);Q.el('#studio').appendChild(panel);
     meshOutside=function(e){if(!panel.contains(e.target) && e.target!==v.canvas) UI.cancelCanvasTransform();};document.addEventListener('pointerdown',meshOutside,true);
@@ -1310,7 +1313,7 @@
   UI.selectionDialog = function () {
     const v=app().view, d=app().doc; if (!d) return;
     const card=Q.crel('div'); card.appendChild(Q.crel('h2',null,'Selection & transform'));
-    card.appendChild(Q.crel('p','sub', v.selection ? (Q.complexSelection(v.selection) ? (v.selection.runs ? 'Masked selection. The dashed box shows bounds, not the exact selected pixels. Transforms require a rectangle.' : (v.selection.shape==='ellipse' ? 'Ellipse selected. Transforms currently require a rectangle.' : 'Lasso selected. Transforms currently require a rectangle.')) : 'Rectangle selected. Edits affect the current layer and frame.') : 'No selection. Flips and rotation use the whole current layer and frame.'));
+    card.appendChild(Q.crel('p','sub', v.selection ? (Q.complexSelection(v.selection) ? (v.selection.shape==='ellipse' ? 'Ellipse selected. ' : v.selection.points ? 'Lasso selected. ' : 'Masked selection. ' )+'Canvas transform supports this mask; the dashed box shows its bounds. The standalone flip, numeric move/scale and precise transform still require a rectangle.' : 'Rectangle selected. Edits affect the current layer and frame.') : 'No selection. Flips and rotation use the whole current layer and frame.'));
     card.appendChild(Q.crel('p','sub','The selection clips brushes, erasers, flood fill and effects. It is temporary and applies to the current layer and frame.'));
     const opRow=Q.crel('div','field'); opRow.appendChild(Q.crel('label',null,'Combine'));
     const op=Q.crel('select'); op.setAttribute('aria-label','Selection combination'); [['replace','Replace'],['add','Add to selection'],['subtract','Subtract from selection']].forEach(function(item){const o=Q.crel('option');o.value=item[0];o.textContent=item[1];op.appendChild(o);}); opRow.appendChild(op); card.appendChild(opRow);
@@ -2145,7 +2148,7 @@
     card.appendChild(Q.crel('p', 'sub', 'A paint, sketch and frame-by-frame animation studio for Android. Artwork is stored on this device only — nothing is uploaded.'));
     card.appendChild(Q.crel('p', 'sub', 'Developed by Qmer'));
     card.appendChild(Q.crel('p', 'sub', 'ቀለም (qalam) means “pen” or “ink”.'));
-    card.appendChild(Q.crel('p', 'sub', 'Version 6.1'));
+    card.appendChild(Q.crel('p', 'sub', 'Version 6.2'));
     const actions = Q.crel('div', 'modal-actions');
     const close = Q.crel('button', 'btn primary', 'Close');
     close.addEventListener('click', function () { UI.closeModal(); });

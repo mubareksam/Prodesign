@@ -4,20 +4,20 @@ Developed by **Qmer**. An offline painting and frame-animation studio for Androi
 brushes, layers, a colour wheel, a frame timeline with onion skin, Procreate's gesture
 vocabulary, and PNG/JPEG/GIF export. No account, no ads, no network permission.
 
-**Download:** [`Qelem-6.1.apk`](../artifacts/Qelem-6.1.apk) (~338 KB)
+**Download:** [`Qelem-6.2.apk`](../artifacts/Qelem-6.2.apk) (~339 KB)
 
 | | |
 |---|---|
 | Package | `com.qalam.studio` |
-| Version | 6.1 (versionCode 52) |
+| Version | 6.2 (versionCode 53) |
 | Requires | Android 8.0+ (minSdk 26), built for targetSdk 33 |
 | Permissions | `VIBRATE` only — no internet, no storage, no location |
 | Signing | APK Signature Scheme v1 + v2, self-signed with a public test key |
-| SHA-256 | `6e2f47880ec9fea6957d63d57aa7ab1d7160332bec41d26a5d66d3463747964b` |
+| SHA-256 | `7e702d0e0f0c76db0d7a5a802e2013d38387ad8b29187c8b68798e32feab5d77` |
 
 ## Install
 
-1. Download `Qelem-6.1.apk` to the phone (or copy it over USB).
+1. Download `Qelem-6.2.apk` to the phone (or copy it over USB).
 2. Open it from the file manager. Android will ask you to allow installs from that
    app the first time ("Install unknown apps") — allow it, then install.
 3. Open **Qelem**.
@@ -37,7 +37,8 @@ This is inspired by Procreate, not an exact copy.
 story presets and custom sizes from 64 to 4096 pixels per side; full-screen canvas with two-finger pan, pinch zoom and twist rotate.
 
 **Canvas transform** — drag on-canvas handles to move, scale, rotate, distort or
-apply a basic nine-point warp to the active cel or rectangular selection. A throttled,
+apply a basic nine-point warp to the active cel or a rectangular, ellipse, lasso or
+wand selection. Horizontal/vertical source flips combine with the other styles. A throttled,
 low-resolution artwork preview is approximate; Apply renders full-resolution pixels
 with Smooth or Pixelated sampling and undo restores pixels. Switching styles preserves
 the grid; a Distort corner move rebuilds its interior. This raster operation has a
@@ -71,7 +72,7 @@ Layer opacity is now in the three-dot menu rather than a sideways row drag.
 **Selection & transform** — temporary rectangle, ellipse or freehand lasso mask for brushes, erasers, fill
 and effects; fill, clear, flips, 180° rotation, numeric move and scale, and copy to
 new layer on the current frame. Pixel edits are undoable; selection outlines are not.
-Transforms currently require a rectangle. Precise transform provides numeric dimensions and rotation with an approximate preview; there are no draggable handles, feathering or custom pivots.
+Canvas transform supports these masks and draggable handles; precise and standalone transforms still require a rectangle. Precise transform provides numeric dimensions and rotation with an approximate preview. Selection feathering and custom pivots are not available.
 
 **Brushes** — 28 presets, including: Studio pen, Inking pen, Monoline, Technical pencil,
 6B pencil, Marker, Airbrush, Charcoal, Watercolour, Hard eraser, Soft eraser. Stylus

@@ -368,16 +368,25 @@
     if(t.previewTimer) return;
     t.previewTimer=setTimeout(()=>{
       t.previewTimer=0; if(this.meshTransform!==t || this.doc!==t.doc) return;
-      const d=t.doc, plan=Q.planMeshTransform(t.src,t.points,d.width,d.height);
+      const d=t.doc, plan=Q.planMeshTransform(t.src,t.points,d.width,d.height,t.flipX || t.flipY);
       if(plan.error) { t.preview=null; if(t.statusNode) t.statusNode.textContent=plan.error==='Nothing changed' ? 'Original artwork' : plan.error; this.dirty=true;return; }
       try {
         const factor=Math.min(1,384/Math.max(d.width,d.height)),pw=Math.max(1,Math.round(d.width*factor)),ph=Math.max(1,Math.round(d.height*factor)),sx=pw/d.width,sy=ph/d.height,src=t.src;
         const canvas=Q.canvas(pw,ph),c=canvas.getContext('2d');c.drawImage(t.cel,0,0,pw,ph);
         const sw=Math.max(1,Math.round(src.w*sx)),sh=Math.max(1,Math.round(src.h*sy)),crop=Q.canvas(sw,sh),cc=crop.getContext('2d');cc.drawImage(t.cel,src.x,src.y,src.w,src.h,0,0,sw,sh);
+        if(t.mask) {
+          if(!t.previewMask || t.previewMask.width!==sw || t.previewMask.height!==sh) {
+            const maskCanvas=Q.canvas(sw,sh),mc=maskCanvas.getContext('2d'),mi=mc.createImageData(sw,sh);
+            for(let y=0;y<sh;y++) for(let x=0;x<sw;x++) {const xx=Math.min(src.w-1,Math.floor((x+0.5)*src.w/sw)),yy=Math.min(src.h-1,Math.floor((y+0.5)*src.h/sh));mi.data[(y*sw+x)*4+3]=t.mask[yy*src.w+xx] ? 255 : 0;}
+            mc.putImageData(mi,0,0);t.previewMask=maskCanvas;
+          }
+          cc.globalCompositeOperation='destination-in';cc.drawImage(t.previewMask,0,0);cc.globalCompositeOperation='source-over';
+        }
         const pts=t.points.map(p=>({x:p.x*sx,y:p.y*sy}));
         const left=Math.max(0,Math.floor(Math.min(...pts.map(p=>p.x)))),top=Math.max(0,Math.floor(Math.min(...pts.map(p=>p.y)))),right=Math.min(pw,Math.ceil(Math.max(...pts.map(p=>p.x)))),bottom=Math.min(ph,Math.ceil(Math.max(...pts.map(p=>p.y))));
-        c.clearRect(src.x*sx,src.y*sy,src.w*sx,src.h*sy);
-        if(right>left && bottom>top) {const r={x:left,y:top,w:right-left,h:bottom-top},image=cc.getImageData(0,0,sw,sh),data=Q.rasterMesh(image,pts,r,t.sampling),warp=Q.canvas(r.w,r.h),wc=warp.getContext('2d'),output=wc.createImageData(r.w,r.h);output.data.set(data);wc.putImageData(output,0,0);c.drawImage(warp,r.x,r.y);}
+        if(t.mask) {c.save();c.globalCompositeOperation='destination-out';c.drawImage(t.previewMask,src.x*sx,src.y*sy,src.w*sx,src.h*sy);c.restore();}
+        else c.clearRect(src.x*sx,src.y*sy,src.w*sx,src.h*sy);
+        if(right>left && bottom>top) {const r={x:left,y:top,w:right-left,h:bottom-top},image=cc.getImageData(0,0,sw,sh),data=Q.rasterMesh(image,pts,r,t.sampling,{x:t.flipX,y:t.flipY}),warp=Q.canvas(r.w,r.h),wc=warp.getContext('2d'),output=wc.createImageData(r.w,r.h);output.data.set(data);wc.putImageData(output,0,0);c.drawImage(warp,r.x,r.y);}
         t.preview=canvas; if(t.statusNode) t.statusNode.textContent='Approximate preview · Apply for full resolution';
       } catch(err) {t.preview=null;if(t.statusNode) t.statusNode.textContent='Preview unavailable · grid only';}
       this.dirty=true;

@@ -829,22 +829,37 @@
     const d=App.doc,v=App.view; if(!d || !v || App.playing || v.locked) return {error:'Stop playback or the current operation first'};
     const layer=d.layer(),cel=d.activeCel(false),sel=v.selection;
     if(!layer || !layer.visible || layer.locked || layer.alphaLocked) return {error:'Show and unlock the layer and turn off alpha lock'};
-    if(!cel) return {error:'Draw on this layer first'}; if(sel && Q.complexSelection(sel)) return {error:'Use a rectangular selection'};
+    if(!cel) return {error:'Draw on this layer first'};
     const src=sel ? {x:sel.x,y:sel.y,w:sel.w,h:sel.h} : {x:0,y:0,w:d.width,h:d.height};
+    if(![src.x,src.y,src.w,src.h].every(Number.isInteger) || src.x<0 || src.y<0 || src.w<1 || src.h<1 || src.x+src.w>d.width || src.y+src.h>d.height) return {error:'Invalid selection bounds'};
     if(src.w*src.h>2*1024*1024) return {error:'Select an area up to 2 megapixels'};
-    v.meshTransform={doc:d,frame:d.frames[d.activeFrame],layer:layer,cel:cel,selection:sel,src:src,points:Q.transformGrid(src),mode:'uniform',sampling:'smooth',undo:d.history.undoStack.slice(),redo:d.history.redoStack.slice()}; v.dirty=true; return {};
+    try {
+      const mask=sel && Q.complexSelection(sel) ? Q.selectionMask(sel) : null;
+      if(mask && !mask.some(Boolean)) return {error:'Selection is empty'};
+      v.meshTransform={doc:d,frame:d.frames[d.activeFrame],layer:layer,cel:cel,selection:sel,selectionSignature:sel ? JSON.stringify(sel) : null,mask:mask,src:src,points:Q.transformGrid(src),mode:'uniform',sampling:'smooth',flipX:false,flipY:false,undo:d.history.undoStack.slice(),redo:d.history.redoStack.slice()}; v.dirty=true; return {};
+    } catch(err) {return {error:'Could not prepare the selection on this device'};}
   };
   App.applyCanvasTransform = function () {
     const d=App.doc,v=App.view,t=v && v.meshTransform;
-    if(!t || !d || t.doc!==d || d.frames[d.activeFrame]!==t.frame || d.layer()!==t.layer || d.activeCel(false)!==t.cel || v.selection!==t.selection || App.playing || v.locked || !t.layer.visible || t.layer.locked || t.layer.alphaLocked || (t.selection && ['x','y','w','h'].some(k=>t.selection[k]!==t.src[k])) || t.undo.length!==d.history.undoStack.length || t.redo.length!==d.history.redoStack.length || t.undo.some((e,i)=>d.history.undoStack[i]!==e) || t.redo.some((e,i)=>d.history.redoStack[i]!==e)) return {error:'Artwork changed; cancel and reopen transform'};
-    const plan=Q.planMeshTransform(t.src,t.points,d.width,d.height); if(plan.error) return plan;
+    if(!t || !d || t.doc!==d || d.frames[d.activeFrame]!==t.frame || d.layer()!==t.layer || d.activeCel(false)!==t.cel || v.selection!==t.selection || App.playing || v.locked || !t.layer.visible || t.layer.locked || t.layer.alphaLocked || (t.selection && JSON.stringify(t.selection)!==t.selectionSignature) || t.undo.length!==d.history.undoStack.length || t.redo.length!==d.history.redoStack.length || t.undo.some((e,i)=>d.history.undoStack[i]!==e) || t.redo.some((e,i)=>d.history.redoStack[i]!==e)) return {error:'Artwork changed; cancel and reopen transform'};
+    const plan=Q.planMeshTransform(t.src,t.points,d.width,d.height,t.flipX || t.flipY); if(plan.error) return plan;
     const r=plan.rect,src=t.src,ctx=t.cel.getContext('2d');
     try {
-      const image=ctx.getImageData(src.x,src.y,src.w,src.h), warped=Q.rasterMesh(image,t.points,r,t.sampling), warp=Q.canvas(r.w,r.h), wc=warp.getContext('2d'), output=wc.createImageData(r.w,r.h); output.data.set(warped); wc.putImageData(output,0,0);
-      const stage=Q.canvas(r.w,r.h), sc=stage.getContext('2d'); sc.drawImage(t.cel,r.x,r.y,r.w,r.h,0,0,r.w,r.h);sc.clearRect(src.x-r.x,src.y-r.y,src.w,src.h);sc.drawImage(warp,0,0);
-      const before=ctx.getImageData(r.x,r.y,r.w,r.h), after=sc.getImageData(0,0,r.w,r.h);
+      const result=t.selection ? Q.meshSelection(src,t.mask,t.points,r,{x:t.flipX,y:t.flipY}) : null;
+      if(result && result.error) return result;
+      const image=ctx.getImageData(src.x,src.y,src.w,src.h);
+      if(t.mask) for(let n=0;n<t.mask.length;n++) if(!t.mask[n]) {const i=n*4;image.data[i]=image.data[i+1]=image.data[i+2]=image.data[i+3]=0;}
+      const warped=Q.rasterMesh(image,t.points,r,t.sampling,{x:t.flipX,y:t.flipY}), warp=Q.canvas(r.w,r.h), wc=warp.getContext('2d'), output=wc.createImageData(r.w,r.h); output.data.set(warped); wc.putImageData(output,0,0);
+      const before=ctx.getImageData(r.x,r.y,r.w,r.h),stage=Q.canvas(r.w,r.h),sc=stage.getContext('2d');sc.putImageData(before,0,0);
+      if(t.mask) {
+        const base=sc.getImageData(0,0,r.w,r.h),data=base.data;
+        for(let y=0;y<src.h;y++) for(let x=0;x<src.w;x++) if(t.mask[y*src.w+x]) {const i=((src.y+y-r.y)*r.w+src.x+x-r.x)*4;data[i]=data[i+1]=data[i+2]=data[i+3]=0;}
+        sc.putImageData(base,0,0);
+      } else sc.clearRect(src.x-r.x,src.y-r.y,src.w,src.h);
+      sc.drawImage(warp,0,0);
+      const after=sc.getImageData(0,0,r.w,r.h);
       try {ctx.putImageData(after,r.x,r.y);} catch(err) {try {ctx.putImageData(before,r.x,r.y);} catch(ignore) {} throw err;}
-      d.history.push({type:'pixels',f:d.activeFrame,l:d.activeLayer,rect:r,before:before}); if(t.selection) v.selection=plan.bounds; v.dirty=true; App.markDirty(); return {};
+      d.history.push({type:'pixels',f:d.activeFrame,l:d.activeLayer,rect:r,before:before}); if(result) v.selection=result.selection; v.dirty=true; App.markDirty(); return {};
     } catch(err) { return {error:'Could not transform this area on this device'}; }
   };
 

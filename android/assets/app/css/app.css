@@ -770,3 +770,7 @@ button:focus-visible, input:focus-visible, select:focus-visible, summary:focus-v
 
 .mesh-quality-label { font-size:12px; color:#e3e3e7; }
 .mesh-status { grid-column:1 / -1; font-size:11px; color:#ffe39a; }
+
+.mesh-flips { grid-column:1 / -1; display:flex; gap:6px; align-items:center; }
+.mesh-flips .mesh-flip { width:40px; height:40px; color:#f4f4f8; border:1px solid #777; }
+.mesh-flips .mesh-flip[aria-pressed="true"] { background:#ffcf32; color:#1c1c1c; }

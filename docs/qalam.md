@@ -8,11 +8,11 @@ brushes, layers with blend modes, a colour wheel, a frame timeline with onion sk
 Procreate's gesture vocabulary, PNG/GIF export and device-dependent MP4 export — all offline, with no account and
 no network permissions at all.
 
-- Package: `com.qalam.studio` · version 6.1 (versionCode 52)
+- Package: `com.qalam.studio` · version 6.2 (versionCode 53)
 - minSdk 26 (Android 8.0) · targetSdk 33 · armeabi-v7a/arm64/x86/x86_64 independent
   (everything is HTML/JS running inside the app's own `WebView`, so the APK has no
   native code)
-- APK: **`artifacts/Qelem-6.1.apk`** (~338 KB), signed with a v1+v2 scheme
+- APK: **`artifacts/Qelem-6.2.apk`** (~339 KB), signed with a v1+v2 scheme
 - The written analysis of Procreate that this app was specified from:
   [`docs/procreate-analysis.md`](procreate-analysis.md)
 
@@ -20,7 +20,7 @@ no network permissions at all.
 
 ## 1. Install
 
-1. Copy `artifacts/Qelem-6.1.apk` to the phone (USB, Drive, chat to yourself — anything).
+1. Copy `artifacts/Qelem-6.2.apk` to the phone (USB, Drive, chat to yourself — anything).
 2. Open it with the phone's file manager. Android will ask to allow installs from
    that app the first time ("Install unknown apps").
 3. Install and open **Qelem**. If an earlier Qalam version is already installed, Android should offer an update that preserves its data. Back up important artwork first. Android does not allow this app to silently uninstall itself; do not uninstall it unless you have backed up its local artwork.
@@ -167,7 +167,8 @@ Android WebView touch and physical-device layout still need testing.
   no selection, the inverse is empty, the canvas exceeds 4 megapixels, or the
   result exceeds 4096 horizontal runs, the original selection is retained and a
   message appears. Inverse masks work for painting, fills, effects and copying;
-  transforms still require rectangles. A full-canvas inverse cannot be represented
+  Canvas transform supports these masks; the numeric and standalone transforms
+  still require rectangles. A full-canvas inverse cannot be represented
   as an empty selection because deselection means unrestricted editing.
 - **Actions → Preferences → Interface appearance** — switch between dark and
   light interface colours. Changes apply immediately and are saved on this device;
@@ -478,11 +479,15 @@ Android WebView touch and physical-device layout still need testing.
   editable keyframe track, a graphical preview, IK or a rigging system.
 - **Canvas transform** — open Selection & transform and choose Canvas transform.
   It uses the active cel on the current frame and either the rectangular selection
-  or the whole cel. Choose Uniform, Freeform, Rotate, Distort or Warp in the floating
+  or a rectangle, ellipse, lasso, wand or combined selection. Choose Uniform,
+  Freeform, Rotate, Distort or Warp in the floating
   bar. Drag a yellow corner to scale, rotate or distort; Warp exposes nine movable
-  grid points. Drag away from a handle to translate. Switching styles retains the
+  grid points. Drag away from a handle to translate. Use the horizontal and
+  vertical flip icons to mirror the source; both can be combined with other styles.
+  Switching styles retains the
   grid, so you can combine operations; a Distort corner drag recomputes the inner
-  grid from its corners. Reset restores the original grid and Cancel changes nothing.
+  grid from its corners. Reset restores the original grid and clears flips; Cancel
+  changes nothing.
   The canvas shows an **approximate** preview of the edited cel, capped at 384 pixels
   on its longest side and throttled during dragging; fine detail, edges and small
   selections may differ or disappear. Layer opacity, blend and clipping are applied.
@@ -490,15 +495,20 @@ Android WebView touch and physical-device layout still need testing.
   original pixels. Apply renders at full resolution with Smooth (bilinear,
   alpha-aware) or Pixelated (nearest-neighbour) resampling. Smooth sampling is not
   edge antialiasing and may soften or alias details. Apply changes the artwork once;
-  selection bounds are temporary and are not restored by undo. Tapping other UI
+  the selection follows the transformed hard-pixel footprint (including holes),
+  with a bounds-only outline; undo restores pixels but not the selection. Smooth
+  pixels at the edge can extend beyond the nearest-sampled selection mask.
+  Tapping other UI
   controls cancels the pending transform. Canvas pinch/pan, multi-touch shortcuts
   and drawing are unavailable while transforming; fit/zoom before opening it.
   Pixels outside the canvas are cropped and overlapping destination pixels are
   composited. This is a basic 3×3 piecewise-affine mesh, not projection-correct
   perspective or full Procreate warp. Folded/collapsed grids are rejected. Freeform
   scaling uses canvas axes; if opposite corners are aligned on an axis, that axis
-  cannot be scaled with that handle until the shape is rotated or adjusted. Only
-  rectangles or the whole cel; hidden, locked and alpha-locked layers are refused.
+  cannot be scaled with that handle until the shape is rotated or adjusted. Hidden,
+  locked and alpha-locked layers are refused. The transformed selection is refused
+  if empty or more than 4096 horizontal runs; the existing selection and pixels stay
+  unchanged. Mask edges are hard, and ellipse/lasso edges use a 50% threshold.
   The source and affected rectangle are limited to 2 megapixels and an estimated
   64 MiB of temporary buffers (actual memory can be higher); smaller areas may be
   refused. Preview and full-resolution rasterization run on the main thread and may
@@ -538,7 +548,8 @@ Android WebView touch and physical-device layout still need testing.
   bounding-box outline (not an exact outline) and are temporary, not artwork undo
   steps. Canvases over 4 megapixels, results over 4096 horizontal runs, and empty
   results are refused with the original selection intact. Deselect explicitly to
-  remove a selection; combined selections cannot be transformed as rectangles.
+  remove a selection; Canvas transform can transform the combined mask, but the
+  numeric/standalone transforms cannot.
   Large combinations may briefly pause while the mask is calculated.
 - **Actions → Create & edit → Selection & transform** — choose **Draw rectangle**
   and drag, **Draw ellipse** and drag its bounding box, **Draw lasso** and trace a
@@ -555,8 +566,8 @@ Android WebView touch and physical-device layout still need testing.
   Effects are calculated within the selection's bounding rectangle and masked on
   output; blur can sample pixels inside that rectangle but outside an ellipse, lasso or wand mask.
   Rectangular selections also support flips, 180° rotation and **Move / scale**.
-  These transforms do not support ellipse, lasso or wand masks and are refused instead of changing their
-  bounding rectangle. Move/scale uses numeric offsets and 25–400% scale anchored
+  These standalone transforms do not support ellipse, lasso or wand masks and are refused instead of changing their
+  bounding rectangle; Canvas transform supports these masks. Move/scale uses numeric offsets and 25–400% scale anchored
   at top left, without live preview; off-canvas content is cropped. With no
   selection, transforms use the current cel. Undo restores pixels, not the selection
   outline. **Precise transform** adds independent whole-pixel width and height,
@@ -713,7 +724,7 @@ tools/
   tests/gif_roundtrip.mjs    encodes a GIF and decodes it with an independent decoder
   tests/ui_smoke.mjs         jsdom boot + full UI drive (gallery -> export)
   tests/ui_layout_browser.mjs optional Chromium layout and interaction checks
-artifacts/Qelem-6.1.apk           the signed, installable artefact
+artifacts/Qelem-6.2.apk           the signed, installable artefact
 docs/procreate-analysis.md   the Procreate study this app was built from
 docs/qalam.md                this file
 ```
@@ -743,7 +754,7 @@ Design notes worth knowing before changing code:
 
 ```bash
 bash tools/fetch-toolchain.sh     # once per machine: JVM, apktool, aapt2, jars, npm
-bash tools/build.sh               # -> artifacts/Qelem-6.1.apk (signed + verified)
+bash tools/build.sh               # -> artifacts/Qelem-6.2.apk (signed + verified)
 bash tools/check_reference.sh     # optional: javac-check the Java mirrors
 ```
 

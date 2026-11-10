@@ -142,17 +142,17 @@
     return Array.from({length:9},(_,i)=>{const u=(i%3)/2,v=Math.floor(i/3)/2;return {x:(1-u)*(1-v)*corners[0].x+u*(1-v)*corners[1].x+(1-u)*v*corners[2].x+u*v*corners[3].x,y:(1-u)*(1-v)*corners[0].y+u*(1-v)*corners[1].y+(1-u)*v*corners[2].y+u*v*corners[3].y};});
   };
   Q.meshTriangles = function () { const a=[]; for(let y=0;y<2;y++) for(let x=0;x<2;x++) {const i=y*3+x; a.push([i,i+1,i+4],[i,i+4,i+3]);} return a; };
-  Q.planMeshTransform = function (src,pts,w,h) {
+  Q.planMeshTransform = function (src,pts,w,h,hasFlip) {
     if(!Array.isArray(pts) || pts.length!==9 || pts.some(p=>!p || !Number.isFinite(p.x) || !Number.isFinite(p.y) || Math.abs(p.x)>w*3 || Math.abs(p.y)>h*3)) return {error:'Invalid handles'};
     for(const [i,j,k] of Q.meshTriangles()) {const a=pts[i],b=pts[j],c=pts[k]; if((b.x-a.x)*(c.y-a.y)-(b.y-a.y)*(c.x-a.x)<0.05) return {error:'Handles cross or collapse; move them apart'};}
-    const original=Q.transformGrid(src); if(pts.every((p,i)=>Math.abs(p.x-original[i].x)<0.001 && Math.abs(p.y-original[i].y)<0.001)) return {error:'Nothing changed'};
+    const original=Q.transformGrid(src); if(!hasFlip && pts.every((p,i)=>Math.abs(p.x-original[i].x)<0.001 && Math.abs(p.y-original[i].y)<0.001)) return {error:'Nothing changed'};
     const minX=Math.floor(Math.min(src.x,...pts.map(p=>p.x))),minY=Math.floor(Math.min(src.y,...pts.map(p=>p.y))),maxX=Math.ceil(Math.max(src.x+src.w,...pts.map(p=>p.x))),maxY=Math.ceil(Math.max(src.y+src.h,...pts.map(p=>p.y)));
     const rect=Q.intersectRect({x:minX,y:minY,w:maxX-minX,h:maxY-minY},{x:0,y:0,w:w,h:h});
-    if(!rect || rect.w*rect.h>2*1024*1024 || src.w*src.h>2*1024*1024 || 8*src.w*src.h+32*rect.w*rect.h>64*1024*1024) return {error:'Transform exceeds the 2 MP or estimated 64 MiB limit; select a smaller area'};
+    if(!rect || rect.w*rect.h>2*1024*1024 || src.w*src.h>2*1024*1024 || 16*src.w*src.h+40*rect.w*rect.h>64*1024*1024) return {error:'Transform exceeds the 2 MP or estimated 64 MiB limit; select a smaller area'};
     const bounds=Q.intersectRect({x:Math.floor(Math.min(...pts.map(p=>p.x))),y:Math.floor(Math.min(...pts.map(p=>p.y))),w:Math.ceil(Math.max(...pts.map(p=>p.x)))-Math.floor(Math.min(...pts.map(p=>p.x))),h:Math.ceil(Math.max(...pts.map(p=>p.y)))-Math.floor(Math.min(...pts.map(p=>p.y)))},{x:0,y:0,w:w,h:h});
     return {rect:rect,bounds:bounds};
   };
-  Q.rasterMesh = function (source,pts,rect,sampling) {
+  Q.rasterMesh = function (source,pts,rect,sampling,flips) {
     const out=new Uint8ClampedArray(rect.w*rect.h*4), sw=source.width,sh=source.height, data=source.data;
     for(const [ia,ib,ic] of Q.meshTriangles()) {
       const a=pts[ia],b=pts[ib],c=pts[ic], det=(b.x-a.x)*(c.y-a.y)-(b.y-a.y)*(c.x-a.x);
@@ -160,8 +160,9 @@
       for(let y=y0;y<y1;y++) for(let x=x0;x<x1;x++) {
         const dx=x+0.5-a.x,dy=y+0.5-a.y, u=(dx*(c.y-a.y)-dy*(c.x-a.x))/det,v=((b.x-a.x)*dy-(b.y-a.y)*dx)/det;
         if(u< -1e-8 || v< -1e-8 || u+v>1+1e-8) continue;
-        const fx=((ia%3)*(1-u-v)+(ib%3)*u+(ic%3)*v)*sw/2, fy=(Math.floor(ia/3)*(1-u-v)+Math.floor(ib/3)*u+Math.floor(ic/3)*v)*sh/2, di=((y-rect.y)*rect.w+x-rect.x)*4;
-        if(sampling!=='smooth') { const sx=Math.min(sw-1,Math.max(0,Math.floor(fx))),sy=Math.min(sh-1,Math.max(0,Math.floor(fy))),si=(sy*sw+sx)*4;out[di]=data[si];out[di+1]=data[si+1];out[di+2]=data[si+2];out[di+3]=data[si+3]; }
+        let fx=((ia%3)*(1-u-v)+(ib%3)*u+(ic%3)*v)*sw/2, fy=(Math.floor(ia/3)*(1-u-v)+Math.floor(ib/3)*u+Math.floor(ic/3)*v)*sh/2; const di=((y-rect.y)*rect.w+x-rect.x)*4; if(flips && flips.x) fx=sw-fx; if(flips && flips.y) fy=sh-fy;
+        if(sampling==='mask') {const sx=Math.min(sw-1,Math.max(0,Math.floor(fx))),sy=Math.min(sh-1,Math.max(0,Math.floor(fy)));out[di+3]=!source.mask || source.mask[sy*sw+sx] ? 255 : 0;}
+        else if(sampling!=='smooth') { const sx=Math.min(sw-1,Math.max(0,Math.floor(fx))),sy=Math.min(sh-1,Math.max(0,Math.floor(fy))),si=(sy*sw+sx)*4;out[di]=data[si];out[di+1]=data[si+1];out[di+2]=data[si+2];out[di+3]=data[si+3]; }
         else {
           const xx=Math.max(0,Math.min(sw-1,fx-0.5)),yy=Math.max(0,Math.min(sh-1,fy-0.5)),x0=Math.floor(xx),y0=Math.floor(yy),x1=Math.min(sw-1,x0+1),y1=Math.min(sh-1,y0+1), tx=xx-x0,ty=yy-y0;
           const i00=(y0*sw+x0)*4,i10=(y0*sw+x1)*4,i01=(y1*sw+x0)*4,i11=(y1*sw+x1)*4,w00=(1-tx)*(1-ty)*data[i00+3],w10=tx*(1-ty)*data[i10+3],w01=(1-tx)*ty*data[i01+3],w11=tx*ty*data[i11+3],alpha=w00+w10+w01+w11;
@@ -171,4 +172,16 @@
     }
     return out;
   };
+  // Transform a hard selection mask using the same triangles as the artwork.
+  // Refuse empty or highly fragmented output before any artwork is modified.
+  Q.meshSelection = function (src,mask,pts,rect,flips) {
+    const rgba=Q.rasterMesh({width:src.w,height:src.h,mask:mask},pts,rect,'mask',flips),region=new Uint8Array(rect.w*rect.h);
+    for(let i=0;i<region.length;i++) if(rgba[i*4+3]) region[i]=2;
+    const selection=Q.selectionFromRegion(region,rect.w,rect.h,rect.x,rect.y);
+    if(!selection) return {error:'Transformed selection would be empty; move it back on canvas'};
+    if(selection.error) return {error:'Transformed selection is too complex (maximum 4096 runs)'};
+    if(selection.runs.length===selection.h && selection.runs.every(run=>run.x===selection.x && run.w===selection.w)) delete selection.runs;
+    return {selection:selection};
+  };
+
 })();
