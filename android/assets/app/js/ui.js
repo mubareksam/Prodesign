@@ -15,6 +15,8 @@
   let tray = null;
   let timelineOpen = false;
   let timelineCategory = 'frames';
+  let railPreferences={side:'left',position:50};
+  let railLayoutFrame=0;
   let wheelState = { hue: 210, sat: 0.1, val: 0.12, drag: null };
 
   function app() { return Q.App; }
@@ -49,6 +51,7 @@
     sparkle: '<path d="M12 3l1.8 5.2L19 10l-5.2 1.8L12 17l-1.8-5.2L5 10l5.2-1.8z"/>',
     swatch: '<rect x="4" y="4" width="16" height="16" rx="3"/><path d="M4 16l8-8 8 8"/>',
     gradient: '<rect x="4" y="4" width="16" height="16" rx="3"/><path d="M8 5v14M12 5v14M16 5v14"/>',
+    railLayout: '<path d="M5 4v16M19 4v16M9 8h6M11 6L9 8l2 2M13 14h-4M13 12l2 2-2 2"/><circle cx="5" cy="8" r="2"/><circle cx="19" cy="16" r="2"/>',
     controls: '<path d="M4 7h16M4 17h16"/><circle cx="9" cy="7" r="2"/><circle cx="15" cy="17" r="2"/>',
     motion: '<path d="M4 18C4 7 9 6 12 12s5 6 8-6"/><circle cx="4" cy="18" r="2"/><circle cx="20" cy="6" r="2"/>',
     frameOptions: '<rect x="3" y="4" width="18" height="16" rx="2"/><path d="M7 9h10M7 13h7M7 17h4"/>',
@@ -79,6 +82,7 @@
 
   UI.init = function () {
     const el = Q.el;
+    UI.applyRailPreferences(Q.Store.meta('railPreferences'),false);
 
     el('#btnNew').addEventListener('click', function () { UI.newCanvasDialog(); });
     el('#referenceClose').addEventListener('click', function () { UI.closeReference(); });
@@ -189,9 +193,14 @@
       if (e.target.id === 'modal') UI.closeModal();
     });
 
+    const timelineElement=el('#timeline');
+    timelineElement.addEventListener('animationend',function(e) { if(e.target===timelineElement) UI.scheduleRailLayout(); });
+    if(window.ResizeObserver) { if(UI.railObserver) UI.railObserver.disconnect(); UI.railObserver=new ResizeObserver(function(){ UI.scheduleRailLayout(); }); UI.railObserver.observe(el('#studio')); UI.railObserver.observe(el('#studio .topbar')); UI.railObserver.observe(timelineElement); }
+
     window.addEventListener('resize', function () {
       if (app().view) { app().view.resize(); app().view.dirty = true; }
       if (tray === 'color') buildColor();
+      UI.scheduleRailLayout();
     });
 
     // keyboard shortcuts for desktop testing
@@ -267,6 +276,7 @@
     const v = app().view;
     v.resize();
     v.fit();
+    UI.layoutRails();
     v.dirty = true;
     UI.syncDoc();
   };
@@ -292,8 +302,30 @@
     Q.el('#opacityVal').textContent = Math.round(v.opacity * 100);
     const sw = Q.el('#btnColor');
     sw.style.background = Q.rgbToHex(v.color);
+    const traySize=Q.el('#traySizeSlider'), trayOpacity=Q.el('#trayOpacitySlider');
+    if(traySize) { traySize.value=Math.round(v.size); Q.el('#traySizeValue').textContent=Math.round(v.size); }
+    if(trayOpacity) { trayOpacity.value=Math.round(v.opacity*100); Q.el('#trayOpacityValue').textContent=Math.round(v.opacity*100)+'%'; }
     Q.el('#btnBrush').classList.toggle('on', tray === 'brushes');
     Q.el('#btnEraser').classList.toggle('on',!!v.brush.eraser); Q.el('#btnEraser').setAttribute('aria-pressed',v.brush.eraser ? 'true' : 'false');
+  };
+
+  UI.applyRailPreferences = function (value, persist) {
+    railPreferences=Q.sanitizeRailPreferences(value); Q.el('#studio').setAttribute('data-slider-side',railPreferences.side);
+    if(persist) Q.Store.meta('railPreferences',railPreferences); UI.layoutRails();
+  };
+  UI.scheduleRailLayout = function () {
+    if (railLayoutFrame) return; railLayoutFrame=requestAnimationFrame(function(){ railLayoutFrame=0; UI.layoutRails(); });
+  };
+  UI.layoutRails = function () {
+    const studio=Q.el('#studio'); if(!studio || studio.classList.contains('hidden')) return;
+    const box=studio.getBoundingClientRect(), height=studio.clientHeight || box.height || window.innerHeight || 600;
+    const topBar=studio.querySelector('.topbar'), topRect=topBar.getBoundingClientRect();
+    let top=topBar.offsetHeight || (topRect.height && topRect.height<height/2 ? topRect.height : 52); top=Math.min(height,top+8);
+    let bottom=Math.max(top,height-8); const timeline=Q.el('#timeline');
+    if(timelineOpen && !timeline.classList.contains('hidden')) { const rect=timeline.getBoundingClientRect(), t=rect.top-box.top; if(rect.height>0 && Number.isFinite(t) && t<bottom) bottom=Math.max(top,t-8); }
+    const layout=Q.computeRailLayout(height,top,bottom,railPreferences.position), brush=studio.querySelector('.rail-left'), tools=studio.querySelector('.rail-right');
+    brush.style.top=layout.brushTop+'px'; tools.style.top=layout.toolsTop+'px'; brush.style.maxHeight=layout.available+'px'; tools.style.maxHeight=layout.available+'px';
+    ['size','opacity'].forEach(function(key) { const wrap=Q.el('#'+key+'Wrap'), input=Q.el('#'+key+'Slider'), span=layout.sliderHeight-28; wrap.style.height=layout.sliderHeight+'px'; input.style.width=span+'px'; input.style.left=((46-span)/2)+'px'; input.style.top=((layout.sliderHeight-44)/2)+'px'; });
   };
 
   UI.syncHistory = function () {
@@ -363,6 +395,11 @@
 
   function buildBrushes(root) {
     root.appendChild(trayHead('Brush library', [iconButton('Brush size presets',ICON.controls,function () { UI.sizePresetsDialog(); }),chip('Brush studio', false, function () { UI.brushStudio(); }, ICON.wrench)]));
+    function brushSlider(label,id,value,min,max,change) {
+      const row=Q.crel('div','field studio-field'); row.appendChild(Q.crel('label',null,label)); const input=Q.crel('input'); input.id=id+'Slider'; input.type='range'; input.min=min; input.max=max; input.value=value; input.setAttribute('aria-label',label); const out=Q.crel('div','val',value+(id==='trayOpacity'?'%':'')); out.id=id+'Value'; input.addEventListener('input',()=>change(Number(input.value))); row.appendChild(input); row.appendChild(out); root.appendChild(row);
+    }
+    brushSlider('Brush size in tray','traySize',Math.round(app().view.size),1,240,n=>app().setSize(n));
+    brushSlider('Brush opacity in tray','trayOpacity',Math.round(app().view.opacity*100),1,100,n=>app().setOpacity(n/100));
     const grid = Q.crel('div', 'brush-grid');
     Q.BRUSHES.forEach(function (b) {
       const card = Q.crel('button', 'brush-card' + (b.id === app().view.brush.id ? ' on' : ''));
@@ -861,7 +898,7 @@
       ['Transparent PNG frames',ICON.photo,()=>{UI.closeTray(); app().exportPngSequence(true);}], ['Export sprite sheet',ICON.photo,()=>UI.spriteSheetDialog()],
       ['Export MP4',ICON.film,()=>{UI.closeTray(); UI.mp4Dialog();}]
     ]);
-    group('Preferences', [ ['Pressure & smoothing',ICON.controls,()=>UI.pressurePreferences()] ]);
+    group('Preferences', [ ['Pressure & smoothing',ICON.controls,()=>UI.pressurePreferences()], ['Brush slider layout',ICON.railLayout,()=>UI.railPreferencesDialog()] ]);
     group('File & help', [ ['Save now',ICON.save,()=>app().saveNow(true)], ['Gestures & help',ICON.sparkle,()=>UI.helpSheet()], ['About Qalam',ICON.layers,()=>UI.aboutSheet()] ]);
 
     const info = Q.crel('div', 'layer-sub');
@@ -906,6 +943,16 @@
       const thumb = app().doc.thumbnail(app().doc.activeFrame, 260), cv = Q.el('#referenceCanvas');
       cv.width = thumb.width; cv.height = thumb.height; cv.getContext('2d').drawImage(thumb, 0, 0);
     }, 120);
+  };
+
+  UI.railPreferencesDialog = function () {
+    const card=Q.crel('div'); card.appendChild(Q.crel('h2',null,'Brush slider layout'));
+    card.appendChild(Q.crel('p','sub','Moves the brush button and size/opacity sliders together. Colour and layer tools move to the opposite edge. On short screens or with the timeline open, rails shorten and can scroll; the brush tray also contains horizontal sliders. Vertical positioning may have no effect when space is tight. Settings are saved on this device.'));
+    const row=Q.crel('div','field studio-field'); row.appendChild(Q.crel('label',null,'Slider side')); const side=Q.crel('select'); side.setAttribute('aria-label','Brush slider side'); [['left','Left'],['right','Right']].forEach(v=>{const option=Q.crel('option'); option.value=v[0]; option.textContent=v[1]; side.appendChild(option);}); side.value=railPreferences.side; row.appendChild(side); card.appendChild(row);
+    const positionRow=Q.crel('div','field studio-field'); positionRow.appendChild(Q.crel('label',null,'Vertical position')); const position=Q.crel('input'); position.type='range'; position.min=0; position.max=100; position.value=railPreferences.position; position.setAttribute('aria-label','Brush slider vertical position'); position.title='0% top, 100% bottom'; const output=Q.crel('div','val',position.value+'%'); positionRow.appendChild(position); positionRow.appendChild(output); card.appendChild(positionRow);
+    function change(){ UI.applyRailPreferences({side:side.value,position:Number(position.value)},true); output.textContent=position.value+'%'; }
+    side.addEventListener('change',change); position.addEventListener('input',change);
+    const actions=Q.crel('div','modal-actions'), reset=Q.crel('button','btn ghost','Reset'), done=Q.crel('button','btn primary','Done'); reset.addEventListener('click',function(){ UI.applyRailPreferences(null,true); UI.railPreferencesDialog(); }); done.addEventListener('click',()=>UI.closeModal()); actions.appendChild(reset); actions.appendChild(done); card.appendChild(actions); UI.openModal(card);
   };
 
   UI.pressurePreferences = function () {
@@ -1177,6 +1224,7 @@
     el.classList.toggle('hidden', !timelineOpen);
     Q.el('#btnTimeline').classList.toggle('on', timelineOpen);
     if (timelineOpen) buildTimeline();
+    UI.scheduleRailLayout();
   };
 
   function buildTimeline() {
@@ -1249,7 +1297,7 @@
     scrub.addEventListener('change',function () { app().selectFrame(Number(scrub.value)-1); });
     scrubRow.appendChild(scrub); scrubRow.appendChild(readout); el.appendChild(scrubRow);
     const stats=Q.playbackStats(d), timing=Q.crel('div','tl-timing',stats.frames ? stats.frames+' included · '+stats.ticks+' ticks · '+stats.seconds.toFixed(2)+' s estimated per cycle' : 'No included frames in playback range');
-    timing.setAttribute('aria-label','Playback timing'); el.appendChild(timing);
+    timing.setAttribute('aria-label','Playback timing'); el.appendChild(timing); UI.scheduleRailLayout();
   }
 
   UI.highlightFrame = function (i) {

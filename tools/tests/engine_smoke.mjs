@@ -81,6 +81,16 @@ function ok(cond, label) {
   console.log('  ✓ ' + label);
 }
 
+console.log('responsive brush rails');
+const rails0=Q.computeRailLayout(800,60,792,0), rails100=Q.computeRailLayout(800,60,792,100);
+ok(rails0.brushTop===60 && rails100.brushTop+rails100.brushHeight===792 && rails0.sliderHeight===156, 'rail position stays inside the portrait workspace');
+const compact=Q.computeRailLayout(320,60,312,50);
+ok(compact.sliderHeight===93 && compact.brushHeight<=compact.available && compact.toolsHeight<=compact.available, 'short screens compact the slider rail and constrain tool rails');
+const crowded=Q.computeRailLayout(320,60,140,50);
+ok(crowded.sliderHeight===80 && crowded.brushHeight===80 && crowded.toolsHeight===80, 'very short workspace constrains rails for scrolling');
+const sane=Q.sanitizeRailPreferences({side:'other',position:Infinity}), clamped=Q.sanitizeRailPreferences({side:'right',position:-10});
+ok(sane.side==='left' && sane.position===50 && clamped.side==='right' && clamped.position===0, 'saved rail preferences are sanitized');
+
 console.log('document + layers');
 const doc = new Q.Doc({ width: 128, height: 128, name: 'test' });
 ok(doc.layers.length === 1, 'starts with one layer');

@@ -8,11 +8,11 @@ brushes, layers with blend modes, a colour wheel, a frame timeline with onion sk
 Procreate's gesture vocabulary, PNG/GIF export and device-dependent MP4 export — all offline, with no account and
 no network permissions at all.
 
-- Package: `com.qalam.studio` · version 3.8 (versionCode 29)
+- Package: `com.qalam.studio` · version 3.9 (versionCode 30)
 - minSdk 26 (Android 8.0) · targetSdk 33 · armeabi-v7a/arm64/x86/x86_64 independent
   (everything is HTML/JS running inside the app's own `WebView`, so the APK has no
   native code)
-- APK: **`artifacts/Qalam-3.8.apk`** (~297 KB), signed with a v1+v2 scheme
+- APK: **`artifacts/Qalam-3.9.apk`** (~299 KB), signed with a v1+v2 scheme
 - The written analysis of Procreate that this app was specified from:
   [`docs/procreate-analysis.md`](procreate-analysis.md)
 
@@ -20,7 +20,7 @@ no network permissions at all.
 
 ## 1. Install
 
-1. Copy `artifacts/Qalam-3.8.apk` to the phone (USB, Drive, chat to yourself — anything).
+1. Copy `artifacts/Qalam-3.9.apk` to the phone (USB, Drive, chat to yourself — anything).
 2. Open it with the phone's file manager. Android will ask to allow installs from
    that app the first time ("Install unknown apps").
 3. Install and open **Qalam**. If an earlier Qalam version is already installed, Android should offer an update that preserves its data. Back up important artwork first. Android does not allow this app to silently uninstall itself; do not uninstall it unless you have backed up its local artwork.
@@ -79,6 +79,15 @@ Bottom bar: **Gallery · Layer · Brush · Colour · Timeline · Menu** (plus **
   zero leaves its own setting alone. Both settings apply to brushes and erasers,
   are stored on the device, and leave brush presets and existing pixels unchanged.
   High smoothing can add lag; supported pressure depends on the device/stylus.
+- **Actions → Preferences → Brush slider layout** — choose whether the brush
+  button and size/opacity sliders sit on the left or right, and set their vertical
+  position. Colour, fill, eraser and layer buttons move to the opposite edge so
+  the rails do not overlap. Changes apply immediately and are saved on the device;
+  Reset returns to left and centred. On shorter screens or with the timeline open,
+  rails shrink and may scroll vertically; positioning has less effect when there is
+  little spare space. The brush tray also provides horizontal size and opacity
+  sliders as an alternative. Screen layout and touch scrolling need physical-device
+  testing, especially in landscape with the timeline open.
 - **Colour tray** — HSB wheel with a value/saturation square, HEX entry, 24 swatches
   and the 12 most recent colours. Hold the top colour swatch still, then release,
   to swap the current and previous colours. Moving it instead still starts colour
@@ -455,7 +464,7 @@ tools/
   tests/pixel_integration.mjs real raster and animation export checks
   tests/gif_roundtrip.mjs    encodes a GIF and decodes it with an independent decoder
   tests/ui_smoke.mjs         jsdom boot + full UI drive (gallery -> export)
-artifacts/Qalam-3.8.apk           the signed, installable artefact
+artifacts/Qalam-3.9.apk           the signed, installable artefact
 docs/procreate-analysis.md   the Procreate study this app was built from
 docs/qalam.md                this file
 ```
@@ -485,7 +494,7 @@ Design notes worth knowing before changing code:
 
 ```bash
 bash tools/fetch-toolchain.sh     # once per machine: JVM, apktool, aapt2, jars, npm
-bash tools/build.sh               # -> artifacts/Qalam-3.8.apk (signed + verified)
+bash tools/build.sh               # -> artifacts/Qalam-3.9.apk (signed + verified)
 bash tools/check_reference.sh     # optional: javac-check the Java mirrors
 ```
 

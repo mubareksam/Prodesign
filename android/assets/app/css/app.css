@@ -474,3 +474,11 @@ select, .select {
 .reference-actions svg { width: 19px; height: 19px; }
 
 .precision-preview { display: block; max-width: 100%; margin: 10px auto; border-radius: 8px; background: repeating-conic-gradient(#41414b 0% 25%, #292932 0% 50%) 0 0 / 16px 16px; }
+
+/* Brush controls can swap sides and scroll in a short workspace. */
+#studio[data-slider-side="right"] .rail-left { left: auto; right: 10px; }
+#studio[data-slider-side="right"] .rail-right { right: auto; left: 10px; }
+.rail { transform: none; overflow-y: auto; overflow-x: hidden; overscroll-behavior: contain; scrollbar-width: none; }
+.rail::-webkit-scrollbar { display: none; }
+.rail-btn, .swatch, .vslider { flex: none; }
+.vslider input[type=range] { touch-action: none; }

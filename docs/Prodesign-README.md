@@ -4,12 +4,12 @@ Developed by **Qmer**. An offline painting and frame-animation studio for Androi
 brushes, layers, a colour wheel, a frame timeline with onion skin, Procreate's gesture
 vocabulary, and PNG/GIF export. No account, no ads, no network permission.
 
-**Download:** [`Qalam-3.8.apk`](../artifacts/Qalam-3.8.apk) (~297 KB)
+**Download:** [`Qalam-3.9.apk`](../artifacts/Qalam-3.9.apk) (~299 KB)
 
 | | |
 |---|---|
 | Package | `com.qalam.studio` |
-| Version | 3.8 (versionCode 29) |
+| Version | 3.9 (versionCode 30) |
 | Requires | Android 8.0+ (minSdk 26), built for targetSdk 33 |
 | Permissions | `VIBRATE` only — no internet, no storage, no location |
 | Signing | APK Signature Scheme v1 + v2, self-signed with a public test key |
@@ -17,7 +17,7 @@ vocabulary, and PNG/GIF export. No account, no ads, no network permission.
 
 ## Install
 
-1. Download `Qalam-3.8.apk` to the phone (or copy it over USB).
+1. Download `Qalam-3.9.apk` to the phone (or copy it over USB).
 2. Open it from the file manager. Android will ask you to allow installs from that
    app the first time ("Install unknown apps") — allow it, then install.
 3. Open **Qalam**.
@@ -44,7 +44,9 @@ stroke never darkens where it crosses itself.
 current cel; paste creates a new top layer on the current frame at the original
 coordinates. The Qalam-only clipboard is temporary and does not share with Android.
 
-**Preferences and reference** — global stylus pressure curve and extra smoothing
+**Preferences and reference** — move the brush sliders to either side and adjust their
+vertical position; horizontal size and opacity sliders are also in the brush tray.
+Global stylus pressure curve and extra smoothing
 apply to future strokes without changing individual brush presets. The reference
 panel can temporarily show a picked image; it is not saved or exported.
 

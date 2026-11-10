@@ -1137,6 +1137,38 @@ async function run() {
   Q.UI.quickEditDialog(); choose('Clear clipboard'); ok(!App.clipboard,'clipboard can be cleared explicitly');
   }
 
+  {
+  console.log('3.9 brush slider layout');
+  App.createDoc(64,64,'Layout'); const studio=doc.querySelector('#studio'), bar=studio.querySelector('.topbar'), timeline=doc.querySelector('#timeline'), brush=studio.querySelector('.rail-left'), tools=studio.querySelector('.rail-right');
+  if (!timeline.classList.contains('hidden')) Q.UI.toggleTimeline();
+  const oldStudioRect=studio.getBoundingClientRect, oldBarRect=bar.getBoundingClientRect, oldTimeRect=timeline.getBoundingClientRect;
+  studio.getBoundingClientRect=()=>({left:0,top:0,right:400,bottom:800,width:400,height:800}); Object.defineProperty(studio,'clientHeight',{value:800,configurable:true}); Object.defineProperty(bar,'offsetHeight',{value:52,configurable:true});
+  bar.getBoundingClientRect=()=>({left:0,top:0,bottom:52,width:400,height:52}); timeline.getBoundingClientRect=()=>({left:0,top:400,bottom:792,width:400,height:392});
+  Q.UI.openTray('menu'); const prefs=Array.from(doc.querySelectorAll('#trayBody details')).find(e=>e.textContent.includes('Brush slider layout')); prefs.open=true; const item=Array.from(prefs.querySelectorAll('button')).find(b=>b.textContent.includes('Brush slider layout'));
+  ok(!!item && !!item.querySelector('svg'),'brush slider layout has a distinctive preferences entry'); item.click();
+  const side=doc.querySelector('[aria-label="Brush slider side"]'), position=doc.querySelector('[aria-label="Brush slider vertical position"]');
+  ok(side.value==='left' && position.value==='50' && doc.querySelector('#modalBody').textContent.includes('scroll'),'layout defaults and short-screen fallback are explained');
+  side.value='right'; side.dispatchEvent(new win.Event('change',{bubbles:true})); position.value='0'; position.dispatchEvent(new win.Event('input',{bubbles:true}));
+  ok(studio.getAttribute('data-slider-side')==='right' && brush.style.top==='60px' && Q.Store.meta('railPreferences').side==='right' && Q.Store.meta('railPreferences').position===0,'side and top position apply immediately and persist');
+  position.value='100'; position.dispatchEvent(new win.Event('input',{bubbles:true}));
+  ok(brush.style.top==='414px' && tools.style.top==='291px' && doc.querySelector('#sizeWrap').style.height==='156px','bottom position keeps rails within portrait workspace');
+  Q.UI.closeModal(); Q.UI.closeTray(); Q.UI.toggleTimeline(); Q.UI.layoutRails();
+  ok(brush.style.top==='60px' && brush.style.maxHeight==='332px' && doc.querySelector('#sizeWrap').style.height==='133px','timeline space compacts rails above the panel');
+  Q.UI.toggleTimeline(); Q.UI.layoutRails(); ok(doc.querySelector('#sizeWrap').style.height==='156px' && brush.style.top==='414px','closing timeline restores portrait rail layout');
+  studio.getBoundingClientRect=()=>({left:0,top:0,right:800,bottom:320,width:800,height:320}); Object.defineProperty(studio,'clientHeight',{value:320,configurable:true}); timeline.getBoundingClientRect=()=>({left:0,top:180,bottom:312,width:800,height:132}); Q.UI.toggleTimeline(); Q.UI.layoutRails();
+  ok(brush.style.maxHeight==='112px' && doc.querySelector('#sizeWrap').style.height==='80px' && tools.style.maxHeight==='112px','short landscape timeline constrains rails for scrolling'); Q.UI.toggleTimeline();
+  studio.getBoundingClientRect=()=>({left:0,top:0,right:400,bottom:800,width:400,height:800}); Object.defineProperty(studio,'clientHeight',{value:800,configurable:true}); timeline.getBoundingClientRect=()=>({left:0,top:400,bottom:792,width:400,height:392}); Q.UI.layoutRails();
+  Q.UI.openTray('brushes'); const size=doc.querySelector('[aria-label="Brush size in tray"]'), opacity=doc.querySelector('[aria-label="Brush opacity in tray"]');
+  size.value='71'; size.dispatchEvent(new win.Event('input',{bubbles:true})); opacity.value='35'; opacity.dispatchEvent(new win.Event('input',{bubbles:true}));
+  ok(App.view.size===71 && App.view.opacity===0.35 && doc.querySelector('#sizeSlider').value==='71' && doc.querySelector('#opacitySlider').value==='35','horizontal brush-tray controls stay in sync with rail sliders');
+  App.setSize(29); App.setOpacity(0.8); ok(size.value==='29' && opacity.value==='80','rail and programmatic changes update brush-tray sliders');
+  Q.UI.closeTray(); Q.UI.railPreferencesDialog(); Array.from(doc.querySelectorAll('#modalBody button')).find(b=>b.textContent==='Reset').click();
+  ok(studio.getAttribute('data-slider-side')==='left' && Q.Store.meta('railPreferences').position===50 && doc.querySelector('[aria-label="Brush slider side"]').value==='left','reset restores default layout'); Q.UI.closeModal();
+  Q.Store.meta('railPreferences',{side:'right',position:25}); App.init(); await tick(); App.createDoc(64,64,'Reload layout'); Q.UI.layoutRails();
+  ok(studio.getAttribute('data-slider-side')==='right' && brush.style.top==='149px','saved rail layout is restored at application startup');
+  Q.UI.applyRailPreferences({side:'left',position:50},true); studio.getBoundingClientRect=oldStudioRect; bar.getBoundingClientRect=oldBarRect; timeline.getBoundingClientRect=oldTimeRect;
+  }
+
   await App.saveNow(false);
   console.log(failures ? `\n${failures} check(s) FAILED` : '\nall UI checks passed');
   process.exit(failures ? 1 : 0);

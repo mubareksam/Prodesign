@@ -13,6 +13,10 @@ The supplied feature inventory is a roadmap, not a list of completed work.
   clutter. Effect thumbnails are generated offline from illustrative sample art,
   not a live preview. Real-device layout and touch testing remain necessary.
 
+- Brush button and size/opacity rail can be moved to either side and positioned
+  vertically in device preferences; the other tool rail swaps sides. Rails compact
+  and scroll in short workspaces, and the brush tray has horizontal size/opacity
+  controls. Layout and touch behaviour require physical-device testing.
 - Device-wide pressure curve and extra smoothing apply to future strokes without
   changing individual presets. Pressure sensitivity depends on the brush and stylus;
   high smoothing can add lag.
