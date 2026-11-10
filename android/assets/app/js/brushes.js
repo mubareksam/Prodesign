@@ -175,9 +175,10 @@
 
   /* ── stroke ─────────────────────────────────────────────── */
 
-  function Stroke(doc, brush, rgb, size, opacity, selection) {
+  function Stroke(doc, brush, rgb, size, opacity, selection, globalSmoothing) {
     this.doc = doc;
     this.brush = brush;
+    this.globalSmoothing = Number.isFinite(globalSmoothing) ? Q.clamp(globalSmoothing,0,0.9) : 0;
     this.rgb = rgb;
     this.size = Math.max(0.7, size);
     this.opacity = Q.clamp(opacity, 0.01, 1);
@@ -248,7 +249,7 @@
     this.pressure = Q.lerp(this.pressure, pressure, 0.55);
 
     // streamline: first order filter on the pointer position
-    const s = Q.clamp(b.streamline || 0, 0, 0.9);
+    const s = Q.clamp(1 - (1 - Q.clamp(b.streamline || 0,0,0.9)) * (1 - this.globalSmoothing), 0, 0.9);
     this.sx += (pt.x - this.sx) * (1 - s);
     this.sy += (pt.y - this.sy) * (1 - s);
 

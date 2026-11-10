@@ -8,11 +8,11 @@ brushes, layers with blend modes, a colour wheel, a frame timeline with onion sk
 Procreate's gesture vocabulary, PNG/GIF export and device-dependent MP4 export — all offline, with no account and
 no network permissions at all.
 
-- Package: `com.qalam.studio` · version 3.5 (versionCode 26)
+- Package: `com.qalam.studio` · version 3.6 (versionCode 27)
 - minSdk 26 (Android 8.0) · targetSdk 33 · armeabi-v7a/arm64/x86/x86_64 independent
   (everything is HTML/JS running inside the app's own `WebView`, so the APK has no
   native code)
-- APK: **`artifacts/Qalam-3.5.apk`** (~291 KB), signed with a v1+v2 scheme
+- APK: **`artifacts/Qalam-3.6.apk`** (~293 KB), signed with a v1+v2 scheme
 - The written analysis of Procreate that this app was specified from:
   [`docs/procreate-analysis.md`](procreate-analysis.md)
 
@@ -20,7 +20,7 @@ no network permissions at all.
 
 ## 1. Install
 
-1. Copy `artifacts/Qalam-3.5.apk` to the phone (USB, Drive, chat to yourself — anything).
+1. Copy `artifacts/Qalam-3.6.apk` to the phone (USB, Drive, chat to yourself — anything).
 2. Open it with the phone's file manager. Android will ask to allow installs from
    that app the first time ("Install unknown apps").
 3. Install and open **Qalam**. If an earlier Qalam version is already installed, Android should offer an update that preserves its data. Back up important artwork first. Android does not allow this app to silently uninstall itself; do not uninstall it unless you have backed up its local artwork.
@@ -71,6 +71,14 @@ Bottom bar: **Gallery · Layer · Brush · Colour · Timeline · Menu** (plus **
   keeps the current size and opacity, is temporary and does not change the original
   brush. Switch back to the painting brush to edit its settings. Erasing is blocked
   on alpha-locked layers. This is a basic editor, not the full Procreate Brush Studio.
+- **Actions → Preferences → Pressure & smoothing** — device-wide settings for future
+  strokes. The pressure curve changes reported stylus pressure: 100% is neutral,
+  lower values make light pressure stronger and higher values make it lighter. Finger
+  pressure is unchanged, and brushes with no pressure response are unaffected by the
+  curve. Extra smoothing is added to each brush's stabilization (capped at 90%);
+  zero leaves its own setting alone. Both settings apply to brushes and erasers,
+  are stored on the device, and leave brush presets and existing pixels unchanged.
+  High smoothing can add lag; supported pressure depends on the device/stylus.
 - **Colour tray** — HSB wheel with a value/saturation square, HEX entry, 24 swatches
   and the 12 most recent colours. Hold the top colour swatch still, then release,
   to swap the current and previous colours. Moving it instead still starts colour
@@ -273,8 +281,16 @@ Bottom bar: **Gallery · Layer · Brush · Colour · Timeline · Menu** (plus **
 - **Menu → Canvas background** — choose the current brush colour or enter a 3- or
   6-digit hex colour. The background applies to every frame, is saved and can be
   undone. It appears in normal exports but not transparent PNGs.
-- **Menu → Canvas reference** — a movable, zoomable overview of the current frame.
-  It refreshes after changes. It does not import external images.
+- **Actions → Canvas & view → Canvas reference** — a movable, zoomable window that
+  can display the current frame or a user-selected PNG, JPEG, WebP or GIF image.
+  Tap the image-upload icon to choose a reference; tap the canvas icon to return
+  to the live canvas overview. The image is session-only, cleared when you close
+  the panel or switch artworks, and never added to layers, saved in the project,
+  or included in exports. Animated images show one decoded frame. File size is
+  limited to 16 MiB; decoded dimensions are limited to 8192 per side and 16 MP,
+  then the reference is downscaled to at most 2048 per side for display. The picker
+  and memory use still need testing on a physical Android device. Camera input and
+  persistent reference images are not supported.
 - **Actions → Create & edit → Selection & transform** — choose **Draw rectangle**
   and drag, **Draw lasso** and trace a freehand outline, or choose **Magic wand**
   and tap a connected colour on the active cel. Magic wand uses the Fill settings
@@ -408,7 +424,7 @@ tools/
   tests/pixel_integration.mjs real raster and animation export checks
   tests/gif_roundtrip.mjs    encodes a GIF and decodes it with an independent decoder
   tests/ui_smoke.mjs         jsdom boot + full UI drive (gallery -> export)
-artifacts/Qalam-3.5.apk           the signed, installable artefact
+artifacts/Qalam-3.6.apk           the signed, installable artefact
 docs/procreate-analysis.md   the Procreate study this app was built from
 docs/qalam.md                this file
 ```
@@ -438,7 +454,7 @@ Design notes worth knowing before changing code:
 
 ```bash
 bash tools/fetch-toolchain.sh     # once per machine: JVM, apktool, aapt2, jars, npm
-bash tools/build.sh               # -> artifacts/Qalam-3.5.apk (signed + verified)
+bash tools/build.sh               # -> artifacts/Qalam-3.6.apk (signed + verified)
 bash tools/check_reference.sh     # optional: javac-check the Java mirrors
 ```
 
@@ -476,7 +492,7 @@ install, not merely that a build command exited 0.
 This is not a full Procreate replacement. Canvas sizes are finite (up to 4096 px per side), and artwork is raster: magnification up to 64× reveals pixels rather than creating infinite detail. Layer groups, multi-track audio mixing, deformable rigging, morphing and live particle systems are not implemented. A limited two-layer IK key generator is available. Editable per-layer transform tracks are limited to position, uniform scale and rotation. A basic baked particle generator is available. A global editable camera track is available for animation playback and GIF/MP4 export. Audio-in-MP4 export is conditional on device support and requires physical-device testing. Path and two-pose transform animation generate raster cels rather than live keyframes. Onion skins provide ghost frames. Brush Studio edits existing presets only;
 custom tips/grains, dual brushes and import/export are not implemented. Guide
 snapping, adjustable vanishing-point placement, rectangle/arc QuickShape, imported
-image references, automatic selection, feathered masks, interactive
+persistent image references, automatic selection beyond Magic Wand, feathered masks, interactive
 transform previews and free rotation, layer masks/groups, text, cross-layer reference fill,
 smudge, timelapse, PSD and many other requested features remain unimplemented. Frame labels are not full nested frame groups; PNG sequences and sprite sheets
 contain one image per frame without hold metadata. MP4 availability depends on the

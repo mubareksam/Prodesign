@@ -26,6 +26,8 @@
     this.color = [24, 24, 26];
     this.size = 14;
     this.opacity = 1;
+    this.globalPressure = 1;
+    this.globalSmoothing = 0;
     this.tool = 'brush';
     this.onDocChange = null;
     this.onStrokeEnd = null;
@@ -481,8 +483,9 @@
     const p = (e.pointerType === 'pen' || e.pointerType === 'mouse')
       ? (e.pressure || 0)
       : 1;
-    if (p <= 0.001) return e.pointerType === 'pen' ? 0.35 : 1;
-    return Q.clamp(p, 0.04, 1);
+    if (e.pointerType !== 'pen') return p <= 0.001 ? 1 : Q.clamp(p,0.04,1);
+    const raw=p<=0.001 ? 0.35 : Q.clamp(p,0.04,1);
+    return Q.clamp(Math.pow(raw,this.globalPressure),0.04,1);
   };
 
   View.prototype._startStroke = function (pos, e) {
@@ -498,7 +501,7 @@
     this.strokePointerId = e.pointerId;
     this.strokePointerType = e.pointerType || 'touch';
     const brushOpacity = this.opacity * (this.brush.opacity == null ? 1 : this.brush.opacity);
-    this.stroke = new Q.Stroke(doc, this.brush, this.color, this.size, brushOpacity, this.selection);
+    this.stroke = new Q.Stroke(doc, this.brush, this.color, this.size, brushOpacity, this.selection, this.globalSmoothing);
     this.stroke.begin({ x: p.x, y: p.y, pressure: this._pressure(e), t: Q.now() });
     this._lastStampTime = Q.now();
     this.strokeStartScreen = { x: pos.x, y: pos.y };
@@ -564,7 +567,7 @@
     if (!closed && Q.dist(start.x,start.y,end.x,end.y)<8) return;
     const circle=closed && width/height>=0.8 && width/height<=1.25;
     const side=(width+height)/2, box=circle ? {x:(b.minX+b.maxX-side)/2,y:(b.minY+b.maxY-side)/2,w:side,h:side} : {x:b.minX,y:b.minY,w:width,h:height};
-    const q={pointerId:this.strokePointerId,doc:this.doc,frame:this.doc.activeFrame,layer:this.doc.activeLayer,closed:closed,circle:circle,box:box,start:{...start},end:{...end},brush:this.brush,color:this.color.slice(),size:this.size,opacity:this.opacity,selection:this.selection};
+    const q={pointerId:this.strokePointerId,doc:this.doc,frame:this.doc.activeFrame,layer:this.doc.activeLayer,closed:closed,circle:circle,box:box,start:{...start},end:{...end},brush:this.brush,color:this.color.slice(),size:this.size,opacity:this.opacity,selection:this.selection,globalSmoothing:this.globalSmoothing};
     stroke.cancel(); this.stroke=null; this.quickShape=q; this.dirty=true; Q.haptic(12);
     Q.hint(closed ? (circle ? 'Circle snapped · drag with another finger to move, release to commit' : 'Ellipse snapped · drag with another finger to move, release to commit') : 'Line snapped · drag with another finger to move, release to commit',3000);
   };
@@ -572,7 +575,7 @@
     const q=this.quickShape; this.quickShape=null; this.dirty=true;
     if (!q || this.doc!==q.doc || q.doc.activeFrame!==q.frame || q.doc.activeLayer!==q.layer || q.doc.layer().locked) { Q.toast('QuickShape cancelled'); return; }
     const shape=q.closed ? this._ellipsePoints(q.box) : [q.start,q.end], bop=q.opacity*(q.brush.opacity==null ? 1 : q.brush.opacity);
-    const stroke=new Q.Stroke(q.doc,q.brush,q.color,q.size,bop,q.selection);
+    const stroke=new Q.Stroke(q.doc,q.brush,q.color,q.size,bop,q.selection,q.globalSmoothing);
     stroke.begin({x:shape[0].x,y:shape[0].y,pressure:0.7,t:Q.now()});
     for(let i=1;i<shape.length;i++) stroke.add({x:shape[i].x,y:shape[i].y,pressure:0.9,t:Q.now()+i});
     stroke.end(); if(this.onDocChange) this.onDocChange(); if(this.onStrokeEnd) this.onStrokeEnd(false);

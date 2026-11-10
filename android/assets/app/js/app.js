@@ -45,6 +45,9 @@
 
     const threshold = Q.Store.meta('fillThreshold');
     if (typeof threshold === 'number') App.fillThreshold = Q.clamp(threshold, 0, 128);
+    const pressure=Q.Store.meta('globalPressure'), smoothing=Q.Store.meta('globalSmoothing');
+    v.globalPressure=Number.isFinite(pressure) ? Q.clamp(pressure,0.5,2) : 1;
+    v.globalSmoothing=Number.isFinite(smoothing) ? Q.clamp(smoothing,0,0.9) : 0;
     Q.restoreBrushSettings(Q.Store.meta('brushSettings'));
     const savedBrush = Q.Store.meta('brush');
     const savedRecent = Q.Store.meta('recent');
@@ -107,6 +110,7 @@
     if (App.cancelAudioExport) App.cancelAudioExport();
     App.stopPlay();
     if (App.view) App.view.cancelActiveInput();
+    if (Q.UI.resetReference) Q.UI.resetReference();
     // Serialize the previous artwork before switching documents, including when
     // New canvas is opened from the studio before the autosave timer fires.
     if (App.doc && App.doc.id !== doc.id) { clearTimeout(App.autosaveTimer); App.saveNow(false); }
@@ -135,6 +139,7 @@
 
   App.backToGallery = function () {
     App.stopPlay();
+    if (Q.UI.resetReference) Q.UI.resetReference();
     if (App.view) App.view.cancelActiveInput();
     App.saveNow(false);
     if (App.doc) Q.Store.meta('lastDoc', App.doc.id);
@@ -305,6 +310,27 @@
       img.src=reader.result;
     };
     try { reader.readAsDataURL(file); } catch (e) { Q.toast('Could not read the selected image',4000); }
+  };
+
+  // The reference is a temporary UI-only bitmap, never inserted in a project.
+  App.loadReferenceFile = function (file,target) {
+    if (!file || !target || !Q.UI.isReferenceTarget(target)) return;
+    const type=String(file.type || '').toLowerCase(), name=String(file.name || 'Reference image');
+    if (!/^image\/(png|jpeg|webp|gif)$/.test(type) && !(type==='' && /\.(png|jpe?g|webp|gif)$/i.test(name))) { Q.toast('Choose a PNG, JPEG, WebP or GIF image',4000); return; }
+    if (!Number.isFinite(file.size) || file.size<=0 || file.size>16*1024*1024) { Q.toast('Choose an image file smaller than 16 MiB',4000); return; }
+    const reader=new FileReader(); reader.onerror=()=>Q.toast('Could not read the reference image',4000);
+    reader.onload=function () {
+      if (!Q.UI.isReferenceTarget(target)) return;
+      const img=new Image(); img.onerror=()=>Q.toast('Could not decode the reference image',4000);
+      img.onload=function () {
+        if (!Q.UI.isReferenceTarget(target)) return;
+        const w=img.naturalWidth || img.width,h=img.naturalHeight || img.height;
+        if (!w || !h || w>8192 || h>8192 || w*h>16777216) { Q.toast('Image dimensions exceed the reference limit',4000); return; }
+        try { const scale=Math.min(1,2048/w,2048/h), cv=Q.canvas(Math.max(1,Math.round(w*scale)),Math.max(1,Math.round(h*scale))); cv.getContext('2d').drawImage(img,0,0,cv.width,cv.height); Q.UI.setReferenceImage(target,cv,name); }
+        catch(e) { Q.toast('Could not open the reference image on this device',4000); }
+      }; img.src=reader.result;
+    };
+    try { reader.readAsDataURL(file); } catch(e) { Q.toast('Could not read the reference image',4000); }
   };
 
   App.duplicateLayer = function (idx) {

@@ -4,20 +4,20 @@ Developed by **Qmer**. An offline painting and frame-animation studio for Androi
 brushes, layers, a colour wheel, a frame timeline with onion skin, Procreate's gesture
 vocabulary, and PNG/GIF export. No account, no ads, no network permission.
 
-**Download:** [`Qalam-3.5.apk`](../artifacts/Qalam-3.5.apk) (~291 KB)
+**Download:** [`Qalam-3.6.apk`](../artifacts/Qalam-3.6.apk) (~293 KB)
 
 | | |
 |---|---|
 | Package | `com.qalam.studio` |
-| Version | 3.5 (versionCode 26) |
+| Version | 3.6 (versionCode 27) |
 | Requires | Android 8.0+ (minSdk 26), built for targetSdk 33 |
 | Permissions | `VIBRATE` only — no internet, no storage, no location |
 | Signing | APK Signature Scheme v1 + v2, self-signed with a public test key |
-| SHA-256 | `4bfd7387e88d49295f5f4da87594394c793df81e5c92c9b902c4babdc9e9ec7c` |
+| SHA-256 | `2c7888234cc889d1942e1c6643de3dfcee4057fdfc6d1c16f160e51e5bf9ae40` |
 
 ## Install
 
-1. Download `Qalam-3.5.apk` to the phone (or copy it over USB).
+1. Download `Qalam-3.6.apk` to the phone (or copy it over USB).
 2. Open it from the file manager. Android will ask you to allow installs from that
    app the first time ("Install unknown apps") — allow it, then install.
 3. Open **Qalam**.
@@ -39,6 +39,10 @@ Transforms currently require a rectangle; there is no feathering, live transform
 6B pencil, Marker, Airbrush, Charcoal, Watercolour, Hard eraser, Soft eraser. Stylus
 pressure drives width and opacity; speed drives taper; translucency accumulates so a
 stroke never darkens where it crosses itself.
+
+**Preferences and reference** — global stylus pressure curve and extra smoothing
+apply to future strokes without changing individual brush presets. The reference
+panel can temporarily show a picked image; it is not saved or exported.
 
 **Shortcuts** — hold a layer eye to solo/restore; hold the colour swatch to swap
 with the previous colour; hold the eraser to match the current brush. Up to six

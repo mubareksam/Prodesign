@@ -13,6 +13,9 @@ The supplied feature inventory is a roadmap, not a list of completed work.
   clutter. Effect thumbnails are generated offline from illustrative sample art,
   not a live preview. Real-device layout and touch testing remain necessary.
 
+- Device-wide pressure curve and extra smoothing apply to future strokes without
+  changing individual presets. Pressure sensitivity depends on the brush and stylus;
+  high smoothing can add lag.
 - 20 preset brushes, brush size/opacity, pressure, per-preset basic Brush Studio
   sliders for spacing, flow, opacity, hardness, pressure and stabilization. Brush
   shapes/grains cannot be edited or imported; dual brushes and wet mixing are absent.
@@ -24,8 +27,10 @@ The supplied feature inventory is a roadmap, not a list of completed work.
 - Custom canvas dimensions from 64 to 4096 pixels in each direction; DPI settings
   are not implemented. A fill tool fills connected pixels on the selected layer,
   with adjustable tolerance and undo; it does not sample other layers.
-- A movable, zoomable reference window showing the current canvas. Importing an
-  external reference image or using a camera is not implemented.
+- A movable, zoomable reference window showing the current canvas or an imported
+  PNG/JPEG/WebP/GIF. The external image is a temporary session-only bitmap (not saved
+  or exported); it is cleared on close or artwork switch. Decoded images are limited
+  to 16 MP and downscaled to 2048 pixels per side. Camera input is not implemented.
 - Non-destructive clipping masks constrain a layer to the alpha of the nearest
   unclipped layer below. Consecutive clips share that base. The clipped layer uses
   Normal blend, and the base blend applies to the completed stack. Hidden or empty

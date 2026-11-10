@@ -81,6 +81,8 @@
     el('#btnNew').addEventListener('click', function () { UI.newCanvasDialog(); });
     el('#referenceClose').addEventListener('click', function () { UI.closeReference(); });
     el('#referenceZoom').addEventListener('input', function () { UI.resizeReference(); });
+    el('#referenceCanvasMode').addEventListener('click',function () { UI.showCanvasReference(); });
+    el('#referencePickImage').addEventListener('click',function () { UI.pickReferenceImage(); });
     const handle = el('#referenceHandle'); let dragging = null;
     handle.addEventListener('pointerdown', function (e) {
       if (e.target.closest('button')) return;
@@ -111,7 +113,7 @@
     el('#imageImport').addEventListener('change', function () {
       const file=this.files && this.files[0], target=UI.imageTarget;
       this.value=''; UI.imageTarget=null;
-      if (file && target) app().importImageFile(file,target);
+      if (file && target) { if (target.kind==='reference') app().loadReferenceFile(file,target); else app().importImageFile(file,target); }
     });
 
     el('#btnBrush').addEventListener('click', function () { UI.toggleTray('brushes'); });
@@ -462,7 +464,7 @@
 
   UI.pickImage = function () {
     const d=app().doc; if (!d) return;
-    app().stopPlay(); UI.imageTarget={doc:d,frame:d.frames[d.activeFrame],layer:d.layer()};
+    app().stopPlay(); referenceGeneration++; UI.imageTarget={doc:d,frame:d.frames[d.activeFrame],layer:d.layer()};
     Q.el('#imageImport').value=''; Q.el('#imageImport').click();
   };
 
@@ -857,6 +859,7 @@
       ['Transparent PNG frames',ICON.photo,()=>{UI.closeTray(); app().exportPngSequence(true);}], ['Export sprite sheet',ICON.photo,()=>UI.spriteSheetDialog()],
       ['Export MP4',ICON.film,()=>{UI.closeTray(); UI.mp4Dialog();}]
     ]);
+    group('Preferences', [ ['Pressure & smoothing',ICON.controls,()=>UI.pressurePreferences()] ]);
     group('File & help', [ ['Save now',ICON.save,()=>app().saveNow(true)], ['Gestures & help',ICON.sparkle,()=>UI.helpSheet()], ['About Qalam',ICON.layers,()=>UI.aboutSheet()] ]);
 
     const info = Q.crel('div', 'layer-sub');
@@ -865,7 +868,7 @@
     root.appendChild(info);
   }
 
-  let referenceTimer = 0;
+  let referenceTimer = 0, referenceGeneration = 0, referenceMode='canvas';
   UI.resizeReference = function () {
     const cv = Q.el('#referenceCanvas'); cv.style.width = (100 * Number(Q.el('#referenceZoom').value) / 100) + '%';
   };
@@ -873,17 +876,47 @@
     if (!app().doc) return;
     Q.el('#referenceWindow').classList.remove('hidden'); UI.resizeReference(); UI.refreshReference();
   };
-  UI.closeReference = function () { clearTimeout(referenceTimer); Q.el('#referenceWindow').classList.add('hidden'); };
+  UI.resetReference = function () {
+    clearTimeout(referenceTimer); referenceGeneration++; referenceMode='canvas';
+    Q.el('#referenceWindow').classList.add('hidden'); Q.el('#referenceTitle').textContent='Canvas reference';
+    const cv=Q.el('#referenceCanvas'); cv.width=1; cv.height=1;
+  };
+  UI.closeReference = function () { UI.resetReference(); };
+  UI.showCanvasReference = function () {
+    referenceGeneration++; referenceMode='canvas'; Q.el('#referenceTitle').textContent='Canvas reference'; UI.refreshReference();
+  };
+  UI.pickReferenceImage = function () {
+    if (!app().doc || Q.el('#referenceWindow').classList.contains('hidden')) return;
+    const target={kind:'reference',doc:app().doc,generation:++referenceGeneration}; UI.imageTarget=target;
+    Q.el('#imageImport').value=''; Q.el('#imageImport').click();
+  };
+  UI.isReferenceTarget = function (target) { return !!target && target.kind==='reference' && app().doc===target.doc && target.generation===referenceGeneration && !Q.el('#referenceWindow').classList.contains('hidden'); };
+  UI.setReferenceImage = function (target,canvas,name) {
+    if (!UI.isReferenceTarget(target)) return; clearTimeout(referenceTimer); referenceMode='image';
+    Q.el('#referenceTitle').textContent='Image reference'; const cv=Q.el('#referenceCanvas'); cv.width=canvas.width; cv.height=canvas.height; cv.getContext('2d').drawImage(canvas,0,0);
+    Q.toast('Reference loaded for this session · not saved in artwork',4000); void name;
+  };
   UI.refreshReference = function () {
-    if (Q.el('#referenceWindow').classList.contains('hidden')) return;
+    if (Q.el('#referenceWindow').classList.contains('hidden') || referenceMode==='image') return;
     clearTimeout(referenceTimer);
     referenceTimer = setTimeout(function () {
-      if (!app().doc || Q.el('#referenceWindow').classList.contains('hidden')) return;
+      if (!app().doc || referenceMode!=='canvas' || Q.el('#referenceWindow').classList.contains('hidden')) return;
       const thumb = app().doc.thumbnail(app().doc.activeFrame, 260), cv = Q.el('#referenceCanvas');
       cv.width = thumb.width; cv.height = thumb.height; cv.getContext('2d').drawImage(thumb, 0, 0);
     }, 120);
   };
 
+  UI.pressurePreferences = function () {
+    const v=app().view, card=Q.crel('div'); card.appendChild(Q.crel('h2',null,'Pressure & smoothing'));
+    card.appendChild(Q.crel('p','sub','These device-wide settings apply to future strokes with every brush and eraser. They do not change saved brush presets or existing artwork. Pressure depends on the stylus and brush; finger input is unchanged. More smoothing can add drawing lag.'));
+    function slider(label,min,max,value,change) { const row=Q.crel('div','field studio-field'); row.appendChild(Q.crel('label',null,label)); const input=Q.crel('input'); input.type='range'; input.min=min; input.max=max; input.value=value; input.setAttribute('aria-label',label); const out=Q.crel('div','val',value+'%'); input.addEventListener('input',function(){ change(Number(input.value)); out.textContent=input.value+'%'; }); row.appendChild(input); row.appendChild(out); card.appendChild(row); return input; }
+    const pressure=slider('Global pressure curve',50,200,Math.round(v.globalPressure*100),function(n){ v.globalPressure=n/100; Q.Store.meta('globalPressure',v.globalPressure); });
+    card.appendChild(Q.crel('p','sub','100% is neutral. Lower values make light pen pressure stronger; higher values make it lighter. Brushes without pressure response remain unchanged.'));
+    const smoothing=slider('Extra smoothing',0,90,Math.round(v.globalSmoothing*100),function(n){ v.globalSmoothing=n/100; Q.Store.meta('globalSmoothing',v.globalSmoothing); });
+    card.appendChild(Q.crel('p','sub','Extra smoothing builds on each brush’s stabilization and is capped at 90%. Zero keeps each brush’s own setting.'));
+    const actions=Q.crel('div','modal-actions'), reset=Q.crel('button','btn ghost','Reset'), done=Q.crel('button','btn primary','Done');
+    reset.addEventListener('click',function(){ v.globalPressure=1; v.globalSmoothing=0; Q.Store.meta('globalPressure',1); Q.Store.meta('globalSmoothing',0); UI.pressurePreferences(); }); done.addEventListener('click',()=>UI.closeModal()); actions.appendChild(reset); actions.appendChild(done); card.appendChild(actions); UI.openModal(card); void pressure; void smoothing;
+  };
 
   UI.backgroundDialog = function () {
     const d=app().doc; if (!d) return;

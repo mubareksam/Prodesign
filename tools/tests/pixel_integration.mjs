@@ -725,4 +725,29 @@ function ikOptions(overrides={}) { return {upper:0,lower:1,start:0,end:2,root:{x
  d.history.undo(); ok(pixel(cel,6,8)[3]===255,'matched eraser is undoable');
 }
 
+{
+ const v=Object.create(Q.View.prototype); v.globalPressure=1;
+ const event={pointerType:'pen',pressure:0.25}; ok(Math.abs(v._pressure(event)-0.25)<1e-7,'neutral global pressure preserves pen input');
+ v.globalPressure=0.5; const soft=v._pressure(event); v.globalPressure=2; const hard=v._pressure(event);
+ ok(Math.abs(soft-0.5)<1e-7 && Math.abs(hard-0.0625)<1e-7 && v._pressure({pointerType:'touch',pressure:0.2})===1,'global pressure curve adjusts stylus but not finger');
+ const brush={...pen,pressureSize:1,streamline:0}, make=p=>{ const d=setup(), st=new Q.Stroke(d,brush,[255,0,0],12,1,null); st.begin({x:8,y:8,pressure:p,t:1}); st.end(); return d.activeCel(false); };
+ const light=make(soft), firm=make(hard); ok(pixel(light,10,8)[3]>pixel(firm,10,8)[3], 'global pressure changes raster footprint for a pressure-sensitive brush');
+ const d=setup(), a=new Q.Stroke(d,brush,[0,0,0],2,1,null,0),b=new Q.Stroke(d,brush,[0,0,0],2,1,null,0.5);
+ a.begin({x:0,y:0,pressure:1,t:1}); a.add({x:10,y:0,pressure:1,t:2}); a.cancel();
+ b.begin({x:0,y:0,pressure:1,t:1}); b.add({x:10,y:0,pressure:1,t:2}); b.cancel();
+ ok(a.sx===10 && b.sx===5 && brush.streamline===0,'global smoothing changes stroke tracking without modifying brush presets');
+}
+{
+ const d=setup(), input=createCanvas(4,2); input.getContext('2d').fillStyle='#1234ef';input.getContext('2d').fillRect(0,0,4,2);
+ const f={name:'ref.png',type:'image/png',size:100,data:input.toDataURL('image/png')}, target={doc:d,token:1}; let selected=null, token=1, delay=0;
+ Q.UI.isReferenceTarget=t=>App.doc===t.doc && t.token===token; Q.UI.setReferenceImage=(t,cv)=>{if(Q.UI.isReferenceTarget(t)) selected=cv;};
+ globalThis.Image=NativeImage; globalThis.FileReader=class {readAsDataURL(file){this.result=file.data; setTimeout(()=>this.onload(),delay);}};
+ const before=d.history.undoStack.length; App.loadReferenceFile(f,target); await new Promise(r=>setTimeout(r,70));
+ ok(selected && same(pixel(selected,1,1),[18,52,239,255]) && d.layers.length===1 && !d.activeCel(false) && d.history.undoStack.length===before, 'external reference preserves real image pixels without changing the artwork');
+ const exportCanvas=d.flatten(0,{background:false}); ok(pixel(exportCanvas,1,1)[3]===0,'external reference is excluded from exported artwork');
+ selected=null; App.loadReferenceFile({...f,type:'application/pdf'},target); App.loadReferenceFile({...f,size:17*1024*1024},target); await new Promise(r=>setTimeout(r,40)); ok(!selected,'reference rejects unsupported and oversized files');
+ const huge=createCanvas(8193,1); App.loadReferenceFile({...f,data:huge.toDataURL('image/png')},target); await new Promise(r=>setTimeout(r,50)); ok(!selected,'reference rejects excessive decoded dimensions');
+ delay=30; App.loadReferenceFile(f,target); token++; await new Promise(r=>setTimeout(r,100)); ok(!selected,'stale reference picker results cannot replace a newer reference');
+}
+
 console.log(`all ${n} raster integration checks passed`);

@@ -309,7 +309,7 @@ async function run() {
   console.log('menu + save');
   click('#btnMenu');
   ok(doc.querySelectorAll('#trayBody .menu-item').length >= 6, 'action menu populated');
-  ok([...doc.querySelectorAll('#trayBody .action-heading')].map(x=>x.textContent).join(',')==='Create & edit,Canvas & view,Animation,Export,File & help', 'actions are organized into labelled groups');
+  ok([...doc.querySelectorAll('#trayBody .action-heading')].map(x=>x.textContent).join(',')==='Create & edit,Canvas & view,Animation,Export,Preferences,File & help', 'actions are organized into labelled groups');
   ok(Array.from(doc.querySelectorAll('#trayBody .menu-item')).some(x=>x.textContent.includes('Transparent PNG')), 'transparent export is available in actions');
   ok(Array.from(doc.querySelectorAll('#trayBody .menu-item')).some(x=>x.textContent.includes('Canvas background')), 'background settings are available in actions');
   const selectionMenu=Array.from(doc.querySelectorAll('#trayBody .menu-item')).find(el=>el.textContent.includes('Selection & transform'));
@@ -794,7 +794,7 @@ async function run() {
   click('#trayBody [aria-label="Add layer or image"]'); Array.from(doc.querySelectorAll('#modalBody button')).find(x=>x.textContent==='Solid colour').click();
   doc.querySelector('input[aria-label="Colour"]').value='#336699'; click('#modalBody .btn.primary'); ok(App.doc.layer().name==='Solid colour' && App.doc.layers.length===3, 'solid colour option creates a layer');
   Q.UI.closeTray(); click('#btnMenu'); const sections=[...doc.querySelectorAll('#trayBody details.action-group')];
-  ok(sections.length===5 && sections[0].open && !sections[3].open, 'actions use expandable categories'); sections[3].open=true;
+  ok(sections.length===6 && sections[0].open && !sections[3].open, 'actions use expandable categories'); sections[3].open=true;
   ok(sections[3].open && sections[3].textContent.includes('Export GIF'), 'export category expands to reveal export actions'); Q.UI.closeTray();
 
   console.log('2.7 motion path generation');
@@ -1066,6 +1066,34 @@ async function run() {
   for(let size of [10,20,30,40,50]) { App.setSize(size); buttons().find(b=>b.textContent==='Save current').click(); } App.setSize(60); buttons().find(b=>b.textContent==='Save current').click(); ok(doc.querySelector('.canvas-error').textContent.includes('Remove a size') && Q.Store.meta('sizePresets').length===6,'size presets enforce the six-size limit');
   App.setSize(12); click('[aria-label="Use size 37"]'); ok(App.view.size===37,'saved size can be applied to the current brush');
   Q.UI.sizePresetsDialog(); click('[aria-label="Remove size 37"]'); ok(!Q.Store.meta('sizePresets').includes(37),'saved sizes can be removed'); Q.UI.closeModal(); Q.UI.closeTray();
+  }
+
+  {
+  console.log('3.6 global drawing preferences and image reference');
+  App.createDoc(64,64,'Preferences'); App.doc.activeCel(true); App.doc.history.clear();
+  Q.UI.openTray('menu'); const prefs=Array.from(doc.querySelectorAll('#trayBody details')).find(d=>d.textContent.includes('Pressure & smoothing')); prefs.open=true;
+  Array.from(prefs.querySelectorAll('button')).find(b=>b.textContent.includes('Pressure & smoothing')).click();
+  const pressure=doc.querySelector('[aria-label="Global pressure curve"]'), smooth=doc.querySelector('[aria-label="Extra smoothing"]');
+  ok(!!pressure && !!smooth && doc.querySelector('#modalBody').textContent.includes('future strokes'),'global controls are discoverable in preferences');
+  const originalStream=App.view.brush.streamline, originalSize=App.view.brush.pressureSize;
+  pressure.value='50'; pressure.dispatchEvent(new win.Event('input',{bubbles:true})); smooth.value='40'; smooth.dispatchEvent(new win.Event('input',{bubbles:true}));
+  ok(App.view.globalPressure===0.5 && App.view.globalSmoothing===0.4 && Q.Store.meta('globalPressure')===0.5 && Q.Store.meta('globalSmoothing')===0.4 && App.view.brush.streamline===originalStream && App.view.brush.pressureSize===originalSize,'global settings persist without changing the brush preset');
+  ok(App.view._pressure({pointerType:'pen',pressure:0.25})===0.5 && App.view._pressure({pointerType:'touch',pressure:0.25})===1, 'global pressure affects pen only');
+  Array.from(doc.querySelectorAll('#modalBody button')).find(b=>b.textContent==='Reset').click(); ok(App.view.globalPressure===1 && App.view.globalSmoothing===0 && Q.Store.meta('globalSmoothing')===0,'global controls reset to neutral defaults'); Q.UI.closeModal(); Q.UI.closeTray();
+  Q.UI.openReference(); await wait(140); const cv=doc.querySelector('#referenceCanvas'), imageInput=doc.querySelector('#imageImport'), origClick=imageInput.click, origReader=win.FileReader, origImage=win.Image; let picks=0;
+  imageInput.click=()=>picks++; win.FileReader=class {readAsDataURL(){this.result='data:image/png;base64,AAAA';setTimeout(()=>this.onload(),0);}}; win.Image=class {constructor(){this.width=4000;this.height=2000;} set src(x){setTimeout(()=>this.onload(),0);}};
+  const before=App.doc.history.undoStack.length; click('#referencePickImage'); ok(picks===1 && Q.UI.imageTarget.kind==='reference','reference opens the native image picker');
+  Object.defineProperty(imageInput,'files',{value:[{name:'ref.png',type:'image/png',size:123}],configurable:true}); imageInput.dispatchEvent(new win.Event('change',{bubbles:true})); await wait(30);
+  ok(doc.querySelector('#referenceTitle').textContent==='Image reference' && cv.width===2048 && cv.height===1024 && App.doc.history.undoStack.length===before && App.doc.layers.length===1,'external reference is downscaled and does not edit the document');
+  Q.UI.refreshReference(); await wait(150); ok(cv.width===2048 && doc.querySelector('#referenceTitle').textContent==='Image reference','document updates do not overwrite the external reference');
+  click('#referenceCanvasMode'); await wait(150); ok(doc.querySelector('#referenceTitle').textContent==='Canvas reference' && cv.width!==2048,'canvas reference can be restored');
+  win.FileReader=class {readAsDataURL(){this.result='data:image/png;base64,AAAA';setTimeout(()=>this.onload(),60);}}; click('#referencePickImage'); imageInput.dispatchEvent(new win.Event('change',{bubbles:true})); click('#referenceClose'); await wait(100);
+  ok(doc.querySelector('#referenceWindow').classList.contains('hidden') && cv.width===1 && doc.querySelector('#referenceTitle').textContent==='Canvas reference','closing reference cancels pending loads and releases the bitmap');
+  Q.UI.openReference(); click('#referencePickImage'); imageInput.dispatchEvent(new win.Event('change',{bubbles:true})); App.createDoc(64,64,'New document'); await wait(100);
+  ok(doc.querySelector('#referenceWindow').classList.contains('hidden') && cv.width===1,'switching artwork cancels pending reference loads');
+  imageInput.click=origClick; win.FileReader=origReader; win.Image=origImage;
+  Q.Store.meta('globalPressure',0.75); Q.Store.meta('globalSmoothing',0.3); App.init(); await tick();
+  ok(App.view.globalPressure===0.75 && App.view.globalSmoothing===0.3,'global pressure and smoothing are restored at application startup');
   }
 
   await App.saveNow(false);
