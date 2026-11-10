@@ -556,3 +556,24 @@ select, .select {
 .harmony-grid { display: grid; grid-template-columns: repeat(2, minmax(0,1fr)); gap: 8px; margin: 12px 0; }
 .harmony-item { min-width: 0; display: flex; align-items: center; gap: 8px; text-align: left; font-size: 11px; color: var(--txt); background: var(--panel-2); border: 1px solid var(--line); border-radius: 10px; padding: 8px; }
 .harmony-sample { flex: none; width: 36px; height: 36px; border: 1px solid #888; border-radius: 8px; }
+
+/* Tidy, rectangular brush controls with a colour swatch between them. */
+.vslider { border-radius: 5px; }
+.vslider input[type=range]::-webkit-slider-runnable-track { height: 7px; border-radius: 2px; }
+.vslider input[type=range]::-webkit-slider-thumb { width: 28px; height: 20px; margin-top: -7px; border-radius: 3px; }
+.paint-preview { display: block; width: 100%; max-height: 180px; object-fit: contain; margin: 10px auto; border: 1px solid var(--line); border-radius: 8px; background: #888; }
+.paint-colour { padding: 8px; margin: 8px 0; border: 1px solid var(--line); border-radius: 10px; }
+.paint-swatch { display: block; width: 38px; height: 38px; flex: none; border-radius: 8px; border: 1px solid #888; }
+.paint-colour-slider label { width: 90px; font-size: 12px; color: var(--txt-2); }
+.paint-colour-slider input { flex: 1; min-width: 0; }
+.paint-colour-slider .val { width: 44px; text-align: right; }
+.brush-card canvas { height: 40px; border-radius: 6px; background: #141419; }
+:root[data-theme="light"] .brush-card canvas { background: #e3dfd9; }
+.paint-range.paint-hue::-webkit-slider-runnable-track { background: linear-gradient(to right,red,#ff0,#0f0,#0ff,#00f,#f0f,red); }
+.paint-range.paint-saturation::-webkit-slider-runnable-track { background: linear-gradient(to right,#aaa,var(--hue-color)); }
+.paint-range.paint-brightness::-webkit-slider-runnable-track { background: linear-gradient(to right,#000,var(--hue-color)); }
+.paint-palette { display: flex; gap: 5px; flex-wrap: wrap; margin-top: 6px; }
+.paint-palette-swatch { width: 40px; height: 40px; border: 1px solid #888; border-radius: 6px; }
+:root[data-theme="light"] .paint-range.paint-hue::-webkit-slider-runnable-track { background: linear-gradient(to right,red,#ff0,#0f0,#0ff,#00f,#f0f,red); }
+:root[data-theme="light"] .paint-range.paint-saturation::-webkit-slider-runnable-track { background: linear-gradient(to right,#aaa,var(--hue-color)); }
+:root[data-theme="light"] .paint-range.paint-brightness::-webkit-slider-runnable-track { background: linear-gradient(to right,#000,var(--hue-color)); }

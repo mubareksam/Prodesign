@@ -450,7 +450,7 @@ async function run() {
 
   console.log('about');
   Q.UI.aboutSheet();
-  ok(doc.querySelector('#modalBody').textContent.includes('Developed by Qmer') && doc.querySelector('#modalBody').textContent.includes('Version 4.7'), 'About credits Qmer and shows current version');
+  ok(doc.querySelector('#modalBody').textContent.includes('Developed by Qmer') && doc.querySelector('#modalBody').textContent.includes('Version 4.8'), 'About credits Qmer and shows current version');
   Q.UI.closeModal();
 
   console.log('hardware back');
@@ -1181,10 +1181,10 @@ async function run() {
   side.value='right'; side.dispatchEvent(new win.Event('change',{bubbles:true})); position.value='0'; position.dispatchEvent(new win.Event('input',{bubbles:true}));
   ok(studio.getAttribute('data-slider-side')==='right' && brush.style.top==='60px' && Q.Store.meta('railPreferences').side==='right' && Q.Store.meta('railPreferences').position===0,'side and top position apply immediately and persist');
   position.value='100'; position.dispatchEvent(new win.Event('input',{bubbles:true}));
-  ok(brush.style.top==='414px' && tools.style.top==='263px' && doc.querySelector('#sizeWrap').style.height==='156px','bottom position keeps rails within portrait workspace');
+  ok(brush.style.top==='358px' && tools.style.top==='263px' && doc.querySelector('#sizeWrap').style.height==='156px','bottom position keeps rails within portrait workspace');
   Q.UI.closeModal(); Q.UI.closeTray(); Q.UI.toggleTimeline(); Q.UI.layoutRails();
-  ok(brush.style.top==='60px' && brush.style.maxHeight==='332px' && doc.querySelector('#sizeWrap').style.height==='133px','timeline space compacts rails above the panel');
-  Q.UI.toggleTimeline(); Q.UI.layoutRails(); ok(doc.querySelector('#sizeWrap').style.height==='156px' && brush.style.top==='414px','closing timeline restores portrait rail layout');
+  ok(brush.style.top==='60px' && brush.style.maxHeight==='332px' && doc.querySelector('#sizeWrap').style.height==='105px','timeline space compacts rails above the panel');
+  Q.UI.toggleTimeline(); Q.UI.layoutRails(); ok(doc.querySelector('#sizeWrap').style.height==='156px' && brush.style.top==='358px','closing timeline restores portrait rail layout');
   studio.getBoundingClientRect=()=>({left:0,top:0,right:800,bottom:320,width:800,height:320}); Object.defineProperty(studio,'clientHeight',{value:320,configurable:true}); timeline.getBoundingClientRect=()=>({left:0,top:180,bottom:312,width:800,height:132}); Q.UI.toggleTimeline(); Q.UI.layoutRails();
   ok(brush.style.maxHeight==='112px' && doc.querySelector('#sizeWrap').style.height==='80px' && tools.style.maxHeight==='112px','short landscape timeline constrains rails for scrolling'); Q.UI.toggleTimeline();
   studio.getBoundingClientRect=()=>({left:0,top:0,right:400,bottom:800,width:400,height:800}); Object.defineProperty(studio,'clientHeight',{value:800,configurable:true}); timeline.getBoundingClientRect=()=>({left:0,top:400,bottom:792,width:400,height:392}); Q.UI.layoutRails();
@@ -1195,7 +1195,7 @@ async function run() {
   Q.UI.closeTray(); Q.UI.railPreferencesDialog(); Array.from(doc.querySelectorAll('#modalBody button')).find(b=>b.textContent==='Reset').click();
   ok(studio.getAttribute('data-slider-side')==='left' && Q.Store.meta('railPreferences').position===50 && doc.querySelector('[aria-label="Brush slider side"]').value==='left','reset restores default layout'); Q.UI.closeModal();
   Q.Store.meta('railPreferences',{side:'right',position:25}); App.init(); await tick(); App.createDoc(64,64,'Reload layout'); Q.UI.layoutRails();
-  ok(studio.getAttribute('data-slider-side')==='right' && brush.style.top==='149px','saved rail layout is restored at application startup');
+  ok(studio.getAttribute('data-slider-side')==='right' && brush.style.top==='135px','saved rail layout is restored at application startup');
   Q.UI.applyRailPreferences({side:'left',position:50},true); studio.getBoundingClientRect=oldStudioRect; bar.getBoundingClientRect=oldBarRect; timeline.getBoundingClientRect=oldTimeRect;
   }
 
@@ -1344,6 +1344,34 @@ async function run() {
   ok(invert && invert.querySelector('svg'),'invert selection is available in selection tools'); invert.click(); ok(v.selection.runs && fresh.history.undoStack.length===0,'inversion changes temporary selection without artwork history');
   const inverted=v.selection; Q.UI.selectionDialog(); Array.from(doc.querySelectorAll('#modalBody button')).find(b=>b.textContent==='Invert selection').click(); ok(v.selection!==inverted && v.selection.x===10 && v.selection.y===10 && v.selection.w===20 && v.selection.h===20,'inverting again returns to the original rectangle pixels');
   v.selection={x:0,y:0,w:64,h:64}; const all=v.selection; Q.UI.selectionDialog(); Array.from(doc.querySelectorAll('#modalBody button')).find(b=>b.textContent==='Invert selection').click(); ok(v.selection===all && doc.querySelector('#toast').textContent.includes('empty'),'empty inverse is rejected without changing selection');
+  }
+
+  {
+  console.log('4.8 painting tools and visual fill designer');
+  App.createDoc(64,64,'Paint tools'); const d=App.doc,v=App.view; d.activeCel(true); d.history.clear();
+  const rail=doc.querySelector('.rail-left'); ok([...rail.children].map(x=>x.id).join(',')==='btnBrush,sizeWrap,btnColor,opacityWrap','colour swatch is between the rectangular size and opacity controls');
+  ok(win.getComputedStyle(doc.querySelector('#sizeWrap')).borderRadius==='5px','vertical slider container is rectangular');
+  Q.UI.openTray('brushes'); await tick(); const thumbnails=doc.querySelectorAll('#trayBody .brush-card canvas'); ok(Q.BRUSHES.length===28 && thumbnails.length===28 && thumbnails[0].getAttribute('aria-label').includes('preview'),'expanded library has labelled preview thumbnails');
+  ok(!!Q.BRUSHES.find(b=>b.id==='chalk') && !!Q.BRUSHES.find(b=>b.id==='brush-pen'),'new brush presets are available'); Q.UI.closeTray();
+  click('#btnSmudge'); ok(v.tool==='smudge' && doc.querySelector('#btnSmudge').getAttribute('aria-pressed')==='true' && doc.querySelector('#btnSmudge svg'),'smudge is an accessible active tool');
+  const canvas=doc.querySelector('#view'), a=v.toScreen(12,12), b=v.toScreen(24,12);
+  pointer(canvas,'pointerdown',a.x,a.y,{id:1600}); ok(v.stroke instanceof Q.SmudgeStroke && !v.holdTimer,'smudge starts without QuickShape or eyedropper hold'); pointer(canvas,'pointermove',b.x,b.y,{id:1600}); pointer(canvas,'pointerup',b.x,b.y,{id:1600});
+  ok(d.history.undoStack.length===1,'smudge gesture commits one history step'); App.undo(); ok(d.history.canRedo(),'smudge gesture can be undone'); d.history.clear();
+  d.layer().alphaLocked=true; pointer(canvas,'pointerdown',a.x,a.y,{id:1601}); ok(!v.stroke && doc.querySelector('#toast').textContent.includes('alpha lock'),'alpha locked layer refuses smudge'); pointer(canvas,'pointerup',a.x,a.y,{id:1601}); d.layer().alphaLocked=false;
+  d.layer().locked=true; pointer(canvas,'pointerdown',a.x,a.y,{id:1602}); ok(!v.stroke && doc.querySelector('#toast').textContent.includes('locked'),'locked layer refuses smudge'); pointer(canvas,'pointerup',a.x,a.y,{id:1602}); d.layer().locked=false;
+  d.layer().visible=false; pointer(canvas,'pointerdown',a.x,a.y,{id:1605}); ok(!v.stroke && doc.querySelector('#toast').textContent.includes('hidden'),'hidden layer refuses smudge'); pointer(canvas,'pointerup',a.x,a.y,{id:1605}); d.layer().visible=true;
+  pointer(canvas,'pointerdown',a.x,a.y,{id:1606}); pointer(canvas,'pointermove',b.x,b.y,{id:1606}); pointer(canvas,'pointercancel',b.x,b.y,{id:1606}); ok(!v.stroke && d.history.undoStack.length===0,'cancelled pointer discards smudge and history');
+
+  pointer(canvas,'pointerdown',a.x,a.y,{id:1603}); pointer(canvas,'pointermove',b.x,b.y,{id:1603}); pointer(canvas,'pointerdown',b.x+5,b.y+5,{id:1604}); ok(!v.stroke && !!v.g && d.history.undoStack.length===0,'pinch cancels a finger smudge without history'); pointer(canvas,'pointerup',a.x,a.y,{id:1603}); pointer(canvas,'pointerup',b.x+5,b.y+5,{id:1604});
+  click('#btnFill'); ok(v.tool==='fill' && doc.querySelector('#btnSmudge').getAttribute('aria-pressed')==='false','switching to fill turns off the smudge indicator'); click('#btnSmudge'); click('#btnBrush'); ok(v.tool==='brush' && doc.querySelector('#btnSmudge').getAttribute('aria-pressed')==='false','brush button exits smudge'); Q.UI.closeTray();
+  Q.UI.paintLayerDialog('gradient'); const start=doc.querySelector('[aria-label="Start colour"]'), end=doc.querySelector('[aria-label="End colour"]'), hue=doc.querySelector('[aria-label="Start colour Hue"]'), sat=doc.querySelector('[aria-label="Start colour Saturation"]'), bright=doc.querySelector('[aria-label="Start colour Brightness"]'), preview=doc.querySelector('[aria-label="Gradient preview"]');
+  ok(preview && hue && sat && bright && doc.querySelector('[aria-label="End colour Hue"]') && doc.querySelector('[aria-label="Gradient midpoint"]'),'gradient designer has a preview, both colour pickers and midpoint');
+  hue.value='120'; sat.value='100'; bright.value='100'; bright.dispatchEvent(new win.Event('input',{bubbles:true})); ok(start.value==='#00ff00' && start.parentElement.querySelector('.paint-swatch').style.background==='rgb(0, 255, 0)','HSV controls update HEX and colour preview');
+  doc.querySelector('[aria-label="End colour preset #ff3b30"]').click(); ok(end.value==='#ff3b30','end colour can be chosen visually from palette');
+  Array.from(doc.querySelectorAll('#modalBody button')).find(b=>b.textContent==='Swap colours').click(); ok(start.value==='#ff3b30' && end.value==='#00ff00','gradient colours can be swapped');
+  start.value='not-hex'; start.dispatchEvent(new win.Event('input',{bubbles:true})); ok(doc.querySelector('.canvas-error').textContent && preview.style.opacity==='0.25','invalid HEX dims preview and reports error'); Q.UI.closeModal();
+  Q.UI.paintLayerDialog('solid'); ok(doc.querySelector('[aria-label="Solid colour preview"]') && doc.querySelector('[aria-label="Colour Hue"]'),'solid layer also has visual colour controls and preview'); doc.querySelector('[aria-label="Colour preset #007aff"]').click(); ok(doc.querySelector('#modalBody input[aria-label="Colour"]').value==='#007aff','solid layer palette updates HEX'); Q.UI.closeModal();
+  Q.UI.paintLayerDialog('gradient'); const count=d.layers.length; d.addFrame(false); click('#modalBody .btn.primary'); ok(d.layers.length===count && doc.querySelector('.canvas-error').textContent.includes('changed'),'stale gradient target cannot create a layer on a different frame'); Q.UI.closeModal();
   }
 
   await App.saveNow(false);

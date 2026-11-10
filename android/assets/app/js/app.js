@@ -37,7 +37,7 @@
     };
     v.onPick = function (rgb) {
       App.setColor(rgb);
-      v.tool = 'brush';
+      v.tool = 'brush'; Q.UI.syncBrushUi();
       Q.el('#btnEyedrop').classList.remove('on');
       Q.toast('Picked ' + Q.rgbToHex(rgb));
     };
@@ -264,22 +264,28 @@
     App.markDirty();
   };
 
+  // Shared renderer keeps the small preview and final raster mathematically aligned.
+  Q.renderPaintFill = function (c,w,h,kind,first,second,direction,midpoint) {
+    const a=Q.hexToRgb(first), b=Q.hexToRgb(second);
+    if (!a || !['solid','gradient'].includes(kind) || (kind==='gradient' && (!b || !['horizontal','vertical','diagonal','radial'].includes(direction)))) return false;
+    const mid=midpoint == null ? 0.5 : Number(midpoint); if(!Number.isFinite(mid) || mid<0.1 || mid>0.9) return false;
+    if(kind==='solid') c.fillStyle=Q.rgbToHex(a);
+    else {
+      let g; if(direction==='radial') g=c.createRadialGradient(w/2,h/2,0,w/2,h/2,Math.hypot(w,h)/2);
+      else g=c.createLinearGradient(0,0,direction==='vertical' ? 0 : w,direction==='horizontal' ? 0 : h);
+      g.addColorStop(0,Q.rgbToHex(a)); g.addColorStop(mid,Q.rgbToHex(a.map((v,i)=>(v+b[i])/2))); g.addColorStop(1,Q.rgbToHex(b)); c.fillStyle=g;
+    }
+    c.fillRect(0,0,w,h); return true;
+  };
   // Fill a new raster layer on the current frame; prepare it before changing history.
-  App.addPaintLayer = function (kind,first,second,direction) {
+  App.addPaintLayer = function (kind,first,second,direction,midpoint) {
     App.stopPlay(); const d=App.doc;
     if (!d || !Q.hexToRgb(first) || (kind==='gradient' && !Q.hexToRgb(second)) || !['solid','gradient'].includes(kind)) { Q.toast('Enter valid hex colours',4000); return false; }
     if (kind==='gradient' && !['horizontal','vertical','diagonal','radial'].includes(direction)) { Q.toast('Choose a gradient direction',4000); return false; }
+    if (midpoint!=null && (!Number.isFinite(Number(midpoint)) || Number(midpoint)<0.1 || Number(midpoint)>0.9)) { Q.toast('Choose a valid midpoint',4000); return false; }
     try {
       const cv=Q.canvas(d.width,d.height), c=cv.getContext('2d');
-      first=Q.rgbToHex(Q.hexToRgb(first)); if (kind==='gradient') second=Q.rgbToHex(Q.hexToRgb(second));
-      if (kind==='solid') c.fillStyle=first;
-      else {
-        let g;
-        if (direction==='radial') g=c.createRadialGradient(d.width/2,d.height/2,0,d.width/2,d.height/2,Math.sqrt(d.width*d.width+d.height*d.height)/2);
-        else g=c.createLinearGradient(0,0,direction==='vertical' ? 0 : d.width,direction==='horizontal' ? 0 : d.height);
-        g.addColorStop(0,first); g.addColorStop(1,second); c.fillStyle=g;
-      }
-      c.fillRect(0,0,d.width,d.height);
+      if(!Q.renderPaintFill(c,d.width,d.height,kind,first,second,direction,midpoint)) return false;
       d.insertImageLayer(cv,kind==='solid' ? 'Solid colour' : 'Gradient');
       App.view.dirty=true; Q.UI.syncDoc(); Q.UI.refreshTimeline(); App.markDirty(); Q.toast('Layer added · Undo to remove'); return true;
     } catch(e) { Q.toast('Could not create this layer on this device',4000); return false; }

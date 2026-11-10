@@ -89,7 +89,16 @@
     ['gouache','Gouache','water',{size:36, hardness:0.65, opacity:0.8, flow:0.7}],
     ['wash','Light wash','water',{size:85, opacity:0.25, flow:0.2}],
     ['spray','Spray','airbrush',{size:95, scatter:0.2, flow:0.08}],
-    ['highlighter','Highlighter','marker',{size:42, opacity:0.28, pressureSize:0}]
+    ['highlighter','Highlighter','marker',{size:42, opacity:0.28, pressureSize:0}],
+    ['brush-pen','Brush pen','studio',{size:20,pressureSize:0.95,velocitySize:0.18,taperIn:0.18}],
+    ['fine-ink','Needle ink','inking',{size:4,pressureSize:0.4,streamline:0.6}],
+    ['sketch','Sketch pencil','technical',{size:10,grain:0.9,flow:0.38,scatter:0.3}],
+    ['chalk','Chalk','charcoal',{size:28,grain:0.9,flow:0.5,scatter:0.45}],
+    ['crayon','Crayon','pencil',{size:25,grain:0.95,flow:0.65,scatter:0.32}],
+    ['soft-paint','Soft paint','water',{size:48,hardness:0.38,opacity:0.65,flow:0.5}],
+    ['mist','Fine mist','airbrush',{size:125,flow:0.06,scatter:0.12}],
+    ['glaze','Glaze','marker',{size:52,opacity:0.22,flow:0.5}]
+
   ].forEach(function (entry) {
     const base = Q.BRUSHES.find(function (brush) { return brush.id === entry[2]; });
     Q.BRUSHES.push(Object.assign({}, base, entry[3], { id: entry[0], name: entry[1] }));
@@ -175,9 +184,10 @@
 
   /* ── stroke ─────────────────────────────────────────────── */
 
-  function Stroke(doc, brush, rgb, size, opacity, selection, globalSmoothing) {
+  function Stroke(doc, brush, rgb, size, opacity, selection, globalSmoothing, preview) {
     this.doc = doc;
     this.brush = brush;
+    this.preview = !!preview;
     this.globalSmoothing = Number.isFinite(globalSmoothing) ? Q.clamp(globalSmoothing,0,0.9) : 0;
     this.rgb = rgb;
     this.size = Math.max(0.7, size);
@@ -210,7 +220,7 @@
 
     this.wet = !this.eraser && (this.opacity < 0.995 || (this.brush.flow != null && this.brush.flow < 0.995));
     if (this.wet) {
-      this.buf = Q.strokeBuffer(doc.width, doc.height);
+      this.buf = this.preview ? Q.canvas(doc.width,doc.height) : Q.strokeBuffer(doc.width, doc.height);
       this.bufCtx = this.buf.getContext('2d');
       this.bufCtx.setTransform(1, 0, 0, 1, 0, 0);
       this.bufCtx.globalAlpha = 1;
@@ -446,36 +456,52 @@
 
   Q.Stroke = Stroke;
 
-  /* brush preview used by the brush picker */
-  Q.brushPreview = function (brush, canvas, rgb) {
-    const c = canvas.getContext('2d');
-    const w = canvas.width, h = canvas.height;
-    c.clearRect(0, 0, w, h);
-    const doc = {
-      width: w, height: h,
-      activeCel: function () {
-        const cv = Q.canvas(w, h);
-        return cv;
-      },
-      history: { beginPixels: function () { }, endPixels: function () { }, snap: null }
-    };
-    // simple tapered stroke drawn by hand so previews reflect size/pressure
-    const mid = h / 2;
-    c.strokeStyle = Q.rgba(rgb || [240, 236, 232], 1);
-    c.lineCap = 'round';
-    for (let i = 0; i < w; i += 1) {
-      const t = i / w;
-      const taper = Math.min(1, Math.min(t, 1 - t) * 6);
-      const pressure = 0.35 + 0.65 * Math.sin(Math.PI * t);
-      const width = (brush.engine === 'fill' ? 3.2 : 5) * taper * (0.5 + pressure * 0.9);
-      const y = mid + Math.sin(t * 3.4) * (h * 0.16);
-      c.globalAlpha = brush.engine === 'fill' ? 0.95 : 0.6;
-      c.fillStyle = Q.rgba(rgb || [240, 236, 232], 1);
-      c.beginPath();
-      c.arc(i, y, Math.max(0.5, width * 0.5), 0, Math.PI * 2);
-      c.fill();
-    }
-    c.globalAlpha = 1;
-    void doc;
+  // A simple pixel-drag smudge, limited to one cel. It samples a small tile
+  // before each dab and blends it under a circular, selection-clipped tip.
+  function SmudgeStroke(doc,size,strength,selection) {
+    this.doc=doc; this.size=Q.clamp(size,1,240); this.strength=Q.clamp(strength,0.01,1); this.selection=selection;
+    this.cel=null; this.ctx=null; this.dirty=null; this.len=0; this.lx=0; this.ly=0;
+  }
+  SmudgeStroke.prototype.begin=function(pt) {
+    this.cel=this.doc.activeCel(false); if(!this.cel) throw Error('empty cel'); this.ctx=this.cel.getContext('2d');
+    this.doc.history.beginPixels(this.cel); this.lx=pt.x; this.ly=pt.y;
+    const n=Math.ceil(this.size)+2; this.tile=Q.canvas(n,n); this.tileCtx=this.tile.getContext('2d');
   };
+  SmudgeStroke.prototype.add=function(pt) {
+    const d=this.doc, x=Q.clamp(pt.x,-this.size,d.width+this.size), y=Q.clamp(pt.y,-this.size,d.height+this.size);
+    const dx=x-this.lx,dy=y-this.ly, distance=Math.hypot(dx,dy); if(distance<0.5) return;
+    const n=Math.min(256,Math.ceil(distance/Math.max(1,this.size*0.22))), stepX=dx/n,stepY=dy/n, radius=this.size/2, tileSize=this.tile.width;
+    let px=this.lx,py=this.ly;
+    for(let i=0;i<n;i++) {
+      const nx=px+stepX,ny=py+stepY, left=Math.max(0,Math.floor(nx-radius-1)),top=Math.max(0,Math.floor(ny-radius-1)),right=Math.min(d.width,Math.ceil(nx+radius+1)),bottom=Math.min(d.height,Math.ceil(ny+radius+1));
+      if(right>left && bottom>top) {
+        const t=this.tileCtx; t.clearRect(0,0,tileSize,tileSize); t.drawImage(this.cel,px-tileSize/2,py-tileSize/2,tileSize,tileSize,0,0,tileSize,tileSize);
+        const c=this.ctx; c.save(); if(this.selection) { Q.selectionPath(c,this.selection); c.clip(); } c.beginPath(); c.arc(nx,ny,radius,0,Math.PI*2); c.clip(); c.globalCompositeOperation='source-over'; c.globalAlpha=this.strength; c.drawImage(this.tile,nx-tileSize/2,ny-tileSize/2); c.restore();
+        if(!this.dirty) this.dirty={x:left,y:top,w:right-left,h:bottom-top};
+        else { const r=this.dirty, rx=Math.max(r.x+r.w,right),by=Math.max(r.y+r.h,bottom); r.x=Math.min(r.x,left); r.y=Math.min(r.y,top); r.w=rx-r.x; r.h=by-r.y; }
+      }
+      px=nx; py=ny;
+    }
+    this.len+=distance; this.lx=x; this.ly=y;
+  };
+  SmudgeStroke.prototype._flush=function() {};
+  SmudgeStroke.prototype.end=function() { if(!this.dirty) return; try { this.doc.history.endPixels(this.dirty); } catch(e) { this.cancel(); Q.toast('Not enough memory to save smudge undo',4000); } };
+  SmudgeStroke.prototype.cancel=function() {
+    if(!this.ctx || !this.dirty || !this.doc.history.snap) return;
+    const r=this.dirty,c=this.ctx; c.save(); c.setTransform(1,0,0,1,0,0); c.globalAlpha=1; c.globalCompositeOperation='source-over'; c.clearRect(r.x,r.y,r.w,r.h); c.drawImage(this.doc.history.snap,r.x,r.y,r.w,r.h,r.x,r.y,r.w,r.h); c.restore(); this.dirty=null;
+  };
+  Q.SmudgeStroke=SmudgeStroke;
+
+  /* Brush thumbnails render the actual preset engine on a sample path. Eraser
+     tips are shown as painted marks so they remain visible on the card. */
+  Q.brushPreview = function (brush,canvas,rgb) {
+    const c=canvas.getContext('2d'), w=canvas.width,h=canvas.height; c.clearRect(0,0,w,h);
+    const doc={width:w,height:h,activeCel:()=>canvas,layer:()=>({alphaLocked:false}),history:{beginPixels(){},endPixels(){},snap:null}};
+    const sample=Object.assign({},brush,{eraser:false}), size=Q.clamp(brush.size*0.45,3,18);
+    const stroke=new Stroke(doc,sample,rgb || [240,236,232],size,brush.opacity==null ? 1 : brush.opacity,null,0,true);
+    stroke.begin({x:6,y:h*0.55,pressure:0.25,t:1});
+    for(let i=1;i<=32;i++) { const t=i/32; stroke.add({x:6+t*(w-12),y:h*0.55+Math.sin(t*Math.PI*2)*h*0.18,pressure:0.25+0.75*Math.sin(Math.PI*t),t:1+i*8}); }
+    stroke.end();
+  };
+
 })();

@@ -891,4 +891,31 @@ console.log('4.7 inverted selections and transparency preview');
  ok(same(pixel(d.flatten(0,{background:d.bg}),10,10),[255,255,255,255]) && pixel(d.flatten(0,{background:false}),10,10)[3]===0,'checker preview does not alter normal or transparent exports');
 }
 
+console.log('4.8 smudge, gradient and brush previews');
+{
+ const d=setup(), cel=d.activeCel(true), ctx=cel.getContext('2d'); ctx.fillStyle='#ff0000'; ctx.fillRect(2,4,4,8); d.history.clear();
+ const stroke=new Q.SmudgeStroke(d,6,1,null); stroke.begin({x:4,y:8}); stroke.add({x:11,y:8}); stroke.end();
+ ok(pixel(cel,9,8)[0]>200 && pixel(cel,9,8)[3]>0 && d.history.undoStack.length===1,'smudge pulls existing pixels and records one undo');
+ d.history.undo(); ok(pixel(cel,9,8)[3]===0 && pixel(cel,4,8)[0]===255,'smudge undo restores original pixels'); d.history.redo(); ok(pixel(cel,9,8)[3]>0,'smudge redo restores dragged pixels'); d.history.undo(); d.history.clear();
+ const clipped=new Q.SmudgeStroke(d,6,1,{x:0,y:0,w:8,h:16}); clipped.begin({x:4,y:8}); clipped.add({x:11,y:8}); clipped.end();
+ ok(pixel(cel,7,8)[3]>0 && pixel(cel,9,8)[3]===0,'smudge respects the destination selection'); d.history.undo(); d.history.clear();
+ const cancel=new Q.SmudgeStroke(d,6,1,null); cancel.begin({x:4,y:8}); cancel.add({x:10,y:8}); cancel.cancel(); ok(pixel(cel,10,8)[3]===0 && d.history.undoStack.length===0,'cancelled smudge restores original pixels without history');
+ const tap=new Q.SmudgeStroke(d,6,1,null); tap.begin({x:4,y:8}); tap.end(); ok(d.history.undoStack.length===0,'smudge tap creates no undo step');
+ const edge=new Q.SmudgeStroke(d,6,0.5,null); edge.begin({x:0,y:0}); edge.add({x:-4,y:-4}); edge.end(); ok(true,'smudge near canvas edges is safe');
+ d.history.clear(); const fail=new Q.SmudgeStroke(d,6,1,null); fail.begin({x:4,y:8}); fail.add({x:10,y:8}); const oldGet=d.history.snapCtx.getImageData; d.history.snapCtx.getImageData=()=>{throw Error('memory');}; fail.end(); d.history.snapCtx.getImageData=oldGet;
+ ok(pixel(cel,10,8)[3]===0 && d.history.undoStack.length===0,'undo allocation failure rolls back smudge');
+
+}
+{
+ const d=setup(), p=createCanvas(16,16), c=p.getContext('2d');
+ Q.renderPaintFill(c,16,16,'gradient','#ff0000','#0000ff','horizontal',0.25);
+ const before=pixel(p,4,8); ok(Math.abs(before[0]-before[2])<15,'gradient midpoint adjusts the transition centre');
+ ok(App.addPaintLayer('gradient','#ff0000','#0000ff','horizontal',0.25) && same(before,pixel(d.activeCel(false),4,8)),'gradient preview and created layer use the same renderer');
+ d.history.undo(); const count=d.layers.length; ok(!App.addPaintLayer('gradient','#f00','#00f','horizontal',0.01) && d.layers.length===count,'invalid midpoint refuses creation without history');
+ const thumb=createCanvas(180,52); Q.brushPreview(Q.brushById('studio'),thumb,[20,30,40]); let alpha=thumb.getContext('2d').getImageData(0,0,180,52).data; ok(alpha.some((v,i)=>i%4===3 && v>0),'stroke thumbnail renders actual brush marks');
+ const other=createCanvas(180,52); Q.brushPreview(Q.brushById('airbrush'),other,[20,30,40]); const pixels=other.getContext('2d').getImageData(0,0,180,52).data; ok(pixels.some((v,i)=>i%4===3 && v>0) && !same([...alpha],[...pixels]),'different brush engines produce different visible thumbnails');
+ const art=new Q.Doc({width:32,height:32}), wet=new Q.Stroke(art,{...Q.brushById('marker'),flow:0.5},[255,0,0],8,0.5,null,0); wet.begin({x:8,y:8,pressure:1,t:1}); const scratch=wet.buf, beforeScratch=pixel(scratch,8,8); Q.brushPreview(Q.brushById('wash'),createCanvas(180,52),[240,240,240]); ok(same(pixel(scratch,8,8),beforeScratch) && wet.buf===scratch,'thumbnail rendering cannot clear an active wet-stroke buffer'); wet.end();
+
+}
+
 console.log(`all ${n} raster integration checks passed`);

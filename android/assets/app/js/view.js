@@ -508,7 +508,7 @@
     }
     if (this.stroke && rec.id === this.strokePointerId) {
       const wasTap = Q.dist(rec.startX, rec.startY, rec.x, rec.y) < 6 && (Q.now() - rec.t) < 320;
-      this._endStroke(wasTap);
+      if(e.type==='pointercancel' && this.stroke instanceof Q.SmudgeStroke) { this.stroke.cancel(); this.stroke=null; this.dirty=true; } else this._endStroke(wasTap);
     }
   };
 
@@ -529,20 +529,24 @@
       return;
     }
     if (layer.locked) { Q.toast('This layer is locked'); return; }
-    if (layer.alphaLocked && this.brush.eraser) { Q.toast('Turn off alpha lock to erase'); return; }
+    if (this.tool==='smudge' && layer.alphaLocked) { Q.toast('Turn off alpha lock to smudge'); return; }
+    if (this.tool==='smudge' && !doc.activeCel(false)) { Q.toast('Draw on this layer first'); return; }
+    if (this.tool!=='smudge' && layer.alphaLocked && this.brush.eraser) { Q.toast('Turn off alpha lock to erase'); return; }
     const p = this.toDoc(pos.x, pos.y);
     this.strokePointerId = e.pointerId;
     this.strokePointerType = e.pointerType || 'touch';
     const brushOpacity = this.opacity * (this.brush.opacity == null ? 1 : this.brush.opacity);
-    this.stroke = new Q.Stroke(doc, this.brush, this.color, this.size, brushOpacity, this.selection, this.globalSmoothing);
-    this.stroke.begin({ x: p.x, y: p.y, pressure: this._pressure(e), t: Q.now() });
+    try {
+      this.stroke = this.tool==='smudge' ? new Q.SmudgeStroke(doc,this.size,this.opacity,this.selection) : new Q.Stroke(doc, this.brush, this.color, this.size, brushOpacity, this.selection, this.globalSmoothing);
+      this.stroke.begin({ x: p.x, y: p.y, pressure: this._pressure(e), t: Q.now() });
+    } catch(err) { this.stroke=null; Q.toast('Could not start stroke on this device',4000); return; }
     this._lastStampTime = Q.now();
     this.strokeStartScreen = { x: pos.x, y: pos.y };
     if (this.onDrawStart) this.onDrawStart();
     this.strokeStartDoc = p;
     this.shapeBounds={minX:p.x,minY:p.y,maxX:p.x,maxY:p.y,end:{x:p.x,y:p.y}};
     this.dirty = true;
-    this._armHold();
+    if(this.tool!=='smudge') this._armHold();
   };
 
   View.prototype._endStroke = function (wasTap) {

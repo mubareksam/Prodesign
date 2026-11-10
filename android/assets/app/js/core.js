@@ -17,8 +17,8 @@
   Q.computeRailLayout = function (height,top,bottom,position) {
     height=Number.isFinite(height) ? Math.max(0,height) : 0; top=Number.isFinite(top) ? Q.clamp(top,0,height) : 0; bottom=Number.isFinite(bottom) ? Q.clamp(bottom,top,height) : height;
     position=Number.isFinite(position) ? Q.clamp(position,0,100) : 50;
-    const available=bottom-top, sliderHeight=Math.max(80,Math.min(156,Math.floor((available-66)/2)));
-    const brushHeight=Math.min(available,66+sliderHeight*2), toolsHeight=Math.min(available,326);
+    const available=bottom-top, sliderHeight=Math.max(80,Math.min(156,Math.floor((available-122)/2)));
+    const brushHeight=Math.min(available,122+sliderHeight*2), toolsHeight=Math.min(available,326);
     return {available:available,sliderHeight:sliderHeight,brushTop:top+Math.round((available-brushHeight)*position/100),toolsTop:top+Math.round((available-toolsHeight)/2),brushHeight:brushHeight,toolsHeight:toolsHeight};
   };
   Q.uid = function () { return Date.now().toString(36) + Math.random().toString(36).slice(2, 7); };

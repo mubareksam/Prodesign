@@ -7,8 +7,18 @@ The supplied feature inventory is a roadmap, not a list of completed work.
 
 - The Layers Add menu offers blank and imported-image layers as well as solid
   colour and two-colour horizontal, vertical, diagonal or radial gradient raster
-  layers. These fill only the active frame and can be undone; no editable stops,
-  transparency or vector fill is provided.
+  layers. HSV sliders, presets and HEX controls update a scaled preview; gradients
+  have a midpoint and swap control. These fill only the active frame and can be
+  undone; no live editable stops, transparency or vector fill is provided.
+- Basic circular pixel-drag smudge on the active cel, with size and opacity as
+  strength; selection clips the destination and each moved stroke can be undone.
+  It refuses hidden, locked, alpha-locked or empty cels; does not use brush texture,
+  pressure, smoothing, symmetry, QuickShape or hold eyedropper. Not Procreate's
+  smudge engine. Pinch cancels a finger smudge; real-device latency is untested.
+- Colour swatch now sits between rectangular size and opacity sliders; the opposite
+  rail contains smudge and other tools. Rails compact and scroll in short layouts.
+- Brush library has 28 presets and generated sample strokes using the actual preset
+  engine. Erasers are displayed as painted marks; texture/spray is stochastic.
 - Categorized icon-based animation tools and expandable Actions groups reduce
   clutter. Effect thumbnails are generated offline from illustrative sample art,
   not a live preview. Real-device layout and touch testing remain necessary.
@@ -64,7 +74,7 @@ The supplied feature inventory is a roadmap, not a list of completed work.
 - Device-wide pressure curve and extra smoothing apply to future strokes without
   changing individual presets. Pressure sensitivity depends on the brush and stylus;
   high smoothing can add lag.
-- 20 preset brushes, brush size/opacity, pressure, per-preset basic Brush Studio
+- 28 preset brushes, brush size/opacity, pressure, per-preset basic Brush Studio
   sliders for spacing, flow, opacity, hardness, pressure and stabilization. Brush
   shapes/grains cannot be edited or imported; dual brushes and wet mixing are absent.
 - 2D grid, isometric and 1/2/3-point perspective visual guides (adjustable horizon

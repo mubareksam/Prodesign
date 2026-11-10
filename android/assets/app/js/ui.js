@@ -133,7 +133,8 @@
     });
 
     el('#btnFitCanvas').addEventListener('click', function () { if(app().view && app().doc) { app().view.fit(); Q.toast('Canvas fitted'); } });
-    el('#btnBrush').addEventListener('click', function () { UI.toggleTray('brushes'); });
+    el('#btnBrush').addEventListener('click', function () { app().view.tool='brush'; el('#btnFill').classList.remove('on'); el('#btnEyedrop').classList.remove('on'); UI.syncBrushUi(); UI.toggleTray('brushes'); });
+    el('#btnSmudge').addEventListener('click',function () { const v=app().view; if(v.tool==='smudge') v.tool='brush'; else { if(v.brush.eraser) v.brush=app().lastPaintBrush || Q.BRUSHES.find(b=>!b.eraser); v.tool='smudge'; } el('#btnFill').classList.remove('on'); el('#btnEyedrop').classList.remove('on'); UI.syncBrushUi(); Q.hint(v.tool==='smudge' ? 'Smudge the current layer · opacity controls strength' : 'Brush mode',2200); });
     el('#btnLayers').addEventListener('click', function () { UI.toggleTray('layers'); });
     // A tap opens the picker; a drag from the swatch drops the captured colour
     // on the raw canvas. Pointer capture also handles dragging outside the button.
@@ -173,13 +174,13 @@
       v.tool = v.tool === 'eyedrop' ? 'brush' : 'eyedrop';
       el('#btnEyedrop').classList.toggle('on', v.tool === 'eyedrop');
       el('#btnFill').classList.remove('on');
-      Q.hint(v.tool === 'eyedrop' ? 'Tap the canvas to pick a colour' : 'Brush mode', 1600);
+      UI.syncBrushUi(); Q.hint(v.tool === 'eyedrop' ? 'Tap the canvas to pick a colour' : 'Brush mode', 1600);
     });
 
     el('#btnFill').addEventListener('click', function () {
       const v=app().view; v.tool = v.tool === 'fill' ? 'brush' : 'fill';
       el('#btnFill').classList.toggle('on', v.tool === 'fill'); el('#btnEyedrop').classList.remove('on');
-      Q.hint(v.tool === 'fill' ? 'Tap an area to fill the active layer' : 'Brush mode', 1800);
+      UI.syncBrushUi(); Q.hint(v.tool === 'fill' ? 'Tap an area to fill the active layer' : 'Brush mode', 1800);
     });
 
     const size = el('#sizeSlider');
@@ -349,6 +350,7 @@
     if(traySize) { traySize.value=Math.round(v.size); Q.el('#traySizeValue').textContent=Math.round(v.size); }
     if(trayOpacity) { trayOpacity.value=Math.round(v.opacity*100); Q.el('#trayOpacityValue').textContent=Math.round(v.opacity*100)+'%'; }
     Q.el('#btnBrush').classList.toggle('on', tray === 'brushes');
+    Q.el('#btnSmudge').classList.toggle('on',v.tool==='smudge'); Q.el('#btnSmudge').setAttribute('aria-pressed',v.tool==='smudge' ? 'true' : 'false');
     Q.el('#btnEraser').classList.toggle('on',!!v.brush.eraser); Q.el('#btnEraser').setAttribute('aria-pressed',v.brush.eraser ? 'true' : 'false');
   };
 
@@ -447,7 +449,7 @@
     Q.BRUSHES.forEach(function (b) {
       const card = Q.crel('button', 'brush-card' + (b.id === app().view.brush.id ? ' on' : ''));
       const cv = Q.crel('canvas');
-      cv.width = 132; cv.height = 40;
+      cv.width = 180; cv.height = 52; cv.setAttribute('aria-label',b.name+' brush stroke preview');
       const badge = Q.crel('span', 'brush-kind');
       const category = b.eraser ? 'ERASER' : b.engine === 'grain' ? 'PENCIL' : b.engine === 'soft' ? 'PAINT' : 'INK';
       const tip = b.eraser ? '<path d="M4 15l8-9a2 2 0 013 0l5 5-8 9H8zM9 20h11"/>' :
@@ -460,7 +462,7 @@
       card.appendChild(Q.crel('span', 'brush-name', b.name));
       grid.appendChild(card);
       requestAnimationFrame(function () {
-        Q.brushPreview(b, cv, [240, 236, 232]);
+        Q.brushPreview(b, cv, document.documentElement.getAttribute('data-theme')==='light' ? [35, 34, 32] : [240, 236, 232]);
       });
       card.addEventListener('click', function () {
         app().setBrush(b.id);
@@ -562,18 +564,45 @@
     card.appendChild(grid); const close=Q.crel('button','btn ghost','Cancel'); close.addEventListener('click',function () { UI.closeModal(); }); card.appendChild(close); UI.openModal(card);
   };
   UI.paintLayerDialog = function (kind) {
+    const target=app().doc, frame=target && target.frames[target.activeFrame]; if(!target) return;
     const card=Q.crel('div'); card.appendChild(Q.crel('h2',null,kind==='solid' ? 'Solid colour layer' : 'Gradient layer'));
-    card.appendChild(Q.crel('p','sub','Creates a full-canvas raster layer on this frame. You can undo it; the fill is not editable as a live gradient.'));
-    function colorField(label,value) { const row=Q.crel('div','field'); row.appendChild(Q.crel('label',null,label)); const input=Q.crel('input','select'); input.type='text'; input.value=value; input.setAttribute('aria-label',label); row.appendChild(input); card.appendChild(row); return input; }
+    card.appendChild(Q.crel('p','sub','Choose colours with the sliders or HEX. The preview updates before you create a raster layer on this frame; the result is not a live editable gradient.'));
+    const preview=Q.crel('canvas','paint-preview'); preview.width=Math.max(1,Math.round(240*target.width/Math.max(target.width,target.height))); preview.height=Math.max(1,Math.round(240*target.height/Math.max(target.width,target.height))); preview.setAttribute('aria-label',kind==='gradient' ? 'Gradient preview' : 'Solid colour preview'); card.appendChild(preview);
+    const err=Q.crel('p','canvas-error'); err.setAttribute('role','alert');
+    function colorField(label,value) {
+      const box=Q.crel('div','paint-colour'), row=Q.crel('div','field'); row.appendChild(Q.crel('label',null,label));
+      const swatch=Q.crel('span','paint-swatch'); swatch.setAttribute('aria-hidden','true'); row.appendChild(swatch);
+      const hex=Q.crel('input','select'); hex.type='text'; hex.value=value; hex.setAttribute('aria-label',label); row.appendChild(hex); box.appendChild(row);
+      const hsv=Q.rgbToHsv(...Q.hexToRgb(value)), controls=[];
+      [['Hue',360,hsv[0]],['Saturation',100,hsv[1]*100],['Brightness',100,hsv[2]*100]].forEach(function (spec,i) {
+        const line=Q.crel('div','field paint-colour-slider'); line.appendChild(Q.crel('label',null,spec[0])); const input=Q.crel('input'); input.type='range'; input.min=0; input.max=spec[1]; input.value=Math.round(spec[2]); input.setAttribute('aria-label',label+' '+spec[0]); input.className='paint-range paint-'+spec[0].toLowerCase();
+        const out=Q.crel('span','val'); line.appendChild(input); line.appendChild(out); box.appendChild(line); controls.push({input,out});
+        input.addEventListener('input',function(){ const h=Number(controls[0].input.value),s=Number(controls[1].input.value)/100,v=Number(controls[2].input.value)/100; hex.value=Q.rgbToHex(Q.hsvToRgb(h,s,v)); refresh(); });
+      });
+      function syncFromHex() { const rgb=Q.hexToRgb(hex.value); if(rgb) { const v=Q.rgbToHsv(...rgb); if(v[1]) controls[0].input.value=Math.round(v[0]); controls[1].input.value=Math.round(v[1]*100); controls[2].input.value=Math.round(v[2]*100); } refresh(); }
+      hex.addEventListener('input',syncFromHex); hex.addEventListener('change',syncFromHex);
+      const palette=Q.crel('div','paint-palette'); ['#000000','#ffffff','#ff3b30','#ff9500','#ffdf00','#34c759','#00bcd4','#007aff','#8a4dff','#ed4ca1'].forEach(function(color) { const b=Q.crel('button','paint-palette-swatch'); b.style.background=color; b.setAttribute('aria-label',label+' preset '+color); b.addEventListener('click',function(){hex.value=color; syncFromHex();}); palette.appendChild(b); }); box.appendChild(palette);
+      card.appendChild(box); return {hex,swatch,controls,syncFromHex};
+    }
     const first=colorField(kind==='solid' ? 'Colour' : 'Start colour',Q.rgbToHex(app().view.color));
     const second=kind==='gradient' ? colorField('End colour','#ffffff') : null;
-    let dir=null;
-    if (kind==='gradient') { const row=Q.crel('div','field'); row.appendChild(Q.crel('label',null,'Direction')); dir=Q.crel('select'); dir.setAttribute('aria-label','Gradient direction'); [['horizontal','Horizontal'],['vertical','Vertical'],['diagonal','Diagonal'],['radial','Radial']].forEach(function (v) { const o=Q.crel('option'); o.value=v[0]; o.textContent=v[1]; dir.appendChild(o); }); row.appendChild(dir); card.appendChild(row); }
-    const err=Q.crel('p','canvas-error'); err.setAttribute('role','alert'); card.appendChild(err);
-    const actions=Q.crel('div','modal-actions'), cancel=Q.crel('button','btn ghost','Cancel'), create=Q.crel('button','btn primary','Create layer');
+    let dir=null,mid=null;
+    if (kind==='gradient') {
+      const row=Q.crel('div','field'); row.appendChild(Q.crel('label',null,'Direction')); dir=Q.crel('select'); dir.setAttribute('aria-label','Gradient direction'); [['horizontal','Horizontal'],['vertical','Vertical'],['diagonal','Diagonal'],['radial','Radial']].forEach(function (v) { const o=Q.crel('option'); o.value=v[0]; o.textContent=v[1]; dir.appendChild(o); }); row.appendChild(dir); card.appendChild(row); dir.addEventListener('change',refresh);
+      const midrow=Q.crel('div','field'); midrow.appendChild(Q.crel('label',null,'Midpoint')); mid=Q.crel('input'); mid.type='range'; mid.min=10; mid.max=90; mid.value=50; mid.setAttribute('aria-label','Gradient midpoint'); const val=Q.crel('span','val'); midrow.appendChild(mid); midrow.appendChild(val); card.appendChild(midrow); mid.addEventListener('input',refresh); mid._readout=val;
+      const swap=Q.crel('button','btn ghost','Swap colours'); swap.addEventListener('click',function(){ const tmp=first.hex.value; first.hex.value=second.hex.value; second.hex.value=tmp; first.syncFromHex(); second.syncFromHex(); }); card.appendChild(swap);
+    }
+    function refresh() {
+      [first,second].filter(Boolean).forEach(function(f){ const rgb=Q.hexToRgb(f.hex.value); if(rgb) f.swatch.style.background=Q.rgbToHex(rgb); f.controls.forEach((c,i)=>{c.out.textContent=c.input.value+(i ? '%' : '°');}); const hue=Q.rgbToHex(Q.hsvToRgb(Number(f.controls[0].input.value),1,1)); f.controls[1].input.style.setProperty('--hue-color',hue); f.controls[2].input.style.setProperty('--hue-color',hue); });
+      if(mid) mid._readout.textContent=mid.value+'%';
+      const ctx=preview.getContext('2d'); ctx.clearRect(0,0,preview.width,preview.height);
+      const valid=Q.renderPaintFill(ctx,preview.width,preview.height,kind,first.hex.value,second ? second.hex.value : '',dir ? dir.value : '',mid ? Number(mid.value)/100 : 0.5);
+      err.textContent=valid ? '' : 'Enter a 3- or 6-digit hex colour.'; preview.style.opacity=valid ? '1' : '0.25';
+    }
+    card.appendChild(err); const actions=Q.crel('div','modal-actions'), cancel=Q.crel('button','btn ghost','Cancel'), create=Q.crel('button','btn primary','Create layer');
     cancel.addEventListener('click',function () { UI.closeModal(); });
-    create.addEventListener('click',function () { if (!Q.hexToRgb(first.value) || (second && !Q.hexToRgb(second.value))) { err.textContent='Enter a 3- or 6-digit hex colour.'; return; } if (app().addPaintLayer(kind,first.value,second ? second.value : '',dir ? dir.value : '')) UI.closeModal(); });
-    actions.appendChild(cancel); actions.appendChild(create); card.appendChild(actions); UI.openModal(card);
+    create.addEventListener('click',function () { if(app().doc!==target || target.frames[target.activeFrame]!==frame) { err.textContent='Artwork or frame changed; reopen this dialog.'; return; } if (!Q.hexToRgb(first.hex.value) || (second && !Q.hexToRgb(second.hex.value))) { err.textContent='Enter a 3- or 6-digit hex colour.'; return; } if (app().addPaintLayer(kind,first.hex.value,second ? second.hex.value : '',dir ? dir.value : '',mid ? Number(mid.value)/100 : 0.5)) UI.closeModal(); });
+    actions.appendChild(cancel); actions.appendChild(create); card.appendChild(actions); UI.openModal(card); refresh();
   };
 
   function buildLayers(root) {
@@ -1103,11 +1132,11 @@
     const actions=Q.crel('div','menu-grid');
     function action(label, fn, ico) { const b=Q.crel('button','menu-item'); if(ico) b.innerHTML=icon(ico); b.appendChild(document.createTextNode(label)); b.addEventListener('click',function () { UI.closeModal(); UI.closeTray(); fn(); }); actions.appendChild(b); }
     action('Draw rectangle',function () {
-      v.tool='select'; v.selectionDraft=null; Q.el('#btnFill').classList.remove('on'); Q.el('#btnEyedrop').classList.remove('on');
+      v.tool='select'; UI.syncBrushUi(); v.selectionDraft=null; Q.el('#btnFill').classList.remove('on'); Q.el('#btnEyedrop').classList.remove('on');
       Q.hint('Drag on the canvas to select a rectangle',3000);
     });
-    action('Draw lasso',function () { v.tool='lasso'; v.selectionDraft=null; Q.el('#btnFill').classList.remove('on'); Q.el('#btnEyedrop').classList.remove('on'); Q.hint('Draw a closed selection around an area',3000); });
-    action('Magic wand',function () { v.tool='wand'; v.selectionDraft=null; Q.el('#btnFill').classList.remove('on'); Q.el('#btnEyedrop').classList.remove('on'); Q.hint('Tap connected pixels on the active layer · tolerance in Fill settings',3500); });
+    action('Draw lasso',function () { v.tool='lasso'; UI.syncBrushUi(); v.selectionDraft=null; Q.el('#btnFill').classList.remove('on'); Q.el('#btnEyedrop').classList.remove('on'); Q.hint('Draw a closed selection around an area',3000); });
+    action('Magic wand',function () { v.tool='wand'; UI.syncBrushUi(); v.selectionDraft=null; Q.el('#btnFill').classList.remove('on'); Q.el('#btnEyedrop').classList.remove('on'); Q.hint('Tap connected pixels on the active layer · tolerance in Fill settings',3500); });
     action('Select all',function () { v.selection={x:0,y:0,w:d.width,h:d.height}; v.dirty=true; Q.hint('Entire canvas selected',1600); });
     action('Invert selection',function () { const result=Q.invertSelection(v.selection,d.width,d.height); if(result.error) { Q.toast(result.error,3500); return; } v.selection=result.selection; v.selectionDraft=null; v.dirty=true; Q.hint('Selection inverted · dashed box shows bounds',2500); },ICON.invertSelection);
     action('Deselect',function () { v.selection=null; v.selectionDraft=null; if (v.tool === 'select' || v.tool === 'lasso' || v.tool === 'wand') v.tool='brush'; v.dirty=true; });
@@ -1707,7 +1736,7 @@
     card.appendChild(Q.crel('p','sub','Draw one saved path as a guide, then optionally generate translated cels along it. The guide itself does not appear in exports.'));
     const actions=Q.crel('div','menu-grid');
     function button(label,fn) { const b=Q.crel('button','menu-item',label); b.addEventListener('click',function () { UI.closeModal(); fn(); }); actions.appendChild(b); }
-    button('Draw or replace guide',function () { v.tool='motionGuide'; v.motionDraft=null; Q.el('#btnFill').classList.remove('on'); Q.el('#btnEyedrop').classList.remove('on'); Q.hint('Draw a motion guide on the canvas',3000); });
+    button('Draw or replace guide',function () { v.tool='motionGuide'; UI.syncBrushUi(); v.motionDraft=null; Q.el('#btnFill').classList.remove('on'); Q.el('#btnEyedrop').classList.remove('on'); Q.hint('Draw a motion guide on the canvas',3000); });
     button(d.motionGuideVisible ? 'Hide guide' : 'Show guide',function () { d.setMotionGuideVisible(!d.motionGuideVisible); v.dirty=true; app().markDirty(); });
     button('Clear guide',function () { if (d.motionGuide.length) d.setMotionGuide([]); v.dirty=true; app().markDirty(); });
     button('Generate motion along guide',function () { UI.motionBakeDialog(); });
@@ -1827,6 +1856,7 @@
       ['Hold a layer eye', 'Solo that layer; hold again to restore'],
       ['Eraser', 'Tap to toggle eraser; hold to match the current brush'],
       ['Magic wand', 'Select connected pixels via Selection & transform'],
+      ['Smudge', 'Drag existing pixels on the active layer; opacity controls strength'],
       ['Fit canvas', 'Tap the fit icon in the tool rail to reset zoom and rotation'],
       ['Alpha lock', 'Tap the checkerboard icon on a layer row to protect transparency'],
       ['Drag a layer row sideways', 'Change layer opacity'],
@@ -1856,7 +1886,7 @@
     card.appendChild(Q.crel('p', 'sub', 'A paint, sketch and frame-by-frame animation studio for Android. Artwork is stored on this device only — nothing is uploaded.'));
     card.appendChild(Q.crel('p', 'sub', 'Developed by Qmer'));
     card.appendChild(Q.crel('p', 'sub', 'ቀለም (qalam) means “pen” or “ink”.'));
-    card.appendChild(Q.crel('p', 'sub', 'Version 4.7'));
+    card.appendChild(Q.crel('p', 'sub', 'Version 4.8'));
     const actions = Q.crel('div', 'modal-actions');
     const close = Q.crel('button', 'btn primary', 'Close');
     close.addEventListener('click', function () { UI.closeModal(); });
