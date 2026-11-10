@@ -13,6 +13,9 @@ The supplied feature inventory is a roadmap, not a list of completed work.
   clutter. Effect thumbnails are generated offline from illustrative sample art,
   not a live preview. Real-device layout and touch testing remain necessary.
 
+- Separate device-local QuickShape and eyedropper hold timings (200–2000 ms) apply
+  to new strokes. Detection polls at 120 ms; activation may be later. Undo/redo,
+  pinch and the hold timings of UI buttons are unchanged.
 - Distraction-free view hides editor controls, timeline and reference temporarily;
   a visible corner button and Android Back restore them. The tray closes, while
   the timeline/reference state remains. Drawing, undo/redo gestures, playback,

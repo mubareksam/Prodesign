@@ -6,6 +6,10 @@
   Q.clamp = function (v, a, b) { return v < a ? a : v > b ? b : v; };
   Q.lerp = function (a, b, t) { return a + (b - a) * t; };
   Q.dist = function (x1, y1, x2, y2) { const dx = x2 - x1, dy = y2 - y1; return Math.sqrt(dx * dx + dy * dy); };
+  Q.sanitizeGestureDelays = function (value) {
+    function delay(n, fallback) { return Number.isFinite(n) ? Math.round(Q.clamp(n,200,2000)/20)*20 : fallback; }
+    return {shape:delay(value && value.shape,380),eyedrop:delay(value && value.eyedrop,520)};
+  };
   Q.sanitizeRailPreferences = function (value) {
     return {side:value && value.side==='right' ? 'right' : 'left',position:value && Number.isFinite(value.position) ? Math.round(Q.clamp(value.position,0,100)) : 50};
   };

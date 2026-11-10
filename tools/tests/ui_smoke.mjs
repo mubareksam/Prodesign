@@ -1213,6 +1213,32 @@ async function run() {
   App.createDoc(64,64,'Post focus');
   }
 
+  {
+  console.log('4.2 hold gesture timing');
+  App.createDoc(64,64,'Gesture settings'); const history=App.doc.history.undoStack.length;
+  Q.UI.openTray('menu'); const prefs=Array.from(doc.querySelectorAll('#trayBody details')).find(e=>e.textContent.includes('Hold gesture timing')); prefs.open=true;
+  const item=Array.from(prefs.querySelectorAll('button')).find(b=>b.textContent==='Hold gesture timing'); ok(item && item.querySelector('svg'),'timing preferences are discoverable'); item.click();
+  let shape=doc.querySelector('[aria-label="QuickShape hold"]'), eye=doc.querySelector('[aria-label="Eyedropper hold"]');
+  ok(shape.value==='380' && eye.value==='520' && doc.querySelector('#modalBody').textContent.includes('120 ms'),'defaults and timing precision are explained');
+  shape.value='1000'; shape.dispatchEvent(new win.Event('input',{bubbles:true})); eye.value='400'; eye.dispatchEvent(new win.Event('input',{bubbles:true}));
+  ok(App.view.gestureDelays.shape===1000 && App.view.gestureDelays.eyedrop===400 && Q.Store.meta('gestureDelays').shape===1000 && doc.querySelector('#modalBody').textContent.includes('1000 ms') && App.doc.history.undoStack.length===history,'independent hold timings persist without editing artwork');
+  Q.UI.closeModal(); Q.UI.closeTray();
+  const originalNow=Q.now, originalSet=win.setInterval, originalClear=win.clearInterval; let now=10000, callback=null, triggered='', interval=0;
+  Q.now=()=>now; win.setInterval=(fn,ms)=>{callback=fn; interval=ms; return 42;}; win.clearInterval=()=>{};
+  try {
+    const v=Object.create(Q.View.prototype); v.stroke={len:20,size:10}; v._lastStampTime=now; v.gestureDelays={shape:1000,eyedrop:400}; v._quickShape=()=>{triggered='shape';}; v._holdEyedrop=()=>{triggered='eyedrop';};
+    v._armHold(); now+=400; callback(); ok(!triggered && interval===120,'long stroke waits for its own QuickShape delay');
+    v.gestureDelays.shape=200; now+=599; callback(); ok(!triggered,'changing preference does not change an active hold'); now+=1; callback(); ok(triggered==='shape' && v.holdTimer===0,'QuickShape activates at captured threshold');
+    triggered=''; v._lastStampTime=now; v._armHold(); now+=200; callback(); ok(triggered==='shape','new strokes use updated QuickShape delay');
+    triggered=''; v.stroke={len:0,size:10}; v.gestureDelays={shape:2000,eyedrop:400}; v._lastStampTime=now; v._armHold(); now+=400; callback(); ok(!triggered,'eyedropper waits through its configured idle time'); now+=1; callback(); ok(triggered==='eyedrop','eyedropper delay works independently of QuickShape');
+    triggered=''; v.stroke={len:20,size:10}; v._armHold(); v.stroke=null; callback(); ok(!triggered && v.holdTimer===0,'cancelled stroke disarms the timer');
+  } finally { Q.now=originalNow; win.setInterval=originalSet; win.clearInterval=originalClear; }
+  App.createDoc(64,64,'Other artwork'); ok(App.view.gestureDelays.shape===1000 && App.view.gestureDelays.eyedrop===400,'device preferences carry across artworks');
+  App.init(); await tick(); ok(App.view.gestureDelays.shape===1000 && App.view.gestureDelays.eyedrop===400,'timings are restored on startup');
+  App.createDoc(64,64,'Reset test'); Q.UI.gesturePreferences(); Array.from(doc.querySelectorAll('#modalBody button')).find(b=>b.textContent==='Reset').click();
+  shape=doc.querySelector('[aria-label="QuickShape hold"]'); eye=doc.querySelector('[aria-label="Eyedropper hold"]'); ok(shape.value==='380' && eye.value==='520' && Q.Store.meta('gestureDelays').shape===380 && Q.Store.meta('gestureDelays').eyedrop===520,'reset restores and persists original timing'); Q.UI.closeModal();
+  }
+
   await App.saveNow(false);
   console.log(failures ? `\n${failures} check(s) FAILED` : '\nall UI checks passed');
   process.exit(failures ? 1 : 0);

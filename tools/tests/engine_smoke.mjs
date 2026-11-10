@@ -91,6 +91,11 @@ ok(crowded.sliderHeight===80 && crowded.brushHeight===80 && crowded.toolsHeight=
 const sane=Q.sanitizeRailPreferences({side:'other',position:Infinity}), clamped=Q.sanitizeRailPreferences({side:'right',position:-10});
 ok(sane.side==='left' && sane.position===50 && clamped.side==='right' && clamped.position===0, 'saved rail preferences are sanitized');
 
+console.log('gesture delay validation');
+const delays=Q.sanitizeGestureDelays(), badDelays=Q.sanitizeGestureDelays({shape:Infinity,eyedrop:'500'}), clampedDelays=Q.sanitizeGestureDelays({shape:181,eyedrop:2050}), roundedDelays=Q.sanitizeGestureDelays({shape:431,eyedrop:1510});
+ok(delays.shape===380 && delays.eyedrop===520 && badDelays.shape===380 && badDelays.eyedrop===520, 'gesture timing defaults survive missing or corrupt settings');
+ok(clampedDelays.shape===200 && clampedDelays.eyedrop===2000 && roundedDelays.shape===440 && roundedDelays.eyedrop===1520, 'gesture timings are clamped and aligned with slider steps');
+
 console.log('document + layers');
 const doc = new Q.Doc({ width: 128, height: 128, name: 'test' });
 ok(doc.layers.length === 1, 'starts with one layer');

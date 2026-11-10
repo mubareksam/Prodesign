@@ -42,6 +42,7 @@
     this.lastPointerType = 'touch';
     this.holdTimer = 0;
     this.holdStart = 0;
+    this.gestureDelays = Q.sanitizeGestureDelays();
     this.onion = null;
     this.showGrid = false;
     this._loop = this._loop.bind(this);
@@ -536,14 +537,17 @@
     const self = this;
     this._disarmHold();
     this.holdStart = Q.now();
+    // Capture preferences at stroke start; a settings change cannot alter an
+    // in-progress hold. Polling means activation can be up to ~120 ms later.
+    const delays=Q.sanitizeGestureDelays(this.gestureDelays);
     this.holdTimer = setInterval(function () {
       if (!self.stroke) { self._disarmHold(); return; }
       const idle = Q.now() - (self._lastStampTime || self.holdStart);
-      if (idle < 380) return;
       if (self.stroke.len > self.stroke.size * 0.8) {
+        if (idle < delays.shape) return;
         self._disarmHold();
         self._quickShape();
-      } else if (idle > 520) {
+      } else if (idle > delays.eyedrop) {
         self._disarmHold();
         self._holdEyedrop();
       }

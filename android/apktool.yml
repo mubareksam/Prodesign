@@ -17,8 +17,8 @@ usesFramework:
   tag: null
 version: 2.4.1
 versionInfo:
-  versionCode: '32'
-  versionName: '4.1'
+  versionCode: '33'
+  versionName: '4.2'
 doNotCompress:
 - resources.arsc
 - png

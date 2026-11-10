@@ -45,6 +45,7 @@
     // Do not let a slow storage provider keep the launch screen on top forever.
     setTimeout(function () { Q.el('#splash').classList.add('hidden'); }, 400);
 
+    v.gestureDelays=Q.sanitizeGestureDelays(Q.Store.meta('gestureDelays'));
     const threshold = Q.Store.meta('fillThreshold');
     if (typeof threshold === 'number') App.fillThreshold = Q.clamp(threshold, 0, 128);
     const pressure=Q.Store.meta('globalPressure'), smoothing=Q.Store.meta('globalSmoothing');

@@ -51,6 +51,7 @@
     sparkle: '<path d="M12 3l1.8 5.2L19 10l-5.2 1.8L12 17l-1.8-5.2L5 10l5.2-1.8z"/>',
     swatch: '<rect x="4" y="4" width="16" height="16" rx="3"/><path d="M4 16l8-8 8 8"/>',
     gradient: '<rect x="4" y="4" width="16" height="16" rx="3"/><path d="M8 5v14M12 5v14M16 5v14"/>',
+    gestureDelay: '<circle cx="12" cy="12" r="8"/><path d="M12 7v5l3 2M8 2h8"/>',
     focus: '<path d="M4 9V4h5M15 4h5v5M20 15v5h-5M9 20H4v-5"/><path d="M8 12h8"/>',
     pureHue: '<path d="M12 3C9 7 6 10 6 14a6 6 0 0012 0c0-4-3-7-6-11z"/><path d="M12 9v7M9 12.5h6"/>',
     railLayout: '<path d="M5 4v16M19 4v16M9 8h6M11 6L9 8l2 2M13 14h-4M13 12l2 2-2 2"/><circle cx="5" cy="8" r="2"/><circle cx="19" cy="16" r="2"/>',
@@ -935,7 +936,7 @@
       ['Transparent PNG frames',ICON.photo,()=>{UI.closeTray(); app().exportPngSequence(true);}], ['Export sprite sheet',ICON.photo,()=>UI.spriteSheetDialog()],
       ['Export MP4',ICON.film,()=>{UI.closeTray(); UI.mp4Dialog();}]
     ]);
-    group('Preferences', [ ['Pressure & smoothing',ICON.controls,()=>UI.pressurePreferences()], ['Brush slider layout',ICON.railLayout,()=>UI.railPreferencesDialog()] ]);
+    group('Preferences', [ ['Pressure & smoothing',ICON.controls,()=>UI.pressurePreferences()], ['Brush slider layout',ICON.railLayout,()=>UI.railPreferencesDialog()], ['Hold gesture timing',ICON.gestureDelay,()=>UI.gesturePreferences()] ]);
     group('File & help', [ ['Save now',ICON.save,()=>app().saveNow(true)], ['Gestures & help',ICON.sparkle,()=>UI.helpSheet()], ['About Qalam',ICON.layers,()=>UI.aboutSheet()] ]);
 
     const info = Q.crel('div', 'layer-sub');
@@ -990,6 +991,22 @@
     function change(){ UI.applyRailPreferences({side:side.value,position:Number(position.value)},true); output.textContent=position.value+'%'; }
     side.addEventListener('change',change); position.addEventListener('input',change);
     const actions=Q.crel('div','modal-actions'), reset=Q.crel('button','btn ghost','Reset'), done=Q.crel('button','btn primary','Done'); reset.addEventListener('click',function(){ UI.applyRailPreferences(null,true); UI.railPreferencesDialog(); }); done.addEventListener('click',()=>UI.closeModal()); actions.appendChild(reset); actions.appendChild(done); card.appendChild(actions); UI.openModal(card);
+  };
+
+  UI.gesturePreferences = function () {
+    const v=app().view, card=Q.crel('div'); card.appendChild(Q.crel('h2',null,'Hold gesture timing'));
+    card.appendChild(Q.crel('p','sub','Adjust the idle time before a held stroke snaps to QuickShape or a still press picks a colour. Settings apply to new strokes on this device. Detection is checked about every 120 ms, so activation can be slightly later. Shorter times can trigger accidentally. Other gestures and button holds are unchanged.'));
+    function slider(label,key) {
+      const row=Q.crel('div','field studio-field gesture-delay-row'); row.appendChild(Q.crel('label',null,label));
+      const input=Q.crel('input'); input.type='range'; input.min=200; input.max=2000; input.step=20; input.value=v.gestureDelays[key]; input.setAttribute('aria-label',label);
+      const output=Q.crel('div','val',input.value+' ms');
+      input.addEventListener('input',function(){ const next={...v.gestureDelays}; next[key]=Number(input.value); v.gestureDelays=Q.sanitizeGestureDelays(next); Q.Store.meta('gestureDelays',v.gestureDelays); output.textContent=v.gestureDelays[key]+' ms'; });
+      row.appendChild(input); row.appendChild(output); card.appendChild(row);
+    }
+    slider('QuickShape hold', 'shape'); slider('Eyedropper hold', 'eyedrop');
+    const actions=Q.crel('div','modal-actions'), reset=Q.crel('button','btn ghost','Reset'), done=Q.crel('button','btn primary','Done');
+    reset.addEventListener('click',function(){ v.gestureDelays=Q.sanitizeGestureDelays(); Q.Store.meta('gestureDelays',v.gestureDelays); UI.gesturePreferences(); });
+    done.addEventListener('click',()=>UI.closeModal()); actions.appendChild(reset); actions.appendChild(done); card.appendChild(actions); UI.openModal(card);
   };
 
   UI.pressurePreferences = function () {
