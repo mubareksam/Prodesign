@@ -5,6 +5,19 @@ The supplied feature inventory is a roadmap, not a list of completed work.
 
 ## Available now
 
+- Add or subtract a rectangle, ellipse or lasso from an existing temporary
+  selection; the result is a hard run mask with a bounding-box outline. Canvas
+  size is capped at 4 megapixels and results at 4096 runs. Empty results are
+  refused; select Deselect to clear. Magic wand still replaces. Non-rectangular
+  transforms remain unavailable; combining can briefly block on large masks.
+- One device-local saved palette stores up to 24 unique colours; swatches can be
+  added, selected, removed or cleared with confirmation. It is not saved inside
+  projects and does not support palette import/export or multiple palette sets.
+- Gallery preview can duplicate the last saved project record including all
+  layers, frames and saved metadata; the original is not overwritten. Unsaved
+  edits, undo history and device preferences are not copied. Duplication may
+  fail if storage is full; real Android storage behavior needs testing.
+
 - Ellipse selection uses a native curved path, temporary across the open artwork;
   it clips painting, smudge, fill, effects and clipboard operations. It supports
   inversion subject to the existing 4 MP/4096-run limits. Non-rectangular flips
@@ -57,7 +70,7 @@ The supplied feature inventory is a roadmap, not a list of completed work.
 
 - Colour tray harmony suggestions offer analogous, complementary, triadic and split-complementary
   hue-based colours with clickable previews. Saturation/brightness have minimums;
-  neutral colours use the last picker hue. Suggestions are not saved as a palette.
+  neutral colours use the last picker hue. Suggestions can be added manually to the device-local saved palette.
 - Temporary checkerboard transparency preview replaces the canvas background in
   the editor, without changing artwork, saved thumbnails or exports; resets when
   switching artwork. It does not toggle transparent export.
@@ -240,7 +253,7 @@ The supplied feature inventory is a roadmap, not a list of completed work.
 
 ## Not yet implemented
 
-Snapping/drawing assist for grids and perspective, camera references, layer masks/groups, automatic selection,
+Snapping/drawing assist for grids and perspective, camera references, layer masks/groups, advanced automatic selection,
 feathered selection, interactive transform handles and custom pivots, cross-layer ColorDrop/reference fill, advanced brush-based smudge, advanced filters and liquify, typography,
 DPI settings, timelapse, gallery stacks, PSD/Procreate/PDF/TIFF compatibility, brush
 import/export, and most advanced colour-management and accessibility features.

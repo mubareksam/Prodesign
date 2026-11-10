@@ -53,6 +53,7 @@
     sparkle: '<path d="M12 3l1.8 5.2L19 10l-5.2 1.8L12 17l-1.8-5.2L5 10l5.2-1.8z"/>',
     swatch: '<rect x="4" y="4" width="16" height="16" rx="3"/><path d="M4 16l8-8 8 8"/>',
     gradient: '<rect x="4" y="4" width="16" height="16" rx="3"/><path d="M8 5v14M12 5v14M16 5v14"/>',
+    palette: '<rect x="3" y="3" width="7" height="7" rx="1"/><rect x="14" y="3" width="7" height="7" rx="1"/><rect x="3" y="14" width="7" height="7" rx="1"/><rect x="14" y="14" width="7" height="7" rx="1"/>',
     harmony: '<circle cx="8" cy="8" r="3"/><circle cx="16" cy="8" r="3"/><circle cx="12" cy="16" r="3"/>',
     transparency: '<rect x="3" y="3" width="18" height="18" rx="2"/><path d="M3 9h18M3 15h18M9 3v18M15 3v18"/>',
     invertSelection: '<rect x="3" y="3" width="18" height="18" rx="2" stroke-dasharray="3 2"/><path d="M8 12h8M12 8v8"/>',
@@ -286,7 +287,9 @@
     } else imageArea.appendChild(fallback);
     card.appendChild(imageArea);
     card.appendChild(Q.crel('p','sub gallery-preview-note','Read-only saved thumbnail (up to 320 px), from the frame active at the last successful save. It includes the canvas background, but not animated camera or layer motion. It is not a full-resolution or animated preview.'));
-    const close=Q.crel('button','btn primary','Close'); close.addEventListener('click',()=>UI.closeModal()); card.appendChild(close);
+    const controls=Q.crel('div','modal-actions'), duplicate=Q.crel('button','btn ghost','Duplicate artwork'), close=Q.crel('button','btn primary','Close');
+    duplicate.addEventListener('click',function(){ duplicate.disabled=true; Q.Store.duplicate(item.id).then(function(){ if(card.isConnected) UI.closeModal(); if(!Q.el('#gallery').classList.contains('hidden')) UI.renderGallery(); Q.toast('Saved artwork duplicated'); }).catch(function(){ duplicate.disabled=false; Q.toast('Could not duplicate saved artwork',4000); }); });
+    close.addEventListener('click',()=>UI.closeModal()); controls.appendChild(duplicate); controls.appendChild(close); card.appendChild(controls);
     UI.openModal(card); Q.el('#modalBody').classList.add('gallery-preview-modal');
   };
 
@@ -837,7 +840,7 @@
     wheelState.sat = hsv.sat;
     wheelState.val = hsv.val;
 
-    root.appendChild(trayHead('Colour', [iconButton('Colour harmonies',ICON.harmony,function () { UI.harmonyDialog(applyColor); }), iconButton('Pure hue',ICON.pureHue,function () { applyColor(Q.hsvToRgb(wheelState.hue,1,1)); })]));
+    root.appendChild(trayHead('Colour', [iconButton('Saved palette',ICON.palette,function () { UI.savedPaletteDialog(); }), iconButton('Colour harmonies',ICON.harmony,function () { UI.harmonyDialog(applyColor); }), iconButton('Pure hue',ICON.pureHue,function () { applyColor(Q.hsvToRgb(wheelState.hue,1,1)); })]));
     const wrap = Q.crel('div', 'color-wrap');
 
     const wheel = Q.crel('canvas');
@@ -898,6 +901,25 @@
       drawWheel(wheel);
     }
   }
+
+  UI.savedPaletteDialog = function () {
+    let removing=false;
+    const card=Q.crel('div'), heading=Q.crel('h2',null,'Saved palette'); card.appendChild(heading);
+    card.appendChild(Q.crel('p','sub','Save up to 24 colours on this device. Tap a swatch to use it; choose Remove mode to delete a swatch. This palette is not stored in projects or shared between devices.'));
+    const status=Q.crel('p','sub'), grid=Q.crel('div','saved-palette-grid'); card.appendChild(status); card.appendChild(grid);
+    const actions=Q.crel('div','palette-actions'), add=Q.crel('button','btn primary','Add current colour'), remove=Q.crel('button','btn ghost','Remove mode'), clear=Q.crel('button','btn ghost','Clear palette'), close=Q.crel('button','btn ghost','Close');
+    function save(colors) { if(!Q.writeSavedPalette(colors)) { Q.toast('Could not save palette on this device',4000); return false; } return true; }
+    function draw() {
+      const colors=Q.readSavedPalette(); status.textContent=colors.length+' / 24 colours'+(removing ? ' · tap a swatch to remove' : ''); grid.innerHTML=''; remove.setAttribute('aria-pressed',removing ? 'true' : 'false'); remove.classList.toggle('on',removing); clear.disabled=!colors.length;
+      colors.forEach(function(hex){ const button=Q.crel('button','saved-palette-swatch'); button.style.background=hex; button.setAttribute('aria-label',(removing ? 'Remove ' : 'Use ')+hex); button.title=hex;
+        button.addEventListener('click',function(){ if(removing) { if(save(Q.readSavedPalette().filter(c=>c!==hex))) draw(); } else { const rgb=Q.hexToRgb(hex); if(rgb && app().view) { app().setColor(rgb); UI.closeModal(); if(tray==='color') UI.openTray('color'); } } }); grid.appendChild(button);
+      });
+    }
+    add.addEventListener('click',function(){ const colors=Q.readSavedPalette(), hex=Q.rgbToHex(app().view.color); if(colors.includes(hex)) { Q.toast('Colour is already saved'); return; } if(colors.length>=24) { Q.toast('Palette is full'); return; } colors.push(hex); if(save(colors)) draw(); });
+    remove.addEventListener('click',function(){ removing=!removing; draw(); });
+    clear.addEventListener('click',function(){ UI.confirm('Clear saved palette?', 'This removes all saved palette colours from this device. Artwork pixels will not change.',function(){ if(save([])) Q.toast('Palette cleared'); }); });
+    close.addEventListener('click',UI.closeModal); [add,remove,clear,close].forEach(b=>actions.appendChild(b)); card.appendChild(actions); UI.openModal(card); draw();
+  };
 
   UI.harmonyDialog = function (applyColor) {
     const source=currentHsv(), colors=Q.colorHarmonies(source.hue,source.sat,source.val), card=Q.crel('div');
@@ -1197,14 +1219,15 @@
     const card=Q.crel('div'); card.appendChild(Q.crel('h2',null,'Selection & transform'));
     card.appendChild(Q.crel('p','sub', v.selection ? (Q.complexSelection(v.selection) ? (v.selection.runs ? 'Masked selection. The dashed box shows bounds, not the exact selected pixels. Transforms require a rectangle.' : (v.selection.shape==='ellipse' ? 'Ellipse selected. Transforms currently require a rectangle.' : 'Lasso selected. Transforms currently require a rectangle.')) : 'Rectangle selected. Edits affect the current layer and frame.') : 'No selection. Flips and rotation use the whole current layer and frame.'));
     card.appendChild(Q.crel('p','sub','The selection clips brushes, erasers, flood fill and effects. It is temporary and applies to the current layer and frame.'));
+    const opRow=Q.crel('div','field'); opRow.appendChild(Q.crel('label',null,'Combine'));
+    const op=Q.crel('select'); op.setAttribute('aria-label','Selection combination'); [['replace','Replace'],['add','Add to selection'],['subtract','Subtract from selection']].forEach(function(item){const o=Q.crel('option');o.value=item[0];o.textContent=item[1];op.appendChild(o);}); opRow.appendChild(op); card.appendChild(opRow);
+    card.appendChild(Q.crel('p','sub','Combine applies to the next rectangle, ellipse or lasso. Add/subtract need an existing selection and a canvas up to 4 megapixels. Magic wand always replaces. Empty or overly complex results are refused.'));
+    function chooseShape(tool,hint) { if(op.value!=='replace' && !v.selection) { Q.toast('Make a selection first',3500); return; } v.selectionOperation=op.value; v.tool=tool; UI.syncBrushUi(); v.selectionDraft=null; Q.el('#btnFill').classList.remove('on'); Q.el('#btnEyedrop').classList.remove('on'); Q.hint(hint,3000); }
     const actions=Q.crel('div','menu-grid');
     function action(label, fn, ico) { const b=Q.crel('button','menu-item'); if(ico) b.innerHTML=icon(ico); b.appendChild(document.createTextNode(label)); b.addEventListener('click',function () { UI.closeModal(); UI.closeTray(); fn(); }); actions.appendChild(b); }
-    action('Draw rectangle',function () {
-      v.tool='select'; UI.syncBrushUi(); v.selectionDraft=null; Q.el('#btnFill').classList.remove('on'); Q.el('#btnEyedrop').classList.remove('on');
-      Q.hint('Drag on the canvas to select a rectangle',3000);
-    });
-    action('Draw ellipse',function () { v.tool='ellipse'; UI.syncBrushUi(); v.selectionDraft=null; Q.el('#btnFill').classList.remove('on'); Q.el('#btnEyedrop').classList.remove('on'); Q.hint('Drag on the canvas to select an ellipse',3000); });
-    action('Draw lasso',function () { v.tool='lasso'; UI.syncBrushUi(); v.selectionDraft=null; Q.el('#btnFill').classList.remove('on'); Q.el('#btnEyedrop').classList.remove('on'); Q.hint('Draw a closed selection around an area',3000); });
+    action('Draw rectangle',function () { chooseShape('select','Drag on the canvas to select a rectangle'); });
+    action('Draw ellipse',function () { chooseShape('ellipse','Drag on the canvas to select an ellipse'); });
+    action('Draw lasso',function () { chooseShape('lasso','Draw a closed selection around an area'); });
     action('Magic wand',function () { v.tool='wand'; UI.syncBrushUi(); v.selectionDraft=null; Q.el('#btnFill').classList.remove('on'); Q.el('#btnEyedrop').classList.remove('on'); Q.hint('Tap connected pixels on the active layer · tolerance in Fill settings',3500); });
     action('Select all',function () { v.selection={x:0,y:0,w:d.width,h:d.height}; v.dirty=true; Q.hint('Entire canvas selected',1600); });
     action('Invert selection',function () { const result=Q.invertSelection(v.selection,d.width,d.height); if(result.error) { Q.toast(result.error,3500); return; } v.selection=result.selection; v.selectionDraft=null; v.dirty=true; Q.hint('Selection inverted · dashed box shows bounds',2500); },ICON.invertSelection);
@@ -1967,7 +1990,7 @@
     card.appendChild(Q.crel('p', 'sub', 'A paint, sketch and frame-by-frame animation studio for Android. Artwork is stored on this device only — nothing is uploaded.'));
     card.appendChild(Q.crel('p', 'sub', 'Developed by Qmer'));
     card.appendChild(Q.crel('p', 'sub', 'ቀለም (qalam) means “pen” or “ink”.'));
-    card.appendChild(Q.crel('p', 'sub', 'Version 5.2'));
+    card.appendChild(Q.crel('p', 'sub', 'Version 5.3'));
     const actions = Q.crel('div', 'modal-actions');
     const close = Q.crel('button', 'btn primary', 'Close');
     close.addEventListener('click', function () { UI.closeModal(); });

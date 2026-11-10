@@ -40,6 +40,7 @@
     this.onFill = null;
     this.selection = null;
     this.selectionDraft = null;
+    this.selectionOperation = 'replace';
     this.motionDraft = null;
     this.lastPointerType = 'touch';
     this.holdTimer = 0;
@@ -382,7 +383,7 @@
       if (this.tool === 'motionGuide') { const rec=this.pointers.get(e.pointerId), p=this.toDoc(pos.x,pos.y); rec.guidePoints=[{x:Q.clamp(p.x,0,this.doc.width),y:Q.clamp(p.y,0,this.doc.height)}]; this.motionDraft=rec.guidePoints; return; }
       if (this.tool === 'select' || this.tool === 'lasso' || this.tool === 'ellipse') {
         const rec=this.pointers.get(e.pointerId), p=this.toDoc(pos.x,pos.y);
-        rec.selectStart=p; rec.selectEllipse=this.tool==='ellipse'; if (this.tool === 'lasso') rec.lassoPoints=[p]; this.selectionDraft=null; return;
+        rec.selectStart=p; rec.selectionOperation=this.selectionOperation || 'replace'; rec.selectionBase=this.selection; rec.selectEllipse=this.tool==='ellipse'; if (this.tool === 'lasso') rec.lassoPoints=[p]; this.selectionDraft=null; return;
       }
       this._startStroke(pos, e);
     } else if (this.pointers.size === 2) {
@@ -500,9 +501,11 @@
     }
     if (rec.selectStart) {
       if (e.type !== 'pointercancel' && this.selectionDraft) {
-        this.selection=this.selectionDraft; Q.hint('Selection ready · open Menu → Selection & transform', 2500);
+        if(rec.selectionOperation==='replace') { this.selection=this.selectionDraft; Q.hint('Selection ready · open Menu → Selection & transform',2500); }
+        else if(this.selection!==rec.selectionBase) Q.toast('Selection changed; try again',3500);
+        else { const result=Q.combineSelections(rec.selectionBase,this.selectionDraft,rec.selectionOperation,this.doc.width,this.doc.height); if(result.error) Q.toast(result.error,4000); else { this.selection=result.selection; Q.hint('Selection updated · dashed box shows bounds',2500); } }
       }
-      this.selectionDraft=null; this.tool='brush'; this.dirty=true; return;
+      this.selectionDraft=null; this.selectionOperation='replace'; this.tool='brush'; this.dirty=true; return;
     }
     if (e.type !== 'pointercancel' && rec.pendingFill && Q.dist(rec.startX, rec.startY, rec.x, rec.y) < 6 && this.onFill) {
       const point = this.toDoc(rec.x, rec.y); if (rec.pendingFill === 'wand' && this.onWand) { this.onWand(point.x,point.y); this.tool='brush'; } else if (rec.pendingFill === 'fill') this.onFill(point.x, point.y); return;

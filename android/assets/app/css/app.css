@@ -748,3 +748,8 @@ button:focus-visible, input:focus-visible, select:focus-visible, summary:focus-v
 .field > .select, .field > select, .field > input[type=range] { min-width:0; }
 .harmony-item span:not(.harmony-sample) { min-width:0; overflow-wrap:anywhere; }
 @media (max-width: 370px) { .harmony-grid { grid-template-columns:minmax(0,1fr); } }
+.saved-palette-grid { display:grid; grid-template-columns:repeat(auto-fill,minmax(42px,1fr)); gap:8px; margin:12px 0; }
+.saved-palette-swatch { min-width:42px; min-height:42px; border:1px solid #85858f; border-radius:8px; }
+.palette-actions { display:flex; flex-wrap:wrap; gap:8px; margin-top:14px; }
+.palette-actions .btn { flex:1 1 120px; min-height:44px; }
+.palette-actions .btn.on { border-color:var(--accent); color:var(--accent); }

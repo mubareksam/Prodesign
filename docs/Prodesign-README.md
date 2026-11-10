@@ -4,20 +4,20 @@ Developed by **Qmer**. An offline painting and frame-animation studio for Androi
 brushes, layers, a colour wheel, a frame timeline with onion skin, Procreate's gesture
 vocabulary, and PNG/JPEG/GIF export. No account, no ads, no network permission.
 
-**Download:** [`Qelem-5.2.apk`](../artifacts/Qelem-5.2.apk) (~319 KB)
+**Download:** [`Qelem-5.3.apk`](../artifacts/Qelem-5.3.apk) (~321 KB)
 
 | | |
 |---|---|
 | Package | `com.qalam.studio` |
-| Version | 5.2 (versionCode 43) |
+| Version | 5.3 (versionCode 44) |
 | Requires | Android 8.0+ (minSdk 26), built for targetSdk 33 |
 | Permissions | `VIBRATE` only — no internet, no storage, no location |
 | Signing | APK Signature Scheme v1 + v2, self-signed with a public test key |
-| SHA-256 | `91aca0bacf853209d7ecd1476114ee456b04625dd223cea6ad34dbeacc26520e` |
+| SHA-256 | `6237b901653399294f7f92f6670d80bce009226c70d34fa0c2ab865fcd31847e` |
 
 ## Install
 
-1. Download `Qelem-5.2.apk` to the phone (or copy it over USB).
+1. Download `Qelem-5.3.apk` to the phone (or copy it over USB).
 2. Open it from the file manager. Android will ask you to allow installs from that
    app the first time ("Install unknown apps") — allow it, then install.
 3. Open **Qelem**.
@@ -35,6 +35,11 @@ This is inspired by Procreate, not an exact copy.
 
 **Canvas** — 2048², portrait, landscape, 1920×1080, 1280² animation and 1080×1920
 story presets and custom sizes from 64 to 4096 pixels per side; full-screen canvas with two-finger pan, pinch zoom and twist rotate.
+
+**Selections and palette** — add or subtract a drawn rectangle, ellipse or lasso
+from an existing selection, subject to 4 MP and 4096-run limits. A single saved
+palette stores up to 24 colours on the device, not inside artwork. Use the gallery
+preview to duplicate the last saved artwork, including all animation frames.
 
 **Layer tags** — assign a saved, undoable colour marker in the three-dot layer
 menu; copied layers keep their tag. Markers affect the layer list, not artwork.

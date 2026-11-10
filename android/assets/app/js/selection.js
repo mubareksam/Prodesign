@@ -74,6 +74,30 @@
     } catch(e) { return {error:'Not enough memory to invert selection'}; }
   };
 
+  // Boolean operations create hard run masks; null means unrestricted elsewhere,
+  // so refusing empty results avoids accidentally selecting the entire canvas.
+  Q.combineSelections = function (base,added,operation,width,height) {
+    if(!base || !added) return {error:'Make an existing selection first'};
+    if(!['add','subtract'].includes(operation)) return {error:'Invalid selection operation'};
+    const valid=s=>s && [s.x,s.y,s.w,s.h].every(Number.isInteger) && s.x>=0 && s.y>=0 && s.w>0 && s.h>0 && s.x+s.w<=width && s.y+s.h<=height;
+    if(!Number.isInteger(width)||!Number.isInteger(height)||width<1||height<1||!valid(base)||!valid(added)) return {error:'Invalid selection bounds'};
+    if(width*height>4*1024*1024) return {error:'Canvas exceeds the 4 megapixel selection-combine limit'};
+    try {
+      const masks=[Q.selectionMask(base),Q.selectionMask(added)], shapes=[base,added];
+      function contains(n,x,y) { const s=shapes[n]; return x>=s.x && x<s.x+s.w && y>=s.y && y<s.y+s.h && (!masks[n] || !!masks[n][(y-s.y)*s.w+x-s.x]); }
+      const left=operation==='subtract' ? base.x : Math.min(base.x,added.x), top=operation==='subtract' ? base.y : Math.min(base.y,added.y);
+      const right=operation==='subtract' ? base.x+base.w : Math.max(base.x+base.w,added.x+added.w), bottom=operation==='subtract' ? base.y+base.h : Math.max(base.y+base.h,added.y+added.h);
+      const runs=[]; let minX=width,minY=height,maxX=0,maxY=0;
+      for(let y=top;y<bottom;y++) { let start=-1; for(let x=left;x<=right;x++) {
+        const include=x<right && (operation==='add' ? contains(0,x,y)||contains(1,x,y) : contains(0,x,y)&&!contains(1,x,y));
+        if(include && start<0) start=x;
+        if(!include && start>=0) { if(runs.length>=4096) return {error:'Combined selection is too complex (maximum 4096 runs)'}; runs.push({x:start,y:y,w:x-start}); minX=Math.min(minX,start); maxX=Math.max(maxX,x); minY=Math.min(minY,y); maxY=y+1; start=-1; }
+      }}
+      if(!runs.length) return {error:'Result would be empty; selection left unchanged'};
+      return {selection:{x:minX,y:minY,w:maxX-minX,h:maxY-minY,runs:runs}};
+    } catch(e) { return {error:'Not enough memory to combine selections'}; }
+  };
+
   Q.intersectRect = function (a, b) {
     const x=Math.max(a.x,b.x), y=Math.max(a.y,b.y);
     const right=Math.min(a.x+a.w,b.x+b.w), bottom=Math.min(a.y+a.h,b.y+b.h);

@@ -8,11 +8,11 @@ brushes, layers with blend modes, a colour wheel, a frame timeline with onion sk
 Procreate's gesture vocabulary, PNG/GIF export and device-dependent MP4 export — all offline, with no account and
 no network permissions at all.
 
-- Package: `com.qalam.studio` · version 5.2 (versionCode 43)
+- Package: `com.qalam.studio` · version 5.3 (versionCode 44)
 - minSdk 26 (Android 8.0) · targetSdk 33 · armeabi-v7a/arm64/x86/x86_64 independent
   (everything is HTML/JS running inside the app's own `WebView`, so the APK has no
   native code)
-- APK: **`artifacts/Qelem-5.2.apk`** (~319 KB), signed with a v1+v2 scheme
+- APK: **`artifacts/Qelem-5.3.apk`** (~321 KB), signed with a v1+v2 scheme
 - The written analysis of Procreate that this app was specified from:
   [`docs/procreate-analysis.md`](procreate-analysis.md)
 
@@ -20,7 +20,7 @@ no network permissions at all.
 
 ## 1. Install
 
-1. Copy `artifacts/Qelem-5.2.apk` to the phone (USB, Drive, chat to yourself — anything).
+1. Copy `artifacts/Qelem-5.3.apk` to the phone (USB, Drive, chat to yourself — anything).
 2. Open it with the phone's file manager. Android will ask to allow installs from
    that app the first time ("Install unknown apps").
 3. Install and open **Qelem**. If an earlier Qalam version is already installed, Android should offer an update that preserves its data. Back up important artwork first. Android does not allow this app to silently uninstall itself; do not uninstall it unless you have backed up its local artwork.
@@ -65,6 +65,11 @@ Everything is autosaved on the device (`IndexedDB`, with a `localStorage` fallba
 
 The corrected spelling does not change the package, signing identity or storage keys. Android 10+ exports still use the existing `Pictures/Qalam` and `Movies/Qalam` folders.
 
+In the gallery, tap an artwork's eye preview and choose **Duplicate artwork** to
+create an independent copy of its last successfully saved record, including all
+layers, frames and saved metadata. It does not copy unsaved work, selection,
+undo history or the device palette. Insufficient storage can prevent duplication.
+
 ## 3. Tools and panels
 
 The top bar provides **Gallery, Actions, Effects, Selection & transform, Undo,
@@ -104,6 +109,13 @@ Android WebView touch and physical-device layout still need testing.
   brush-based smudge, and large tips may be slower on a phone. Actions → Preferences
   → Smudge edge sets hardness from 0% (soft falloff) to 100% (hard, the default).
   Changes are saved on this device and apply to new strokes; Reset restores 100%.
+- **Saved palette** — tap the four-square icon in the Colour tray. Add the current
+  brush colour, tap a saved swatch to choose it, or enable Remove mode and tap a
+  swatch to remove it. Clear palette asks for confirmation. One palette of up to
+  24 unique colours is stored on this device, independent of artworks; it is not
+  included in project copies or exports and has no import/export or multiple sets.
+  If device storage is unavailable, saving reports failure; palette edits cannot
+  be undone through artwork history.
 - **Colour harmonies** — tap the three-circle icon in the Colour tray to see
   seven clickable hue suggestions: two analogous (±30°), a complement (180°),
   two triadic (±120°), and two split complementary (±150°). The suggestions use the current colour's hue, with
@@ -446,6 +458,15 @@ Android WebView touch and physical-device layout still need testing.
   then the reference is downscaled to at most 2048 per side for display. The picker
   and memory use still need testing on a physical Android device. Camera input and
   persistent reference images are not supported.
+- **Add or subtract selections** — in Selection & transform choose Add to
+  selection or Subtract from selection, then draw a rectangle, ellipse or lasso.
+  It combines with the existing selection for that one gesture; the next operation
+  defaults to Replace. Magic wand always replaces. Results are hard masks with a
+  bounding-box outline (not an exact outline) and are temporary, not artwork undo
+  steps. Canvases over 4 megapixels, results over 4096 horizontal runs, and empty
+  results are refused with the original selection intact. Deselect explicitly to
+  remove a selection; combined selections cannot be transformed as rectangles.
+  Large combinations may briefly pause while the mask is calculated.
 - **Actions → Create & edit → Selection & transform** — choose **Draw rectangle**
   and drag, **Draw ellipse** and drag its bounding box, **Draw lasso** and trace a
   freehand outline, or choose **Magic wand**
@@ -618,7 +639,7 @@ tools/
   tests/gif_roundtrip.mjs    encodes a GIF and decodes it with an independent decoder
   tests/ui_smoke.mjs         jsdom boot + full UI drive (gallery -> export)
   tests/ui_layout_browser.mjs optional Chromium layout and interaction checks
-artifacts/Qelem-5.2.apk           the signed, installable artefact
+artifacts/Qelem-5.3.apk           the signed, installable artefact
 docs/procreate-analysis.md   the Procreate study this app was built from
 docs/qalam.md                this file
 ```
@@ -648,7 +669,7 @@ Design notes worth knowing before changing code:
 
 ```bash
 bash tools/fetch-toolchain.sh     # once per machine: JVM, apktool, aapt2, jars, npm
-bash tools/build.sh               # -> artifacts/Qelem-5.2.apk (signed + verified)
+bash tools/build.sh               # -> artifacts/Qelem-5.3.apk (signed + verified)
 bash tools/check_reference.sh     # optional: javac-check the Java mirrors
 ```
 

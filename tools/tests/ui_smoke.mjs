@@ -450,7 +450,7 @@ async function run() {
 
   console.log('about');
   Q.UI.aboutSheet();
-  ok(doc.querySelector('#modalBody').textContent.includes('Developed by Qmer') && doc.querySelector('#modalBody').textContent.includes('Version 5.2'), 'About credits Qmer and shows current version');
+  ok(doc.querySelector('#modalBody').textContent.includes('Developed by Qmer') && doc.querySelector('#modalBody').textContent.includes('Version 5.3'), 'About credits Qmer and shows current version');
   Q.UI.closeModal();
 
   console.log('hardware back');
@@ -1450,6 +1450,33 @@ async function run() {
   ok(doc.querySelector('[aria-label="JPEG quality"]').value==='0.9' && doc.querySelector('#modalBody').textContent.includes('no transparency'),'JPEG dialog explains export and defaults to high quality');
   const originalExport=App.exportJpeg; let quality=null; App.exportJpeg=q=>{quality=q;}; doc.querySelector('[aria-label="JPEG quality"]').value='0.75'; click('#modalBody .btn.primary'); ok(quality===0.75,'selected JPEG quality is passed to export');
   Q.UI.jpegDialog(); App.createDoc(64,64,'Different artwork'); click('#modalBody .btn.primary'); ok(quality===0.75,'stale JPEG dialog cannot export another artwork'); App.exportJpeg=originalExport; Q.UI.closeTray();
+  }
+
+  {
+  console.log('5.3 combined selections, palette and gallery duplicate');
+  App.createDoc(64,64,'Original'); const d=App.doc,v=App.view, canvas=doc.querySelector('#view'); d.activeCel(true); d.addFrame(false); d.activeCel(true); d.layer().tag='green'; d.history.clear();
+  const perform=(op,shape,x1,y1,x2,y2,id)=>{ Q.UI.selectionDialog(); doc.querySelector('[aria-label="Selection combination"]').value=op; [...doc.querySelectorAll('#modalBody button')].find(b=>b.textContent===shape).click(); const a=v.toScreen(x1,y1),b=v.toScreen(x2,y2); pointer(canvas,'pointerdown',a.x,a.y,{id}); pointer(canvas,'pointermove',b.x,b.y,{id}); pointer(canvas,'pointerup',b.x,b.y,{id}); };
+  perform('replace','Draw rectangle',3,3,20,20,2501); const original=v.selection; perform('add','Draw rectangle',25,25,40,40,2502);
+  ok(v.selection.runs && v.selection.x<=3 && v.selection.x+v.selection.w>=40 && d.history.undoStack.length===0,'add selection unions a second rectangle without changing art');
+  perform('subtract','Draw rectangle',5,5,10,10,2503); ok(v.selection.runs && v.selection!==original,'subtract selection removes a region');
+  const selected=v.selection; Q.UI.selectionDialog(); doc.querySelector('[aria-label="Selection combination"]').value='add'; [...doc.querySelectorAll('#modalBody button')].find(b=>b.textContent==='Draw rectangle').click(); const a=v.toScreen(1,1),b=v.toScreen(20,20); pointer(canvas,'pointerdown',a.x,a.y,{id:2504}); pointer(canvas,'pointermove',b.x,b.y,{id:2504}); pointer(canvas,'pointercancel',b.x,b.y,{id:2504}); ok(v.selection===selected,'cancelled combination keeps prior selection');
+  v.selection=null; Q.UI.selectionDialog(); doc.querySelector('[aria-label="Selection combination"]').value='subtract'; [...doc.querySelectorAll('#modalBody button')].find(b=>b.textContent==='Draw rectangle').click(); ok(v.tool==='brush' && doc.querySelector('#toast').textContent.includes('selection first'),'combine requires an existing selection');
+  win.localStorage.removeItem('qelem-palette'); App.setColor([17,34,51]); Q.UI.openTray('color'); click('[aria-label="Saved palette"]');
+  [...doc.querySelectorAll('#modalBody button')].find(b=>b.textContent==='Add current colour').click(); ok(Q.readSavedPalette().join()==='#112233' && doc.querySelector('[aria-label="Use #112233"]'),'current colour saves as an accessible palette swatch');
+  [...doc.querySelectorAll('#modalBody button')].find(b=>b.textContent==='Add current colour').click(); ok(Q.readSavedPalette().length===1,'duplicate palette colours are not added');
+  Q.UI.closeModal(); App.setColor([255,0,0]); Q.UI.savedPaletteDialog(); click('[aria-label="Use #112233"]'); ok(Q.rgbToHex(v.color)==='#112233' && d.history.undoStack.length===0,'saved swatch changes brush colour but not artwork');
+  Q.UI.savedPaletteDialog(); [...doc.querySelectorAll('#modalBody button')].find(b=>b.textContent==='Remove mode').click(); click('[aria-label="Remove #112233"]'); ok(Q.readSavedPalette().length===0,'remove mode deletes a swatch');
+  Q.UI.closeModal(); win.localStorage.setItem('qelem-palette',JSON.stringify(['#abc','#aabbcc','invalid','#FF0000'])); ok(Q.readSavedPalette().join(',')==='#aabbcc,#ff0000','palette sanitizes malformed, duplicate and shorthand values');
+  const storageProto=Object.getPrototypeOf(win.localStorage), originalSet=storageProto.setItem; storageProto.setItem=function(){throw new Error('quota');}; ok(!Q.writeSavedPalette(['#123456']),'palette reports storage failure'); storageProto.setItem=originalSet;
+  const full=Array.from({length:24},(_,i)=>'#'+i.toString(16).padStart(6,'0')); ok(Q.writeSavedPalette(full) && !Q.writeSavedPalette([...full,'#ffffff']) && Q.readSavedPalette().length===24,'palette has a 24-colour cap'); Q.UI.savedPaletteDialog(); [...doc.querySelectorAll('#modalBody button')].find(b=>b.textContent==='Clear palette').click(); click('#modalBody .btn.danger'); ok(Q.readSavedPalette().length===0,'palette clear requires confirmation');
+  Q.UI.closeTray(); await App.saveNow(false); const origId=d.id; const id=await Q.Store.duplicate(origId), copy=await Q.Store.load(id); ok(id!==origId && copy.name==='Original copy' && copy.frames.length===2 && copy.layer().tag==='green' && !!copy.cel(0,0,false) && !!copy.cel(1,0,false),'duplicating a saved artwork preserves frames, cels and layer metadata');
+  const rawCopy=JSON.parse(win.localStorage.getItem('qalam-projects')); const beforeRecord={...rawCopy[origId]}, afterRecord={...rawCopy[id]}; delete beforeRecord.id; delete beforeRecord.name; delete beforeRecord.updated; delete afterRecord.id; delete afterRecord.name; delete afterRecord.updated; ok(JSON.stringify(beforeRecord)===JSON.stringify(afterRecord),'duplicate copies the complete saved record including future metadata');
+  copy.name='Modified copy'; await Q.Store.save(copy,null); const again=await Q.Store.load(origId); ok(again.name==='Original' && again.frames.length===2,'editing the copy does not overwrite the original');
+  const oldUid=Q.uid; Q.uid=()=>origId; let collision=false; try { await Q.Store.duplicate(origId); } catch(e) { collision=true; } Q.uid=oldUid; ok(collision && (await Q.Store.load(origId)).name==='Original','duplicate refuses ID collisions');
+  let missing=false; try { await Q.Store.duplicate('no-such-artwork'); } catch(e) { missing=true; } ok(missing,'duplicating a missing artwork fails safely');
+  const previousSet=storageProto.setItem; storageProto.setItem=function(){throw new Error('quota');}; let quota=false; try { await Q.Store.duplicate(origId); } catch(e) { quota=true; } storageProto.setItem=previousSet; ok(quota && (await Q.Store.load(origId)).name==='Original','gallery duplicate fails safely when local storage is full');
+  App.backToGallery(); await tick(); await tick(); const preview=[...doc.querySelectorAll('.g-preview')].find(el=>el.getAttribute('aria-label')==='Preview artwork: Original'); preview.click(); ok(doc.querySelector('#modalBody').textContent.includes('Duplicate artwork'),'gallery preview exposes duplicate action'); [...doc.querySelectorAll('#modalBody button')].find(b=>b.textContent==='Duplicate artwork').click(); await tick(); await tick(); ok((await Q.Store.list()).filter(x=>x.name==='Original copy').length>=1,'gallery duplicate saves another artwork');
+  const realDuplicate=Q.Store.duplicate; let resolveDuplicate; Q.Store.duplicate=()=>new Promise(resolve=>{resolveDuplicate=resolve;}); Q.UI.previewGalleryItem({id:origId,name:'Original',w:64,h:64,frames:2}); [...doc.querySelectorAll('#modalBody button')].find(b=>b.textContent==='Duplicate artwork').click(); Q.UI.closeModal(); Q.UI.aboutSheet(); resolveDuplicate('done'); await tick(); ok(visible(doc.querySelector('#modal')) && doc.querySelector('#modalBody h2').textContent==='Qelem','a late duplication does not close an unrelated dialog'); Q.Store.duplicate=realDuplicate; Q.UI.closeModal();
   }
 
   await App.saveNow(false);

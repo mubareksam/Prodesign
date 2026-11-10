@@ -124,7 +124,7 @@
     const v = App.view;
     v.doc = doc;
     v.locked = false;
-    v.tool = 'brush'; v.selection = null; v.selectionDraft = null; v.motionDraft = null; v.transparentPreview = false;
+    v.tool = 'brush'; v.selection = null; v.selectionDraft = null; v.selectionOperation='replace'; v.motionDraft = null; v.transparentPreview = false;
     Q.UI.showStudio();
     Q.el('#btnEyedrop').classList.remove('on');
     Q.el('#btnFill').classList.remove('on');

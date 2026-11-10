@@ -127,6 +127,21 @@
       });
     },
 
+    // Duplicate the last saved record, including every cel and future metadata,
+    // without decoding/re-rendering it. add() refuses an ID collision.
+    duplicate: function(id) {
+      function copy(r) { return {...r,id:Q.uid(),name:String(r.name || 'Untitled').slice(0,59)+' copy',updated:Date.now()}; }
+      if(useLocal) {
+        try { const all=lsAll(), original=all[id]; if(!original) return Promise.reject(new Error('Artwork not found')); const rec=copy(original); if(Object.prototype.hasOwnProperty.call(all,rec.id)) return Promise.reject(new Error('Artwork ID collision')); all[rec.id]=rec; localStorage.setItem(LS_KEY,JSON.stringify(all)); return Promise.resolve(rec.id); }
+        catch(e) { return Promise.reject(e); }
+      }
+      return openDb().then(db=>new Promise((resolve,reject)=>{
+        const t=db.transaction(STORE,'readwrite'), store=t.objectStore(STORE), get=store.get(id); let newId=null;
+        get.onsuccess=function(){ if(!get.result) { t.abort(); return; } const rec=copy(get.result); newId=rec.id; store.add(rec); };
+        t.oncomplete=()=>resolve(newId); t.onabort=()=>reject(t.error || new Error('Artwork not found or copy failed')); t.onerror=()=>{};
+      }));
+    },
+
     remove: function (id) {
       if (useLocal) { lsDel(id); return Promise.resolve(); }
       return tx('readwrite', function (store) { store.delete(id); return true; });

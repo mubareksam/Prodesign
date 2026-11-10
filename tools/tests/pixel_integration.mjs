@@ -990,4 +990,23 @@ console.log('5.2 ellipse selection and JPEG export');
  const prev=saved; ok(!App.exportJpeg(NaN) && !App.exportJpeg(2) && saved===prev,'invalid JPEG quality never saves');
  const old=d.flatten; d.flatten=()=>({toDataURL:()=> 'data:image/png;base64,AAAA'}); ok(!App.exportJpeg(0.9) && saved===prev,'unsupported JPEG encoding is not mislabeled or saved'); d.flatten=old;
 }
+console.log('5.3 combined selections');
+{
+ const d=setup(), a={x:1,y:1,w:6,h:6}, b={x:4,y:4,w:8,h:8};
+ let result=Q.combineSelections(a,b,'add',16,16); ok(!result.error && result.selection.runs && result.selection.x===1 && result.selection.w===11,'add unions overlapping rectangles');
+ const mask=Q.selectionMask(result.selection), test=(m,s,x,y)=>m[(y-s.y)*s.w+x-s.x];
+ ok(test(mask,result.selection,2,2) && test(mask,result.selection,10,10) && !test(mask,result.selection,10,2),'union preserves both shapes and excludes empty bounds');
+ App.view.selection=result.selection; const cel=d.activeCel(true); App.editSelection('fill'); ok(pixel(cel,2,2)[0]===255 && pixel(cel,10,10)[0]===255 && pixel(cel,10,2)[3]===0,'union selection clips edits'); d.history.undo();
+ result=Q.combineSelections(a,b,'subtract',16,16); const cut=result.selection, cm=Q.selectionMask(cut);
+ ok(test(cm,cut,2,2) && !test(cm,cut,5,5),'subtract removes only overlap');
+ App.view.selection=cut; App.editSelection('fill'); ok(pixel(cel,2,2)[0]===255 && pixel(cel,5,5)[3]===0,'subtract result clips pixels and is undoable'); d.history.undo();
+ const ellipse=Q.ellipseSelection({x:3,y:3},{x:13,y:13},16,16), lasso=Q.lassoSelection([{x:0,y:0},{x:8,y:0},{x:0,y:8}],16,16);
+ const mixed=Q.combineSelections(ellipse,lasso,'add',16,16).selection, mixedMask=Q.selectionMask(mixed);
+ ok(test(mixedMask,mixed,1,1) && test(mixedMask,mixed,8,8) && !test(mixedMask,mixed,13,13),'ellipse and lasso combine using actual shape masks');
+ const wand={x:0,y:0,w:4,h:2,runs:[{x:0,y:0,w:2},{x:3,y:1,w:1}]}; const mixed2=Q.combineSelections(wand,{x:0,y:0,w:1,h:1},'subtract',16,16).selection, m2=Q.selectionMask(mixed2);
+ ok(!test(m2,mixed2,0,0) && test(m2,mixed2,1,0) && test(m2,mixed2,3,1),'run masks combine correctly, including holes and disconnected pixels');
+ ok(Q.combineSelections(a,a,'subtract',16,16).error.includes('empty') && Q.combineSelections(null,b,'add',16,16).error && Q.combineSelections(a,b,'add',4096,4096).error.includes('4 megapixel'),'empty, missing and large selections fail safely');
+ const tall={x:0,y:0,w:3,h:4096}, middle={x:1,y:0,w:1,h:4096}; ok(Q.combineSelections(tall,middle,'subtract',3,4096).error.includes('complex'),'more than 4096 runs is rejected');
+ const inv=Q.invertSelection(cut,16,16); ok(!inv.error && inv.selection.runs,'combined selections can be inverted');
+}
 console.log(`all ${n} raster integration checks passed`);

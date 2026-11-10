@@ -118,6 +118,15 @@
     }).join('');
   };
 
+  // One device-local palette; never stored in or exported with artworks.
+  Q.readSavedPalette = function () {
+    try { const saved=JSON.parse(localStorage.getItem('qelem-palette') || '[]'); if(!Array.isArray(saved)) return []; const out=[]; for(const value of saved.slice(0,256)) { if(typeof value!=='string' || !/^#(?:[0-9a-f]{3}|[0-9a-f]{6})$/i.test(value)) continue; const c=Q.rgbToHex(Q.hexToRgb(value)); if(!out.includes(c)) out.push(c); if(out.length===24) break; } return out; } catch(e) { return []; }
+  };
+  Q.writeSavedPalette = function (colors) {
+    if(!Array.isArray(colors) || colors.length>24 || colors.some(c=>typeof c!=='string'||!/^#[0-9a-f]{6}$/.test(c)) || new Set(colors).size!==colors.length) return false;
+    try { localStorage.setItem('qelem-palette',JSON.stringify(colors)); return true; } catch(e) { return false; }
+  };
+
   Q.rgba = function (rgb, a) {
     return 'rgba(' + rgb[0] + ',' + rgb[1] + ',' + rgb[2] + ',' + (a == null ? 1 : a) + ')';
   };

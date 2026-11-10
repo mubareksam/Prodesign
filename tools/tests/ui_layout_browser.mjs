@@ -74,5 +74,17 @@ try {
   await page.evaluate(()=>{Q.UI.openTray('color');}); await page.locator('[aria-label="Colour harmonies"]').click();
   ok(await page.evaluate(()=>[...document.querySelectorAll('.harmony-item')].every(el=>el.scrollWidth<=el.clientWidth)),'harmony labels fit narrow phone');
   ok(await page.locator('.harmony-item').count()===7 && await page.getByRole('button',{name:'Split complementary −150°',exact:false}).count()===1,'split-complementary previews are available in browser'); await page.evaluate(()=>Q.UI.closeModal());
+  await page.evaluate(()=>{Q.UI.closeTray();Q.UI.selectionDialog();});
+  await page.locator('[aria-label="Selection combination"]').selectOption('add'); await page.getByText('Draw rectangle',{exact:true}).click();
+  const extra=await page.evaluate(()=>[Q.App.view.toScreen(22,22),Q.App.view.toScreen(30,30)]); await page.mouse.move(extra[0].x,extra[0].y); await page.mouse.down(); await page.mouse.move(extra[1].x,extra[1].y,{steps:5}); await page.mouse.up();
+  ok(await page.evaluate(()=>Q.App.view.selection && !!Q.App.view.selection.runs && Q.App.view.selection.x<=22),'combining an ellipse and rectangle works with browser pointer events');
+  await page.evaluate(()=>Q.UI.openTray('color')); await page.locator('[aria-label="Saved palette"]').click(); await page.getByText('Add current colour').click();
+  const paletteHex=await page.evaluate(()=>Q.rgbToHex(Q.App.view.color)); ok(await page.locator(`[aria-label="Use ${paletteHex}"]`).count()===1,'palette saves a colour in the browser');
+  await page.evaluate(()=>Q.UI.closeModal()); await page.locator('[aria-label="Saved palette"]').click(); ok(await page.locator(`[aria-label="Use ${paletteHex}"]`).count()===1,'palette persists after reopening'); await page.evaluate(()=>Q.UI.closeModal());
+  const duplicate=await page.evaluate(async()=>{const d=Q.App.doc; d.activeCel(true); d.addFrame(false);d.activeCel(true);await Q.App.saveNow(false);const id=await Q.Store.duplicate(d.id);const copy=await Q.Store.load(id);const original=await Q.Store.load(d.id);return {mode:Q.Store.mode(),different:id!==d.id,name:copy.name,frames:copy.frames.length,first:!!copy.cel(0,0,false),second:!!copy.cel(1,0,false),orig:original.name};});
+  const collision=await page.evaluate(async()=>{const d=Q.App.doc, old=Q.uid; Q.uid=()=>d.id; try { await Q.Store.duplicate(d.id); return false; } catch(e) { return (await Q.Store.load(d.id)).name==='Ellipse layout'; } finally { Q.uid=old; }}); ok(collision,'IndexedDB duplicate rejects ID collisions without overwriting');
+  ok(duplicate.mode==='idb' && duplicate.different && duplicate.name==='Ellipse layout copy' && duplicate.orig==='Ellipse layout' && duplicate.frames===2 && duplicate.first && duplicate.second,'IndexedDB duplicate preserves all frames without overwriting original');
+  await page.evaluate(()=>Q.App.backToGallery()); await page.getByRole('button',{name:'Preview artwork: Ellipse layout',exact:true}).first().click();
+  ok(await page.getByText('Duplicate artwork',{exact:true}).isVisible(),'gallery preview exposes duplication in real browser'); await page.getByText('Duplicate artwork',{exact:true}).click(); await page.waitForFunction(async()=> (await Q.Store.list()).filter(x=>x.name==='Ellipse layout copy').length>=2); ok(true,'gallery duplicate persists an IndexedDB record');
   ok(errors.length===0,'no browser runtime errors'); console.log(`all ${checks} browser layout checks passed`);
 } finally { await browser.close(); await new Promise(resolve=>server.close(resolve)); }
