@@ -1133,4 +1133,26 @@ console.log('5.9 fill and wand sampling');
  ok(same(pixel(cel,2,2),[0,0,0,255]) && !d.history.canUndo() && !App.view.locked,'undo allocation failure leaves fill pixels and history unchanged');
  App.fillSource='active';App.fillScope='connected';App.fillThreshold=12;
 }
+console.log('6.0 canvas mesh transforms');
+{
+ const d=setup(),c=d.activeCel(true),cx=c.getContext('2d');cx.fillStyle='#f00';cx.fillRect(2,2,4,4);cx.fillStyle='#00f';cx.fillRect(10,10,2,2);d.history.clear();App.view.selection={x:2,y:2,w:4,h:4};
+ ok(!App.beginCanvasTransform().error,'canvas transform starts on a rectangular selection');let t=App.view.meshTransform;t.points=t.points.map(p=>({x:p.x+4,y:p.y+2}));ok(!App.applyCanvasTransform().error && pixel(c,2,2)[3]===0 && pixel(c,6,4)[0]===255 && pixel(c,10,10)[2]===255,'mesh translation moves selected pixels without affecting unrelated artwork');
+ ok(d.history.undoStack.length===1 && App.view.selection.x===6,'transform creates one history entry and updates selection bounds');d.history.undo();ok(pixel(c,2,2)[0]===255 && pixel(c,6,4)[3]===0,'mesh undo restores source and destination');d.history.redo();ok(pixel(c,6,4)[0]===255,'mesh redo restores transformed pixels');
+}
+{
+ const d=setup(),c=d.activeCel(true),cx=c.getContext('2d');cx.fillStyle='#f00';cx.fillRect(2,2,6,6);App.view.selection={x:2,y:2,w:6,h:6};d.history.clear();App.beginCanvasTransform();let t=App.view.meshTransform;t.points[2].x+=3;t.points=Q.transformQuad(t.points);ok(!App.applyCanvasTransform().error && pixel(c,9,2)[0]===255 && pixel(c,9,7)[3]===0,'distortion maps corners into a tapered shape');d.history.undo();
+ App.view.selection={x:2,y:2,w:6,h:6};App.beginCanvasTransform();t=App.view.meshTransform;t.points[4].x+=2;ok(!App.applyCanvasTransform().error && pixel(c,4,4)[0]===255 && d.history.undoStack.length===1,'nine-point warp renders and records undo');
+}
+{
+ const d=setup(),c=d.activeCel(true);App.view.selection={x:2,y:2,w:6,h:6};d.history.clear();App.beginCanvasTransform();let t=App.view.meshTransform;ok(App.applyCanvasTransform().error==='Nothing changed','unchanged mesh makes no history');t.points[0]={...t.points[8]};ok(App.applyCanvasTransform().error.includes('cross') && !d.history.canUndo(),'folded mesh is rejected without edits');
+ t.points=Q.transformGrid(t.src).map(p=>({x:p.x+1,y:p.y}));d.layer().locked=true;ok(App.applyCanvasTransform().error && !d.history.canUndo(),'locked target rejects a stale mesh');d.layer().locked=false; d.addLayer();ok(App.applyCanvasTransform().error,'changing the layer rejects stale mesh');
+}
+{
+ const d=setup(),c=d.activeCel(true),ctx=c.getContext('2d');ctx.fillStyle='rgba(0,255,0,0.5)';ctx.fillRect(3,3,3,3);d.history.clear();App.view.selection={x:3,y:3,w:3,h:3};const alpha=pixel(c,4,4)[3];App.beginCanvasTransform();App.view.meshTransform.points=App.view.meshTransform.points.map(p=>({x:p.x+4,y:p.y}));ok(!App.applyCanvasTransform().error && pixel(c,8,4)[3]===alpha && pixel(c,4,4)[3]===0,'mesh preserves semitransparent pixels during translation');
+ d.history.undo();App.view.selection={x:3,y:3,w:3,h:3};App.beginCanvasTransform();App.view.meshTransform.points=App.view.meshTransform.points.map(p=>({x:p.x+4,y:p.y}));const get=ctx.getImageData.bind(ctx);ctx.getImageData=()=>{throw Error('memory');};const r=App.applyCanvasTransform();ctx.getImageData=get;ok(r.error && pixel(c,4,4)[3]===alpha && !d.history.canUndo(),'readback failure leaves pixels and history unchanged');
+}
+{
+ const d=setup();d.activeCel(true); App.view.selection={x:0,y:0,w:16,h:16,shape:'ellipse'};ok(App.beginCanvasTransform().error.includes('rectangular'),'mesh rejects nonrectangular selection'); App.view.selection=null; d.layer().alphaLocked=true;ok(App.beginCanvasTransform().error.includes('alpha'),'mesh rejects alpha-locked layers');
+ const big=new Q.Doc({width:2048,height:2048});big.activeCel(true);App.doc=big;App.view={selection:null,locked:false};ok(App.beginCanvasTransform().error.includes('2 megapixels'),'mesh limits oversized sources before starting');
+}
 console.log(`all ${n} raster integration checks passed`);

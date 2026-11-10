@@ -303,6 +303,15 @@ The supplied feature inventory is a roadmap, not a list of completed work.
   frame. Copy one non-empty current-layer cel to a range of frames with confirmation
   and undo; allocation is capped at 64 MiB per operation and locked/alpha-locked
   layers are protected. Other layers and frame metadata are unchanged.
+- Canvas transform provides direct uniform/freeform scale, rotate, four-corner
+  distortion and a basic nine-point piecewise-affine warp, plus translation. It
+  previews a grid only, uses nearest-neighbour pixels, resets on style change and
+  commits one undoable current-layer edit. Canvas gestures/drawing are disabled while
+  it is open; other UI actions cancel it. Rectangles or whole cels only; rejects
+  folded meshes, hidden/locked/alpha-locked layers and areas over 2 MP or the
+  estimated 64 MiB buffer limit. Actual memory may be higher; rendering can pause
+  on large areas. Off-canvas pixels are cropped, and undo does not restore selection.
+  This is not smooth/perspective-correct or full Procreate warp.
 - Fill, colour drop and Magic wand share device-local active-layer/visible-layer sampling and connected/all-matching choices. Visible sampling composites the current frame without background or playback transforms; fill edits only the active layer, respects selection and alpha lock, and is undoable. Wand replaces the selection, with a 4096-run limit and bounds-only indicator. New modes have a 4 MP and estimated 64 MiB temporary-memory limit (actual memory can be higher) and may pause the main thread; they are not separately marked reference layers.
 - Effects have a small approximate, downsampled current-cel preview that updates with the strength slider; applying edits pixels, not a persistent live effect.
 - Undoable per-frame layer effects: Gaussian-like blur (three box passes), horizontal motion blur, sharpen,
@@ -323,7 +332,7 @@ The supplied feature inventory is a roadmap, not a list of completed work.
 ## Not yet implemented
 
 Snapping/drawing assist for grids and perspective, camera references, layer masks/groups, advanced automatic selection,
-feathered selection, interactive transform handles and custom pivots, cross-layer ColorDrop/reference fill, advanced brush-based smudge, advanced filters and liquify, typography,
+feathered selection, advanced transform/warp and custom pivots, separately marked reference layers, advanced brush-based smudge, advanced filters and liquify, typography,
 DPI settings, timelapse, gallery stacks, PSD/Procreate/PDF/TIFF compatibility, brush
 import/export, and most advanced colour-management and accessibility features.
 Apple Pencil-specific controls are not applicable on Android. See the original

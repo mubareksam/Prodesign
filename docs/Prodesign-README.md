@@ -4,20 +4,20 @@ Developed by **Qmer**. An offline painting and frame-animation studio for Androi
 brushes, layers, a colour wheel, a frame timeline with onion skin, Procreate's gesture
 vocabulary, and PNG/JPEG/GIF export. No account, no ads, no network permission.
 
-**Download:** [`Qelem-5.9.apk`](../artifacts/Qelem-5.9.apk) (~333 KB)
+**Download:** [`Qelem-6.0.apk`](../artifacts/Qelem-6.0.apk) (~337 KB)
 
 | | |
 |---|---|
 | Package | `com.qalam.studio` |
-| Version | 5.9 (versionCode 50) |
+| Version | 6.0 (versionCode 51) |
 | Requires | Android 8.0+ (minSdk 26), built for targetSdk 33 |
 | Permissions | `VIBRATE` only — no internet, no storage, no location |
 | Signing | APK Signature Scheme v1 + v2, self-signed with a public test key |
-| SHA-256 | `74817edd7c8fb6a285afca6e239d6cc852e7397323e119e51a533ab6bc3fc729` |
+| SHA-256 | `f5ca8e560c0bddbc0ae1210609278f44c463efaa21ec960c7d8f513ba33686ff` |
 
 ## Install
 
-1. Download `Qelem-5.9.apk` to the phone (or copy it over USB).
+1. Download `Qelem-6.0.apk` to the phone (or copy it over USB).
 2. Open it from the file manager. Android will ask you to allow installs from that
    app the first time ("Install unknown apps") — allow it, then install.
 3. Open **Qelem**.
@@ -35,6 +35,12 @@ This is inspired by Procreate, not an exact copy.
 
 **Canvas** — 2048², portrait, landscape, 1920×1080, 1280² animation and 1080×1920
 story presets and custom sizes from 64 to 4096 pixels per side; full-screen canvas with two-finger pan, pinch zoom and twist rotate.
+
+**Canvas transform** — drag on-canvas handles to move, scale, rotate, distort or
+apply a basic nine-point warp to the active cel or rectangular selection. The grid
+is the only preview; pixels update on Apply. Undo restores pixels. This nearest-
+neighbour raster operation has a 2 MP and estimated 64 MiB limit, may block on
+large areas, and is not a full smooth or perspective-correct warp.
 
 **Fill sampling** — fill, colour drop and Magic wand can sample the active layer or
 the visible-layer composite, and match connected or all similar pixels. Fill edits

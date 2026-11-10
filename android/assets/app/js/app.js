@@ -120,6 +120,7 @@
 
   App.adoptDoc = function (doc, isNew) {
     if (App.cancelAudioExport) App.cancelAudioExport();
+    if (Q.UI.cancelCanvasTransform) Q.UI.cancelCanvasTransform();
     App.stopPlay();
     if (App.view) App.view.cancelActiveInput();
     if (Q.UI.resetReference) Q.UI.resetReference();
@@ -150,6 +151,7 @@
   };
 
   App.backToGallery = function () {
+    if (Q.UI.cancelCanvasTransform) Q.UI.cancelCanvasTransform();
     App.stopPlay();
     if (Q.UI.resetReference) Q.UI.resetReference();
     if (App.view) App.view.cancelActiveInput();
@@ -818,6 +820,31 @@
       ctx.putImageData(after,r.x,r.y); d.history.push({type:'pixels',f:d.activeFrame,l:d.activeLayer,rect:r,before:before});
       if(v.selection) v.selection=Q.intersectRect(plan.bounds,{x:0,y:0,w:d.width,h:d.height});
       v.dirty=true; App.markDirty(); Q.toast('Transform applied · Undo to revert',3000); return {clipped:plan.clipped};
+    } catch(err) { return {error:'Could not transform this area on this device'}; }
+  };
+
+  // Canvas mesh transform stages output before changing the cel. The session
+  // keeps no artwork changes until Apply; the mesh itself is temporary.
+  App.beginCanvasTransform = function () {
+    const d=App.doc,v=App.view; if(!d || !v || App.playing || v.locked) return {error:'Stop playback or the current operation first'};
+    const layer=d.layer(),cel=d.activeCel(false),sel=v.selection;
+    if(!layer || !layer.visible || layer.locked || layer.alphaLocked) return {error:'Show and unlock the layer and turn off alpha lock'};
+    if(!cel) return {error:'Draw on this layer first'}; if(sel && Q.complexSelection(sel)) return {error:'Use a rectangular selection'};
+    const src=sel ? {x:sel.x,y:sel.y,w:sel.w,h:sel.h} : {x:0,y:0,w:d.width,h:d.height};
+    if(src.w*src.h>2*1024*1024) return {error:'Select an area up to 2 megapixels'};
+    v.meshTransform={doc:d,frame:d.frames[d.activeFrame],layer:layer,cel:cel,selection:sel,src:src,points:Q.transformGrid(src),mode:'uniform',undo:d.history.undoStack.slice(),redo:d.history.redoStack.slice()}; v.dirty=true; return {};
+  };
+  App.applyCanvasTransform = function () {
+    const d=App.doc,v=App.view,t=v && v.meshTransform;
+    if(!t || !d || t.doc!==d || d.frames[d.activeFrame]!==t.frame || d.layer()!==t.layer || d.activeCel(false)!==t.cel || v.selection!==t.selection || App.playing || v.locked || !t.layer.visible || t.layer.locked || t.layer.alphaLocked || (t.selection && ['x','y','w','h'].some(k=>t.selection[k]!==t.src[k])) || t.undo.length!==d.history.undoStack.length || t.redo.length!==d.history.redoStack.length || t.undo.some((e,i)=>d.history.undoStack[i]!==e) || t.redo.some((e,i)=>d.history.redoStack[i]!==e)) return {error:'Artwork changed; cancel and reopen transform'};
+    const plan=Q.planMeshTransform(t.src,t.points,d.width,d.height); if(plan.error) return plan;
+    const r=plan.rect,src=t.src,ctx=t.cel.getContext('2d');
+    try {
+      const image=ctx.getImageData(src.x,src.y,src.w,src.h), warped=Q.rasterMesh(image,t.points,r), warp=Q.canvas(r.w,r.h), wc=warp.getContext('2d'), output=wc.createImageData(r.w,r.h); output.data.set(warped); wc.putImageData(output,0,0);
+      const stage=Q.canvas(r.w,r.h), sc=stage.getContext('2d'); sc.drawImage(t.cel,r.x,r.y,r.w,r.h,0,0,r.w,r.h);sc.clearRect(src.x-r.x,src.y-r.y,src.w,src.h);sc.drawImage(warp,0,0);
+      const before=ctx.getImageData(r.x,r.y,r.w,r.h), after=sc.getImageData(0,0,r.w,r.h);
+      try {ctx.putImageData(after,r.x,r.y);} catch(err) {try {ctx.putImageData(before,r.x,r.y);} catch(ignore) {} throw err;}
+      d.history.push({type:'pixels',f:d.activeFrame,l:d.activeLayer,rect:r,before:before}); if(t.selection) v.selection=plan.bounds; v.dirty=true; App.markDirty(); return {};
     } catch(err) { return {error:'Could not transform this area on this device'}; }
   };
 

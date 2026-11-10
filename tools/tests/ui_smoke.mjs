@@ -450,7 +450,7 @@ async function run() {
 
   console.log('about');
   Q.UI.aboutSheet();
-  ok(doc.querySelector('#modalBody').textContent.includes('Developed by Qmer') && doc.querySelector('#modalBody').textContent.includes('Version 5.9'), 'About credits Qmer and shows current version');
+  ok(doc.querySelector('#modalBody').textContent.includes('Developed by Qmer') && doc.querySelector('#modalBody').textContent.includes('Version 6.0'), 'About credits Qmer and shows current version');
   Q.UI.closeModal();
 
   console.log('hardware back');
@@ -1582,6 +1582,16 @@ async function run() {
   source.value='visible';source.dispatchEvent(new win.Event('change',{bubbles:true})); scope.value='all';scope.dispatchEvent(new win.Event('change',{bubbles:true}));
   ok(App.fillSource==='visible' && App.fillScope==='all' && Q.Store.meta('fillSource')==='visible' && Q.Store.meta('fillScope')==='all','fill settings persist'); Q.UI.closeModal(); App.init();await tick();
   ok(App.fillSource==='visible' && App.fillScope==='all','fill settings restore on startup'); Q.Store.meta('fillSource','invalid');Q.Store.meta('fillScope','invalid');App.init();await tick();ok(App.fillSource==='active' && App.fillScope==='connected','invalid fill preferences use defaults');
+  }
+
+  {
+  console.log('6.0 canvas transform controls');
+  App.createDoc(64,64,'Canvas transform');const d=App.doc,v=App.view;d.activeCel(true);d.history.clear();v.selection={x:10,y:10,w:24,h:24};Q.UI.selectionDialog();
+  const entry=[...doc.querySelectorAll('#modalBody button')].find(b=>b.textContent==='Canvas transform');ok(entry && entry.querySelector('svg'),'canvas transform is discoverable from selection tools');entry.click();
+  const mode=doc.querySelector('[aria-label="Transform style"]');ok(mode && mode.options.length===5 && v.meshTransform && doc.querySelector('[aria-label="Canvas transform"]'),'canvas toolbar shows five named transform styles');
+  mode.value='warp';mode.dispatchEvent(new win.Event('change',{bubbles:true}));ok(v.meshTransform.mode==='warp','warp is selectable');v.meshTransform.points[4].x+=4;[...doc.querySelectorAll('.mesh-toolbar button')].find(b=>b.textContent==='Reset').click();ok(v.meshTransform.points[4].x===22,'reset restores mesh geometry');
+  [...doc.querySelectorAll('.mesh-toolbar button')].find(b=>b.textContent==='Cancel').click();ok(!v.meshTransform && !doc.querySelector('.mesh-toolbar') && d.history.undoStack.length===0,'cancel removes the temporary transform without history');
+  Q.UI.canvasTransform(); mode && (mode.value='distort'); pointer(doc.querySelector('#btnLayers'),'pointerdown',5,5,{id:2400});ok(!v.meshTransform && !doc.querySelector('.mesh-toolbar'),'other toolbar actions cancel pending transform');
   }
 
   await App.saveNow(false);

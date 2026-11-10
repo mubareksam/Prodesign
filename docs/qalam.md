@@ -8,11 +8,11 @@ brushes, layers with blend modes, a colour wheel, a frame timeline with onion sk
 Procreate's gesture vocabulary, PNG/GIF export and device-dependent MP4 export — all offline, with no account and
 no network permissions at all.
 
-- Package: `com.qalam.studio` · version 5.9 (versionCode 50)
+- Package: `com.qalam.studio` · version 6.0 (versionCode 51)
 - minSdk 26 (Android 8.0) · targetSdk 33 · armeabi-v7a/arm64/x86/x86_64 independent
   (everything is HTML/JS running inside the app's own `WebView`, so the APK has no
   native code)
-- APK: **`artifacts/Qelem-5.9.apk`** (~333 KB), signed with a v1+v2 scheme
+- APK: **`artifacts/Qelem-6.0.apk`** (~337 KB), signed with a v1+v2 scheme
 - The written analysis of Procreate that this app was specified from:
   [`docs/procreate-analysis.md`](procreate-analysis.md)
 
@@ -20,7 +20,7 @@ no network permissions at all.
 
 ## 1. Install
 
-1. Copy `artifacts/Qelem-5.9.apk` to the phone (USB, Drive, chat to yourself — anything).
+1. Copy `artifacts/Qelem-6.0.apk` to the phone (USB, Drive, chat to yourself — anything).
 2. Open it with the phone's file manager. Android will ask to allow installs from
    that app the first time ("Install unknown apps").
 3. Install and open **Qelem**. If an earlier Qalam version is already installed, Android should offer an update that preserves its data. Back up important artwork first. Android does not allow this app to silently uninstall itself; do not uninstall it unless you have backed up its local artwork.
@@ -476,6 +476,26 @@ Android WebView touch and physical-device layout still need testing.
   pixels are cropped, and resampling may soften pixels. The resulting raster cels
   are saved and exported, but pose settings are not stored: this is **not** a live
   editable keyframe track, a graphical preview, IK or a rigging system.
+- **Canvas transform** — open Selection & transform and choose Canvas transform.
+  It uses the active cel on the current frame and either the rectangular selection
+  or the whole cel. Choose Uniform, Freeform, Rotate, Distort or Warp in the floating
+  bar. Drag a yellow corner to scale, rotate or distort; Warp exposes nine movable
+  grid points. Drag away from a handle to translate. The grid is a guide: the artwork
+  is **not** live-transformed in preview. Apply renders the result; Reset restores
+  the original grid, Cancel changes nothing, and choosing another style resets it.
+  Tapping other interface controls cancels the pending transform. Canvas pinch/pan,
+  multi-touch shortcuts and drawing are unavailable while the transform is active.
+  Fit/zoom before opening it. Apply makes one pixel undo step, but selection bounds
+  are temporary and are not restored by undo. Outside-canvas pixels are cropped;
+  overlapping destination pixels are composited. This is a basic 3×3 piecewise-affine
+  mesh with nearest-neighbour sampling, not smooth/projection-correct perspective or
+  a full Procreate warp. It may look jagged when resized or rotated. Folded/collapsed
+  grids are rejected. Rectangular selections only; locked, hidden and alpha-locked
+  layers cannot be transformed. The source and affected rectangle are limited to
+  2 megapixels and an estimated 64 MiB of temporary buffers (actual memory can be
+  higher); smaller areas may be refused. Rasterization runs on the main thread and
+  may pause on large areas. The existing numeric precise transform offers smooth
+  resampling and an approximate artwork preview for resize/rotation instead.
 - **Fill and colour drop** — tap the bucket or drag the top colour swatch onto
   the canvas. **Menu → Fill settings** controls tolerance, sample layers (active
   or all visible) and match area (connected or all matching, including disconnected
@@ -685,7 +705,7 @@ tools/
   tests/gif_roundtrip.mjs    encodes a GIF and decodes it with an independent decoder
   tests/ui_smoke.mjs         jsdom boot + full UI drive (gallery -> export)
   tests/ui_layout_browser.mjs optional Chromium layout and interaction checks
-artifacts/Qelem-5.9.apk           the signed, installable artefact
+artifacts/Qelem-6.0.apk           the signed, installable artefact
 docs/procreate-analysis.md   the Procreate study this app was built from
 docs/qalam.md                this file
 ```
@@ -715,7 +735,7 @@ Design notes worth knowing before changing code:
 
 ```bash
 bash tools/fetch-toolchain.sh     # once per machine: JVM, apktool, aapt2, jars, npm
-bash tools/build.sh               # -> artifacts/Qelem-5.9.apk (signed + verified)
+bash tools/build.sh               # -> artifacts/Qelem-6.0.apk (signed + verified)
 bash tools/check_reference.sh     # optional: javac-check the Java mirrors
 ```
 
@@ -760,7 +780,7 @@ This is not a full Procreate replacement. Canvas sizes are finite (up to 4096 px
 custom tips/grains, dual brushes and import/export are not implemented. Guide
 snapping, adjustable vanishing-point placement, rectangle/arc QuickShape, persistent
 image references, automatic selection beyond Magic Wand, feathered masks, interactive
-transform handles, layer masks/groups, text, cross-layer reference fill,
+full-featured transform/warp and adjustable pivots, layer masks/groups, text, separately marked reference layers,
 advanced brush-based smudge, timelapse, PSD and many other requested features remain unimplemented. Frame labels are not full nested frame groups; PNG sequences and sprite sheets
 contain one image per frame without hold metadata. MP4 availability depends on the
 WebView and has not been verified on a physical Android phone. See

@@ -43,6 +43,8 @@
     this.selectionDraft = null;
     this.selectionOperation = 'replace';
     this.motionDraft = null;
+    this.meshTransform = null;
+    this.meshPointer = null;
     this.lastPointerType = 'touch';
     this.holdTimer = 0;
     this.holdStart = 0;
@@ -190,9 +192,16 @@
       if(q.closed) c.ellipse(q.box.x+q.box.w/2,q.box.y+q.box.h/2,q.box.w/2,q.box.h/2,0,0,Math.PI*2);
       else { c.moveTo(q.start.x,q.start.y); c.lineTo(q.end.x,q.end.y); } c.stroke(); c.restore();
     }
+    if(this.meshTransform) {
+      const t=this.meshTransform,pts=t.points; c.save(); c.lineWidth=2/this.scale;c.strokeStyle='#ffcf32';c.setLineDash([6/this.scale,4/this.scale]);
+      for(let y=0;y<3;y++) {c.beginPath();c.moveTo(pts[y*3].x,pts[y*3].y);for(let x=1;x<3;x++)c.lineTo(pts[y*3+x].x,pts[y*3+x].y);c.stroke();}
+      for(let x=0;x<3;x++) {c.beginPath();c.moveTo(pts[x].x,pts[x].y);for(let y=1;y<3;y++)c.lineTo(pts[y*3+x].x,pts[y*3+x].y);c.stroke();}
+      c.setLineDash([]); const handles=t.mode==='warp' ? [0,1,2,3,4,5,6,7,8] : [0,2,6,8];
+      for(const i of handles) { c.beginPath();c.arc(pts[i].x,pts[i].y,7/this.scale,0,Math.PI*2);c.fillStyle='#ffcf32';c.fill();c.strokeStyle='#161616';c.stroke(); } c.restore();
+    }
     // Selection is an editing overlay, never part of the exported artwork.
     const selection = this.selectionDraft || this.selection;
-    if (selection) {
+    if (selection && !this.meshTransform) {
       c.save(); c.lineWidth = 2 / this.scale; c.strokeStyle = '#111111';
       if (selection.runs) { c.beginPath(); c.rect(selection.x,selection.y,selection.w,selection.h); } else Q.selectionPath(c,selection); c.stroke();
       c.strokeStyle = '#ffffff'; c.setLineDash([6 / this.scale, 4 / this.scale]);
@@ -358,6 +367,11 @@
   View.prototype._down = function (e) {
     if (!this.doc || this.locked) return;
     const pos = this._pos(e);
+    if(this.meshTransform) {
+      if(this.meshPointer) return; const t=this.meshTransform, indices=t.mode==='warp' ? [0,1,2,3,4,5,6,7,8] : [0,2,6,8]; let hit=-1,dist=25;
+      for(const i of indices) {const p=this.toScreen(t.points[i].x,t.points[i].y), n=Q.dist(pos.x,pos.y,p.x,p.y); if(n<dist) {dist=n;hit=i;}}
+      this.meshPointer={id:e.pointerId,start:this.toDoc(pos.x,pos.y),hit:hit,points:t.points.map(p=>({...p}))}; try {this.canvas.setPointerCapture(e.pointerId);} catch(err) {} return;
+    }
     this.lastPointerType = e.pointerType || 'touch';
 
     // a *stylus* stroke in progress ignores extra fingers (palm rejection);
@@ -406,6 +420,18 @@
 
   View.prototype._move = function (e) {
     const pos = this._pos(e);
+    if(this.meshTransform) {
+      const t=this.meshTransform,m=this.meshPointer; if(!m || m.id!==e.pointerId) return; const p=this.toDoc(pos.x,pos.y),dx=p.x-m.start.x,dy=p.y-m.start.y, pts=m.points.map(a=>({...a}));
+      if(m.hit<0) {for(const a of pts) {a.x+=dx;a.y+=dy;}}
+      else if(t.mode==='warp') {pts[m.hit].x+=dx;pts[m.hit].y+=dy;}
+      else if(t.mode==='distort') {pts[m.hit].x+=dx;pts[m.hit].y+=dy;t.points=Q.transformQuad(pts);this.dirty=true;return;}
+      else if(t.mode==='rotate') {const center=pts[4],a=pts[m.hit], angle=Math.atan2(a.y+dy-center.y,a.x+dx-center.x)-Math.atan2(a.y-center.y,a.x-center.x),cs=Math.cos(angle),sn=Math.sin(angle);for(const point of pts) {const x=point.x-center.x,y=point.y-center.y;point.x=center.x+x*cs-y*sn;point.y=center.y+x*sn+y*cs;}}
+      else {const i=m.hit,j=8-i,anchor=pts[j],corner=pts[i],vx=corner.x-anchor.x,vy=corner.y-anchor.y;
+        if(t.mode==='uniform') {const scale=Q.clamp(((vx+dx)*vx+(vy+dy)*vy)/(vx*vx+vy*vy),0.05,4);for(const a of pts){a.x=anchor.x+(a.x-anchor.x)*scale;a.y=anchor.y+(a.y-anchor.y)*scale;}}
+        else {const sx=Q.clamp((vx+dx)/vx,0.05,4),sy=Q.clamp((vy+dy)/vy,0.05,4);for(const a of pts){a.x=anchor.x+(a.x-anchor.x)*sx;a.y=anchor.y+(a.y-anchor.y)*sy;}}
+      }
+      t.points=pts;this.dirty=true;return;
+    }
     const rec = this.pointers.get(e.pointerId);
     if (!rec) return;
     rec.x = pos.x;
@@ -466,6 +492,7 @@
   };
 
   View.prototype._up = function (e) {
+    if(this.meshTransform) {const m=this.meshPointer;if(m && m.id===e.pointerId) {if(e.type==='pointercancel') this.meshTransform.points=m.points; this.meshPointer=null;this.dirty=true;} return;}
     const rec = this.pointers.get(e.pointerId);
     if (!rec) return;
     this.pointers.delete(e.pointerId);
