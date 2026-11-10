@@ -348,11 +348,22 @@ async function run() {
   ok(!doc.querySelector('#gallery').classList.contains('hidden'), 'back to gallery');
   const cardsG = doc.querySelectorAll('#galGrid .g-card');
   ok(cardsG.length === 1, 'gallery lists the artwork');
+  { const originalDoc=App.doc, hist=App.doc.history.undoStack.length, storedBefore=win.localStorage.getItem('qalam-projects');
+  const originalOpen=App.openDoc; let opens=0; App.openDoc=function(){ opens++; return originalOpen.apply(App,arguments); };
+  const previewButton=doc.querySelector('#galGrid .g-preview'), openButton=doc.querySelector('#galGrid .g-open'), deleteButton=doc.querySelector('#galGrid .g-del');
+  ok(previewButton && previewButton.querySelector('svg') && previewButton.getAttribute('aria-label').includes('Preview artwork') && openButton.tagName==='BUTTON' && deleteButton.getAttribute('aria-label').includes('Delete artwork'), 'gallery has separate accessible preview, open and delete buttons');
+  previewButton.click(); ok(visible(doc.querySelector('#modal')) && visible(doc.querySelector('.gallery-preview-image img')) && doc.querySelector('#modalBody h2').textContent==='Test artwork' && doc.querySelector('#modalBody').textContent.includes('not a full-resolution or animated preview'), 'preview displays saved thumbnail and explains its limitations');
+  ok(!opens && App.doc===originalDoc && App.doc.history.undoStack.length===hist && win.localStorage.getItem('qalam-projects')===storedBefore && visible(doc.querySelector('#gallery')), 'preview does not open or change artwork');
+  ok(win.qalamBack()===0 && !visible(doc.querySelector('#modal')) && !doc.querySelector('#modalBody').classList.contains('gallery-preview-modal'),'Android Back closes preview and restores modal sizing');
+  Q.UI.previewGalleryItem({name:'<img src=x onerror=alert(1)>',w:64,h:32,frames:1,thumb:null});
+  ok(doc.querySelector('#modalBody h2').textContent==='<img src=x onerror=alert(1)>' && !doc.querySelector('#modalBody h2 img') && doc.querySelector('.gallery-preview-empty') && doc.querySelector('#modalBody').textContent.includes('1 frame'), 'missing thumbnail has safe fallback and plain-text metadata'); Q.UI.closeModal();
+  Q.UI.previewGalleryItem({name:'Bad thumbnail',thumb:'https://example.com/image.png'}); ok(!doc.querySelector('.gallery-preview-image img') && doc.querySelector('.gallery-preview-empty'), 'remote thumbnail URLs are not loaded'); Q.UI.closeModal();
+  Q.UI.previewGalleryItem({name:'Broken thumbnail',thumb:'data:image/png;base64,bad'}); doc.querySelector('.gallery-preview-image img').dispatchEvent(new win.Event('error')); ok(!!doc.querySelector('.gallery-preview-empty'),'failed thumbnail decode shows fallback'); Q.UI.closeModal(); App.openDoc=originalOpen; }
   click('#galGrid .g-del');
   ok(visible(doc.querySelector('#modal')), 'gallery delete confirmation is visible');
   click('#modalBody .btn.ghost');
   ok(!visible(doc.querySelector('#modal')), 'gallery confirmation closes');
-  cardsG[0].dispatchEvent(new win.Event('click', { bubbles: true }));
+  cardsG[0].querySelector('.g-open').dispatchEvent(new win.Event('click', { bubbles: true }));
   await wait(60);
   ok(!!App.doc && App.doc.id === savedId, 'artwork reopened');
   ok(!doc.querySelector('#studio').classList.contains('hidden'), 'studio re-entered after opening');
@@ -439,7 +450,7 @@ async function run() {
 
   console.log('about');
   Q.UI.aboutSheet();
-  ok(doc.querySelector('#modalBody').textContent.includes('Developed by Qmer'), 'About credits Qmer');
+  ok(doc.querySelector('#modalBody').textContent.includes('Developed by Qmer') && doc.querySelector('#modalBody').textContent.includes('Version 4.4'), 'About credits Qmer and shows current version');
   Q.UI.closeModal();
 
   console.log('hardware back');

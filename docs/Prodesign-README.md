@@ -4,20 +4,20 @@ Developed by **Qmer**. An offline painting and frame-animation studio for Androi
 brushes, layers, a colour wheel, a frame timeline with onion skin, Procreate's gesture
 vocabulary, and PNG/GIF export. No account, no ads, no network permission.
 
-**Download:** [`Qalam-4.3.apk`](../artifacts/Qalam-4.3.apk) (~302 KB)
+**Download:** [`Qalam-4.4.apk`](../artifacts/Qalam-4.4.apk) (~303 KB)
 
 | | |
 |---|---|
 | Package | `com.qalam.studio` |
-| Version | 4.3 (versionCode 34) |
+| Version | 4.4 (versionCode 35) |
 | Requires | Android 8.0+ (minSdk 26), built for targetSdk 33 |
 | Permissions | `VIBRATE` only — no internet, no storage, no location |
 | Signing | APK Signature Scheme v1 + v2, self-signed with a public test key |
-| SHA-256 | `91e5e3ba92f627dc8404d179968d7c5f348c1a53c78aad271272fc83eaca3cd0` |
+| SHA-256 | `d9f5155c0618e015477eeca7c76976d732cb93fd55a371ddd9f910349497db69` |
 
 ## Install
 
-1. Download `Qalam-4.3.apk` to the phone (or copy it over USB).
+1. Download `Qalam-4.4.apk` to the phone (or copy it over USB).
 2. Open it from the file manager. Android will ask you to allow installs from that
    app the first time ("Install unknown apps") — allow it, then install.
 3. Open **Qalam**.
@@ -43,6 +43,11 @@ stroke never darkens where it crosses itself.
 **Cut, copy & paste** — use Actions or swipe three fingers down. Copy from the
 current cel; paste creates a new top layer on the current frame at the original
 coordinates. The Qalam-only clipboard is temporary and does not share with Android.
+
+**Gallery preview** — tap the eye icon on a project card to inspect its saved
+thumbnail without opening it. It shows the last-saved active frame at up to 320 px,
+with background but without camera or animated layer motion; it is not a full-size
+or animated preview. Tap Close or Android Back to return to the gallery.
 
 **Clear current cel** — scrub three fingers right-left-right (or the reverse),
 then confirm, or use Actions → Create & edit → Clear current cel. This clears the

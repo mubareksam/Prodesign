@@ -13,6 +13,10 @@ The supplied feature inventory is a roadmap, not a list of completed work.
   clutter. Effect thumbnails are generated offline from illustrative sample art,
   not a live preview. Real-device layout and touch testing remain necessary.
 
+- Gallery eye button opens the saved, read-only thumbnail without loading the
+  project: last-saved active frame, background included, at up to 320 px. It is
+  neither full-resolution nor animated and does not show camera or layer motion;
+  missing thumbnails show a placeholder. This is not pinch-to-preview.
 - Three-finger horizontal scrub or Actions → Create & edit → Clear current cel
   asks before clearing the active layer on the current frame, ignoring selection.
   Undo/redo restores/re-clears the cel; other frames and layer properties remain.

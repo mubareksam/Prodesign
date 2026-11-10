@@ -219,6 +219,8 @@
 
   /* ── gallery ────────────────────────────────────────────── */
 
+  function validGalleryThumb(value) { return typeof value==='string' && /^data:image\/(?:jpeg|png|webp);base64,/i.test(value); }
+
   UI.renderGallery = function () {
     const grid = Q.el('#galGrid');
     const empty = Q.el('#galEmpty');
@@ -227,35 +229,54 @@
       empty.classList.toggle('hidden', items.length > 0);
       items.forEach(function (item) {
         const card = Q.crel('div', 'g-card');
-        if (item.thumb) {
+        const open=Q.crel('button','g-open'); open.setAttribute('aria-label','Open artwork: '+(item.name || 'Untitled'));
+        if (validGalleryThumb(item.thumb)) {
           const img = Q.crel('img');
           img.src = item.thumb;
           img.alt = item.name || 'artwork';
-          card.appendChild(img);
+          open.appendChild(img);
         } else {
-          card.appendChild(Q.crel('div', 'g-ph', 'ቀ'));
+          open.appendChild(Q.crel('div', 'g-ph', 'ቀ'));
         }
         const info = Q.crel('div', 'g-info');
         info.appendChild(Q.crel('div', 'g-name', escapeHtml(item.name || 'Untitled')));
         const when = new Date(item.updated || Date.now());
-        info.appendChild(Q.crel('div', 'g-sub',
-          (item.frames > 1 ? item.frames + ' frames · ' : '') +
-          (item.w || '?') + '×' + (item.h || '?') + ' · ' + when.toLocaleDateString()));
-        card.appendChild(info);
+        const sub=Q.crel('div','g-sub'); sub.textContent=(item.frames > 1 ? item.frames + ' frames · ' : '') + (item.w || '?') + '×' + (item.h || '?') + ' · ' + when.toLocaleDateString(); info.appendChild(sub);
+        open.appendChild(info); card.appendChild(open);
+        open.addEventListener('click',function() { app().openDoc(item.id); });
+
+        const preview = Q.crel('button', 'g-preview', icon(ICON.eye));
+        preview.setAttribute('aria-label','Preview artwork: '+(item.name || 'Untitled')); preview.title='Preview artwork';
+        preview.addEventListener('click',function(e) { e.stopPropagation(); UI.previewGalleryItem(item); });
+        card.appendChild(preview);
 
         const del = Q.crel('button', 'g-del', icon(ICON.trash));
+        del.setAttribute('aria-label','Delete artwork: '+(item.name || 'Untitled')); del.title='Delete artwork';
         del.addEventListener('click', function (e) {
           e.stopPropagation();
-          UI.confirm('Delete “‘' + (item.name || 'Untitled') + '”?' , 'This removes the artwork from this device.', function () {
+          UI.confirm('Delete “‘' + escapeHtml(item.name || 'Untitled') + '”?' , 'This removes the artwork from this device.', function () {
             Q.Store.remove(item.id).then(function () { UI.renderGallery(); });
           });
         });
         card.appendChild(del);
 
-        card.addEventListener('click', function () { app().openDoc(item.id); });
         grid.appendChild(card);
       });
     });
+  };
+
+  UI.previewGalleryItem = function (item) {
+    if (Q.el('#gallery').classList.contains('hidden') || !item) return;
+    const card=Q.crel('div','gallery-preview'), heading=Q.crel('h2'); heading.textContent=item.name || 'Untitled'; card.appendChild(heading);
+    const frames=Number.isInteger(item.frames) && item.frames>0 ? item.frames : 1, meta=Q.crel('p','sub'); meta.textContent=(item.w || '?')+' × '+(item.h || '?')+' · '+frames+' frame'+(frames===1 ? '' : 's'); card.appendChild(meta);
+    const imageArea=Q.crel('div','gallery-preview-image'), fallback=Q.crel('div','gallery-preview-empty','No saved preview available.');
+    if (validGalleryThumb(item.thumb)) {
+      const img=Q.crel('img'); img.alt='Saved artwork preview'; img.addEventListener('error',function(){ imageArea.innerHTML=''; imageArea.appendChild(fallback); }); img.src=item.thumb; imageArea.appendChild(img);
+    } else imageArea.appendChild(fallback);
+    card.appendChild(imageArea);
+    card.appendChild(Q.crel('p','sub gallery-preview-note','Read-only saved thumbnail (up to 320 px), from the frame active at the last successful save. It includes the canvas background, but not animated camera or layer motion. It is not a full-resolution or animated preview.'));
+    const close=Q.crel('button','btn primary','Close'); close.addEventListener('click',()=>UI.closeModal()); card.appendChild(close);
+    UI.openModal(card); Q.el('#modalBody').classList.add('gallery-preview-modal');
   };
 
   function escapeHtml(s) {
@@ -1756,7 +1777,7 @@
     card.appendChild(Q.crel('p', 'sub', 'A paint, sketch and frame-by-frame animation studio for Android. Artwork is stored on this device only — nothing is uploaded.'));
     card.appendChild(Q.crel('p', 'sub', 'Developed by Qmer'));
     card.appendChild(Q.crel('p', 'sub', 'ቀለም (qalam) means “pen” or “ink”.'));
-    card.appendChild(Q.crel('p', 'sub', 'Version 2.0'));
+    card.appendChild(Q.crel('p', 'sub', 'Version 4.4'));
     const actions = Q.crel('div', 'modal-actions');
     const close = Q.crel('button', 'btn primary', 'Close');
     close.addEventListener('click', function () { UI.closeModal(); });
@@ -1774,6 +1795,7 @@
   UI.openModal = function (node) {
     const m = Q.el('#modal');
     const body = Q.el('#modalBody');
+    body.classList.remove('gallery-preview-modal');
     body.innerHTML = '';
     body.appendChild(node);
     m.classList.remove('hidden');
@@ -1781,6 +1803,7 @@
 
   UI.closeModal = function () {
     Q.el('#modal').classList.add('hidden');
+    Q.el('#modalBody').classList.remove('gallery-preview-modal');
   };
 
   UI.confirm = function (title, text, onYes, yesLabel) {
