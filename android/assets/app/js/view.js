@@ -1,5 +1,5 @@
 /* Qalam — canvas viewport: rendering, pan/zoom/rotate, stylus input and the
- * Gestures: two-finger pan/pinch/rotate, three-finger undo, four-finger redo,
+ * Gestures: two-finger pan/pinch/rotate, three-finger undo/swipe for quick edit, four-finger redo,
  * long-press eyedropper and hold-to-snap QuickShape.
  */
 (function () {
@@ -33,6 +33,7 @@
     this.onStrokeEnd = null;
     this.onUndo = null;
     this.onRedo = null;
+    this.onQuickEdit = null;
     this.onPick = null;
     this.onFill = null;
     this.selection = null;
@@ -381,7 +382,13 @@
       this._startGesture();
     } else {
       // Additional fingers count toward undo/redo only if the gesture stays still.
-      if (this.g) this.g.maxPointers = Math.max(this.g.maxPointers, this.pointers.size);
+      if (this.g) {
+        this.g.maxPointers = Math.max(this.g.maxPointers, this.pointers.size);
+        const pts=[...this.pointers.values()];
+        if (pts.length===3 && this.g.maxPointers===3 && !this.g.editSwipe && !this.g.cancelled && !this.g.moved && pts.every(p=>p.type==='touch') && Q.now()-Math.min(...pts.map(p=>p.t))<300) {
+          this.g.editSwipe={started:Q.now(),points:pts.map(p=>({id:p.id,x:p.x,y:p.y,endX:p.x,endY:p.y}))};
+        }
+      }
       this.gestureTap = false;
     }
   };
@@ -393,6 +400,7 @@
     rec.x = pos.x;
     rec.y = pos.y;
     if (this.g && Q.dist(rec.startX,rec.startY,rec.x,rec.y)>10) this.g.moved=true;
+    if (this.g && this.g.editSwipe) { const point=this.g.editSwipe.points.find(p=>p.id===rec.id); if(point) { point.endX=rec.x; point.endY=rec.y; } }
 
     if (this.quickShape) {
       if (rec.shapeAdjust) { const p=this.toDoc(pos.x,pos.y), q=this.quickShape, dx=p.x-rec.previousDoc.x,dy=p.y-rec.previousDoc.y; q.box.x+=dx; q.box.y+=dy; q.start.x+=dx; q.start.y+=dy; q.end.x+=dx; q.end.y+=dy; rec.previousDoc=p; this.dirty=true; } return;
@@ -446,10 +454,11 @@
       if (e.type === 'pointercancel') this.g.cancelled=true;
       const remaining = this.pointers.size;
       if (remaining === 0) {
-        const tap = !this.g.moved && !this.g.cancelled && Q.now()-this.g.started < 500;
-        const n = this.g.maxPointers;
+        const g=this.g, tap = !g.moved && !g.cancelled && Q.now()-g.started < 500, n=g.maxPointers, swipe=g.editSwipe;
+        const edit=n===3 && !g.cancelled && swipe && Q.now()-swipe.started<1100 && swipe.points.every(p=>{ const dx=p.endX-p.x,dy=p.endY-p.y; return dy>=55 && Math.abs(dx)<=Math.max(30,dy*0.5); });
         this.g = null;
-        if (tap) {
+        if (edit) { if(this.onQuickEdit) this.onQuickEdit(); }
+        else if (tap) {
           if (n === 3) { if (this.onUndo) this.onUndo(); }
           else if (n === 4) { if (this.onRedo) this.onRedo(); }
         }
@@ -615,6 +624,7 @@
       maxPointers: Math.max(prevMax, pts.length),
       moved: this.g ? this.g.moved : false,
       cancelled: this.g ? this.g.cancelled : false,
+      editSwipe: this.g ? this.g.editSwipe : null,
       started: this.g ? this.g.started : Q.now(),
       startScale: this.scale,
       startRot: this.rot,
@@ -627,6 +637,7 @@
 
   View.prototype._moveGesture = function () {
     const g = this.g;
+    if (g.maxPointers>=3) return; // three/four-finger gestures never zoom or pan
     const pts = [];
     this.pointers.forEach(function (p) { pts.push(p); });
     if (!pts.length) return;

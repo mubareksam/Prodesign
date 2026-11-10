@@ -102,6 +102,12 @@ The supplied feature inventory is a roadmap, not a list of completed work.
   becomes an axis-aligned bounding box. No draggable handles or custom pivots.
 - Layer solo saves and restores per-layer visibility in one undoable operation; it persists across save/reopen. Clipped solo keeps its base visible. Manual visibility edits made during solo are replaced on restoration; newly added layers are left unchanged. Solo affects exports and thumbnails while active.
 - Hold the colour swatch to swap the previous colour; drag still performs colour drop. The eraser button toggles an eraser or, on hold, creates a temporary copy of the current paint brush's texture and dynamics. Brush tray offers up to six device-local size presets shared across brushes.
+- Cut/copy/paste uses an internal session-only clipboard, supports rectangle, lasso
+  and wand masks, and pastes as a new top layer on the current frame. Three-finger
+  swipe down opens the menu; three-finger tap still undoes. Cut/paste are undoable,
+  clipboard contents are not; cross-app clipboard and persistent clipboard are absent.
+  Copy is capped at 32 MiB, cut at 64 MiB temporary allocations, and new paste cels
+  at 64 MiB; existing artwork and history consume more memory.
 - Alpha lock lets brush painting, fill and effects recolour existing layer pixels
   without changing their alpha. It is saved per layer and copied on duplication.
   Erasing, clear, flip, move/scale and merge require unlocking alpha first; it does

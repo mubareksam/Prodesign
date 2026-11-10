@@ -192,6 +192,10 @@
       });
       return true;
     }
+    insertPastedLayer(canvas) {
+      if (!canvas || canvas.width!==this.width || canvas.height!==this.height) return false;
+      this.history.struct(function () { const at=this.layers.length, frame=this.activeFrame; this.layers.push(makeLayer('Pasted selection')); this.frames.forEach((f,i)=>f.cels.push(i===frame ? canvas : null)); this.activeLayer=at; }); return true;
+    }
     copyRegionToLayer(rect) {
       const source = this.activeCel(false); if (!source || !rect) return false;
       // Prepare pixels before changing structure, so allocation errors cannot leave a half-created layer.

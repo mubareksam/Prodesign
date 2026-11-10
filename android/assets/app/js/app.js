@@ -13,7 +13,8 @@
     ready: false,
     fillThreshold: 12,
     previousColor: null,
-    lastPaintBrush: null
+    lastPaintBrush: null,
+    clipboard: null
   });
 
   /* ── boot ───────────────────────────────────────────────── */
@@ -29,6 +30,7 @@
     v.onStrokeEnd = function () { App.markDirty(); App.pushRecentColor(); };
     v.onUndo = function () { App.undo(); };
     v.onRedo = function () { App.redo(); };
+    v.onQuickEdit = function () { Q.UI.closeTray(); Q.UI.quickEditDialog(); };
     v.onDrawStart = function () {
       if (!Q.el('#tray').classList.contains('hidden')) Q.UI.closeTray();
     };
@@ -683,6 +685,45 @@
       Q.toast('Selection copied to a new layer · Undo to revert');
     } catch (err) { Q.toast('Could not copy selection on this device',4000); }
   };
+
+  // Session-only clipboard of pixels from one layer and one frame, never the OS clipboard.
+  App.copyOrCut = function (cut) {
+    const d=App.doc,v=App.view; if(!d || App.playing || v.locked) return {error:'Stop playback or the current operation first'};
+    const layer=d.layer(), cel=d.activeCel(false), sel=v.selection;
+    if(!layer || !cel) return {error:'Draw on this layer first'};
+    if(cut && !layer.visible) return {error:'This layer is hidden'};
+    if(cut && layer.locked) return {error:'This layer is locked'};
+    if(cut && layer.alphaLocked) return {error:'Turn off alpha lock before cutting'};
+    const r=sel ? {x:sel.x,y:sel.y,w:sel.w,h:sel.h} : {x:0,y:0,w:d.width,h:d.height};
+    if (![r.x,r.y,r.w,r.h].every(Number.isInteger) || r.x<0 || r.y<0 || r.w<1 || r.h<1 || r.x+r.w>d.width || r.y+r.h>d.height) return {error:'Choose a valid selection'};
+    if (r.w*r.h*4*(cut ? 4 : 1)> (cut ? 64 : 32)*1024*1024) return {error:cut ? 'Cut exceeds the 64 MiB temporary-memory limit' : 'Copy exceeds the 32 MiB clipboard limit'};
+    try {
+      const copy=Q.canvas(r.w,r.h), cc=copy.getContext('2d'); cc.save();
+      if(sel) { cc.translate(-r.x,-r.y); Q.selectionPath(cc,sel); cc.clip(); cc.drawImage(cel,r.x,r.y,r.w,r.h,r.x,r.y,r.w,r.h); }
+      else cc.drawImage(cel,r.x,r.y,r.w,r.h,0,0,r.w,r.h); cc.restore();
+      if(cut) {
+        const stage=Q.canvas(r.w,r.h), sc=stage.getContext('2d'), ctx=cel.getContext('2d'); sc.drawImage(cel,r.x,r.y,r.w,r.h,0,0,r.w,r.h);
+        if(sel) { sc.save(); sc.translate(-r.x,-r.y); sc.globalCompositeOperation='destination-out'; Q.selectionPath(sc,sel); sc.fillStyle='#000'; sc.fill(); sc.restore(); }
+        else sc.clearRect(0,0,r.w,r.h);
+        const before=ctx.getImageData(r.x,r.y,r.w,r.h), after=sc.getImageData(0,0,r.w,r.h);
+        ctx.putImageData(after,r.x,r.y); d.history.push({type:'pixels',f:d.activeFrame,l:d.activeLayer,rect:r,before:before}); v.dirty=true; App.markDirty();
+      }
+      App.clipboard={canvas:copy,x:r.x,y:r.y,w:r.w,h:r.h}; Q.toast(cut ? 'Cut · Undo restores the pixels' : 'Copied to Qalam clipboard',3000); return {};
+    } catch(err) { return {error:'Could not '+(cut ? 'cut' : 'copy')+' this area on this device'}; }
+  };
+  App.pasteClipboard = function () {
+    const d=App.doc,v=App.view, clip=App.clipboard;
+    if(!d || App.playing || v.locked) return {error:'Stop playback or the current operation first'};
+    if(!clip) return {error:'Copy or cut pixels first'};
+    if(clip.x>=d.width || clip.y>=d.height) return {error:'Copied area is outside this canvas'};
+    if(d.width*d.height*4>64*1024*1024) return {error:'Paste exceeds the 64 MiB new-cel limit'};
+    try {
+      const cv=Q.canvas(d.width,d.height); cv.getContext('2d').drawImage(clip.canvas,clip.x,clip.y);
+      d.insertPastedLayer(cv); v.dirty=true; Q.UI.syncDoc(); Q.UI.refreshTimeline(); App.markDirty(); Q.toast('Pasted as a new top layer · Undo to remove',3500);
+      return {cropped:clip.x+clip.w>d.width || clip.y+clip.h>d.height};
+    } catch(err) { return {error:'Could not paste this area on this device'}; }
+  };
+  App.clearClipboard = function () { App.clipboard=null; };
 
   App.moveScaleSelection = function (dx, dy, scale) {
     const d=App.doc, v=App.view; if (!d) return;

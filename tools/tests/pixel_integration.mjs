@@ -789,4 +789,42 @@ function precisionOptions(opts={}) { return {width:2,height:4,dx:0,dy:0,angle:90
  App.view.selection={x:4,y:4,w:2,h:4};const stale=precisionTarget(d);App.view.selection.x=3;ok(!!App.preciseTransform(precisionOptions(),stale).error && d.history.undoStack.length===0,'precision transform refuses stale selection geometry');
 }
 
+
+{
+ const d=setup(),cel=d.activeCel(true),c=cel.getContext('2d'); c.fillStyle='#ff0000';c.fillRect(2,2,4,4);c.fillStyle='#0000ff';c.fillRect(12,12,2,2);
+ d.addFrame(false);d.activeFrame=0;App.view.selection={x:2,y:2,w:4,h:4};d.history.clear();App.clipboard=null;
+ const result=App.copyOrCut(false); ok(!result.error && App.clipboard.x===2 && App.clipboard.w===4 && same(pixel(App.clipboard.canvas,1,1),[255,0,0,255]) && d.history.undoStack.length===0,'copy stores selected active-layer pixels without altering history');
+ const paste=App.pasteClipboard(); ok(!paste.error && d.layers.length===2 && d.activeLayer===1 && same(pixel(d.activeCel(false),3,3),[255,0,0,255]) && pixel(d.activeCel(false),12,12)[3]===0 && !d.cel(1,1,false),'paste creates a top layer only on current frame at original coordinates');
+ const flat=d.flatten(0,{background:false});ok(same(pixel(flat,3,3),[255,0,0,255]) && same(pixel(flat,12,12),[0,0,255,255]),'pasted pixels appear in exports without changing underlying artwork');
+ d.history.undo();ok(d.layers.length===1 && !!App.clipboard,'undo paste removes new layer but keeps clipboard'); d.history.redo();ok(d.layers.length===2 && same(pixel(d.activeCel(false),3,3),[255,0,0,255]),'redo paste restores pixels');
+}
+{
+ const d=setup(),cel=d.activeCel(true),c=cel.getContext('2d'); c.fillStyle='#00ff00';c.fillRect(0,0,16,16);
+ App.view.selection={x:2,y:2,w:8,h:8,points:[{x:2,y:2},{x:10,y:2},{x:2,y:10}]}; d.history.clear();const r=App.copyOrCut(true);
+ ok(!r.error && pixel(cel,3,3)[3]===0 && pixel(cel,8,8)[1]===255 && pixel(App.clipboard.canvas,1,1)[1]===255 && pixel(App.clipboard.canvas,6,6)[3]===0,'cut follows the lasso mask rather than its bounding box');
+ ok(d.history.undoStack.length===1,'cut is a single pixel history entry');d.history.undo();ok(pixel(cel,3,3)[1]===255 && !!App.clipboard,'undo cut restores pixels but leaves clipboard intact');
+ d.history.redo();ok(pixel(cel,3,3)[3]===0,'redo cut restores removed region');
+}
+{
+ const d=setup(),cel=d.activeCel(true),c=cel.getContext('2d');c.fillStyle='#123456';c.fillRect(0,0,16,16);c.fillStyle='#fff';c.fillRect(2,2,6,6);c.fillStyle='#123456';c.fillRect(4,4,2,2);
+ App.fillThreshold=0;App.wandAt(3,3);await new Promise(r=>setTimeout(r,70));const r=App.copyOrCut(true);
+ ok(!r.error && pixel(cel,3,3)[3]===0 && same(pixel(cel,4,4),[18,52,86,255]) && pixel(App.clipboard.canvas,2,2)[3]===0,'wand cut and copy preserve holes in the selected mask');
+}
+{
+ const d=setup(),cel=d.activeCel(true),c=cel.getContext('2d');c.fillStyle='#abcdef';c.fillRect(0,0,16,16);App.view.selection={x:10,y:10,w:6,h:6};App.clipboard=null;d.history.clear();
+ d.layer().locked=true;ok(!!App.copyOrCut(true).error && !App.clipboard && d.history.undoStack.length===0,'cut refuses locked layers without replacing clipboard');ok(!App.copyOrCut(false).error,'copy is permitted from locked layers');
+ d.layer().locked=false;d.layer().alphaLocked=true;const saved=App.clipboard;ok(!!App.copyOrCut(true).error && App.clipboard===saved,'cut refuses alpha-locked layers and retains existing clipboard'); d.layer().alphaLocked=false;
+ const canvasFn=Q.canvas; let calls=0;Q.canvas=(w,h)=>{if(++calls===2) throw Error('allocation');return canvasFn(w,h);};const r=App.copyOrCut(true);Q.canvas=canvasFn;
+ ok(!!r.error && App.clipboard===saved && same(pixel(cel,10,10),[171,205,239,255]) && d.history.undoStack.length===0,'failed cut allocation does not change pixels, clipboard or history');
+ const other=new Q.Doc({width:12,height:12});App.doc=other;App.view={selection:null,color:[0,0,0],dirty:false};const pasted=App.pasteClipboard();ok(!pasted.error && pasted.cropped && same(pixel(other.activeCel(false),10,10),[171,205,239,255]),'cross-document paste crops at smaller canvas bounds');
+ const tiny=new Q.Doc({width:8,height:8});App.doc=tiny;ok(!!App.pasteClipboard().error && tiny.layers.length===1,'fully off-canvas clipboard is rejected without adding a layer');
+ const currentClipboard=App.clipboard; const otherCanvas=Q.canvas; Q.canvas=()=>{throw Error('allocation');};App.doc=other;const failedPaste=App.pasteClipboard();Q.canvas=otherCanvas;ok(!!failedPaste.error && other.layers.length===2 && App.clipboard===currentClipboard,'paste allocation failure preserves document and clipboard');
+ App.clearClipboard();ok(!App.clipboard && !!App.pasteClipboard().error,'clearing clipboard releases content');
+}
+
+{
+ const d=new Q.Doc({width:4096,height:4096}); d.frames[0].cels[0]={}; App.doc=d;App.view={selection:null,locked:false}; App.clipboard={sentinel:true};
+ ok(!!App.copyOrCut(false).error && !!App.copyOrCut(true).error && App.clipboard.sentinel && d.history.undoStack.length===0,'oversized copy and cut are refused before allocations or edits');
+}
+
 console.log(`all ${n} raster integration checks passed`);

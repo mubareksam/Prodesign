@@ -1115,6 +1115,28 @@ async function run() {
   App.view.selection={x:1,y:1,w:4,h:4,points:[{x:1,y:1},{x:5,y:1},{x:1,y:5}]}; Q.UI.preciseTransformDialog(); ok(doc.querySelector('.canvas-error').textContent.includes('rectangular'),'precision dialog rejects lasso selections'); Q.UI.closeModal();
   }
 
+  {
+  console.log('3.8 quick edit');
+  App.createDoc(64,64,'Quick Edit'); App.doc.activeCel(true); App.doc.history.clear(); App.view.selection={x:8,y:8,w:12,h:12}; App.clearClipboard();
+  Q.UI.selectionDialog(); const quick=Array.from(doc.querySelectorAll('#modalBody button')).find(b=>b.textContent==='Cut, copy & paste'); ok(!!quick && !!quick.querySelector('svg'),'quick edit is accessible through selection tools'); quick.click();
+  const choose=label=>Array.from(doc.querySelectorAll('#modalBody button')).find(b=>b.textContent===label).click();
+  ok(doc.querySelector('#modalBody').textContent.includes('not the system clipboard') && doc.querySelector('#modalBody').textContent.includes('current layer and frame'),'quick edit explains clipboard and source scope');
+  choose('Paste'); ok(doc.querySelector('.canvas-error').textContent.includes('Copy or cut'),'empty clipboard cannot paste'); choose('Copy'); ok(!!App.clipboard && App.clipboard.w===12 && App.doc.history.undoStack.length===0,'copy fills the session clipboard without modifying the document');
+  Q.UI.quickEditDialog(); choose('Cut'); ok(App.doc.history.undoStack.length===1 && !!App.clipboard,'cut creates an undoable edit'); App.undo(); ok(App.doc.history.undoStack.length===0 && !!App.clipboard,'undo cut leaves clipboard intact');
+  Q.UI.quickEditDialog(); choose('Paste'); ok(App.doc.layers.length===2 && App.doc.layer().name==='Pasted selection' && App.doc.history.undoStack.length===1,'paste creates a new top layer'); App.undo(); ok(App.doc.layers.length===1 && !!App.clipboard,'undo paste removes the layer only');
+  Q.UI.quickEditDialog(); App.view.selection.x++; choose('Cut'); ok(doc.querySelector('.canvas-error').textContent.includes('changed') && App.doc.history.undoStack.length===0,'quick edit refuses a stale selection'); Q.UI.closeModal();
+  const v=App.view, ev=(type,id,x,y)=>({type,pointerId:id,pointerType:'touch',clientX:x,clientY:y,pressure:1}); const tx=v.tx,ty=v.ty,scale=v.scale;
+  for(let i=0;i<3;i++) v._down(ev('pointerdown',501+i,200+i*40,200)); for(let i=0;i<3;i++) v._move(ev('pointermove',501+i,200+i*40,280)); for(let i=0;i<3;i++) v._up(ev('pointerup',501+i,200+i*40,280));
+  ok(doc.querySelector('#modalBody h2').textContent==='Cut, copy & paste' && v.tx===tx && v.ty===ty && v.scale===scale,'three-finger downward swipe opens quick edit without moving the viewport'); Q.UI.closeModal();
+  for(let i=0;i<3;i++) v._down(ev('pointerdown',511+i,200+i*40,200)); for(let i=0;i<3;i++) v._move(ev('pointermove',511+i,200+i*40,280)); v._up(ev('pointercancel',511,200,280)); for(let i=1;i<3;i++) v._up(ev('pointerup',511+i,200+i*40,280));
+  ok(doc.querySelector('#modal').classList.contains('hidden'),'cancelled swipe does not open quick edit');
+  for(let i=0;i<3;i++) v._down(ev('pointerdown',515+i,200+i*40,200)); for(let i=0;i<3;i++) v._move(ev('pointermove',515+i,280+i*40,200)); for(let i=0;i<3;i++) v._up(ev('pointerup',515+i,280+i*40,200)); ok(doc.querySelector('#modal').classList.contains('hidden'),'horizontal three-finger swipe does not open quick edit');
+  for(let i=0;i<4;i++) v._down(ev('pointerdown',521+i,200+i*40,200)); for(let i=0;i<4;i++) v._move(ev('pointermove',521+i,200+i*40,280)); for(let i=0;i<4;i++) v._up(ev('pointerup',521+i,200+i*40,280));
+  ok(doc.querySelector('#modal').classList.contains('hidden'),'four-finger swipes do not trigger quick edit');
+  const oldClip=App.clipboard; App.createDoc(64,64,'Paste target'); ok(App.clipboard===oldClip,'session clipboard survives changing artworks'); Q.UI.quickEditDialog(); choose('Paste'); ok(App.doc.layers.length===2,'paste works across artworks');
+  Q.UI.quickEditDialog(); choose('Clear clipboard'); ok(!App.clipboard,'clipboard can be cleared explicitly');
+  }
+
   await App.saveNow(false);
   console.log(failures ? `\n${failures} check(s) FAILED` : '\nall UI checks passed');
   process.exit(failures ? 1 : 0);

@@ -30,6 +30,8 @@
     eye: '<path d="M2 12s3.5-6 10-6 10 6 10 6-3.5 6-10 6-10-6-10-6z"/><circle cx="12" cy="12" r="2.6"/>',
     eyeOff: '<path d="M3 3l18 18"/><path d="M10.6 6.2A9.6 9.6 0 0112 6c6.5 0 10 6 10 6a17 17 0 01-3 3.6"/><path d="M6.3 7.8A17 17 0 002 12s3.5 6 10 6a9.7 9.7 0 003.6-.7"/>',
     trash: '<path d="M4 7h16M9 7V5h6v2M6 7l1 13h10l1-13"/>',
+    cut: '<circle cx="6" cy="6" r="2"/><circle cx="6" cy="18" r="2"/><path d="M8 7l12 10M8 17L20 7"/>',
+    paste: '<rect x="6" y="5" width="13" height="16" rx="2"/><path d="M9 5V3h7v2M9 11h7M9 15h7"/>',
     copy: '<rect x="9" y="9" width="11" height="11" rx="2"/><path d="M5 15V5h10"/>',
     up: '<path d="M12 19V5M6 11l6-6 6 6"/>',
     down: '<path d="M12 5v14M6 13l6 6 6-6"/>',
@@ -842,7 +844,7 @@
     }
     group('Create & edit', [
       ['New canvas',ICON.plus,()=>UI.newCanvasDialog()], ['Import image as layer',ICON.photo,()=>UI.pickImage()], ['Effects',ICON.sparkle,()=>UI.effectsDialog()],
-      ['Selection & transform',ICON.copy,()=>UI.selectionDialog()], ['Fill settings',ICON.sparkle,()=>UI.fillSettings()]
+      ['Selection & transform',ICON.copy,()=>UI.selectionDialog()], ['Cut, copy & paste',ICON.paste,()=>UI.quickEditDialog()], ['Fill settings',ICON.sparkle,()=>UI.fillSettings()]
     ]);
     group('Canvas & view', [
       ['Canvas background',ICON.sparkle,()=>UI.backgroundDialog()], ['Drawing guides',ICON.sparkle,()=>UI.guideDialog()],
@@ -949,6 +951,7 @@
     action(v.selection && (v.selection.points || v.selection.runs) ? 'Fill selection' : 'Fill rectangle',function () { app().editSelection('fill'); });
     action(v.selection && (v.selection.points || v.selection.runs) ? 'Clear selection' : 'Clear rectangle',function () { app().editSelection('clear'); });
     action('Copy to layer',function () { app().copySelectionToLayer(); });
+    action('Cut, copy & paste',function () { UI.quickEditDialog(); },ICON.paste);
     action('Flip horizontal',function () { app().editSelection('flipH'); });
     action('Flip vertical',function () { app().editSelection('flipV'); });
     action('Rotate 180°',function () { app().editSelection('rotate180'); });
@@ -956,6 +959,24 @@
     action('Precise transform',function () { UI.preciseTransformDialog(); },ICON.controls);
     card.appendChild(actions);
     const done=Q.crel('button','btn ghost','Close'); done.addEventListener('click',function () { UI.closeModal(); }); card.appendChild(done); UI.openModal(card);
+  };
+
+  UI.quickEditDialog = function () {
+    app().stopPlay(); const d=app().doc; if(!d) return; UI.closeTray();
+    const card=Q.crel('div'); card.appendChild(Q.crel('h2',null,'Cut, copy & paste'));
+    card.appendChild(Q.crel('p','sub','Cut and copy use the selection on the current layer and frame, or the whole current cel if nothing is selected. Paste ignores the current selection and creates a new top layer on the current frame, at the original canvas coordinates. Pixels beyond the canvas are cropped.'));
+    card.appendChild(Q.crel('p','sub','The Qalam clipboard stays in memory across artworks until cleared or the app closes. It is not the system clipboard and is not saved. Undo restores cut pixels or removes a pasted layer; it does not undo clipboard contents.'));
+    const clip=app().clipboard, selection=app().view.selection, frame=d.frames[d.activeFrame], layer=d.layer(), cel=d.activeCel(false);
+    const bounds=selection ? {x:selection.x,y:selection.y,w:selection.w,h:selection.h} : null;
+    const status=Q.crel('p','sub',clip ? 'Clipboard: '+clip.w+' × '+clip.h+' px at ('+clip.x+', '+clip.y+').'+(clip.x+clip.w>d.width || clip.y+clip.h>d.height ? ' Paste will be cropped to this canvas.' : '') : 'Clipboard is empty.'); card.appendChild(status);
+    function validSource() { const current=app().view.selection; return app().doc===d && d.frames[d.activeFrame]===frame && d.layer()===layer && d.activeCel(false)===cel && current===selection && (!current || (current.x===bounds.x && current.y===bounds.y && current.w===bounds.w && current.h===bounds.h)); }
+    function validPaste() { return app().doc===d && d.frames[d.activeFrame]===frame && app().clipboard===clip; }
+    const error=Q.crel('p','canvas-error'); error.setAttribute('role','alert'); card.appendChild(error);
+    const grid=Q.crel('div','menu-grid');
+    function action(label,ico,fn) { const b=Q.crel('button','menu-item'); b.innerHTML=icon(ico); b.appendChild(document.createTextNode(label)); b.addEventListener('click',function(){ const result=fn(); if(result && result.error) { error.textContent=result.error; return; } UI.closeModal(); }); grid.appendChild(b); }
+    action('Cut',ICON.cut,()=>validSource() ? app().copyOrCut(true) : {error:'Artwork, frame, layer or selection changed; reopen Quick Edit'}); action('Copy',ICON.copy,()=>validSource() ? app().copyOrCut(false) : {error:'Artwork, frame, layer or selection changed; reopen Quick Edit'}); action('Paste',ICON.paste,()=>validPaste() ? app().pasteClipboard() : {error:'Artwork, frame or clipboard changed; reopen Quick Edit'});
+    action('Clear clipboard',ICON.trash,function(){ if(app().clipboard!==clip) return {error:'Clipboard changed; reopen Quick Edit'}; app().clearClipboard(); Q.toast('Clipboard cleared'); return {}; }); card.appendChild(grid);
+    const close=Q.crel('button','btn ghost','Close'); close.addEventListener('click',()=>UI.closeModal()); card.appendChild(close); UI.openModal(card);
   };
 
   UI.transformDialog = function () {
@@ -1583,6 +1604,7 @@
       ['One finger / stylus', 'Draw'],
       ['Two fingers', 'Pan, pinch to zoom, twist to rotate'],
       ['Three-finger tap', 'Undo'],
+      ['Three-finger swipe down', 'Open cut, copy and paste'],
       ['Four-finger tap', 'Redo'],
       ['Long press', 'Pick a colour (eyedropper)'],
       ['Hold at the end of a stroke', 'Snap a line, circle or ellipse; drag another finger to move, then lift the first to commit'],

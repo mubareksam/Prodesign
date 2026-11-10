@@ -8,11 +8,11 @@ brushes, layers with blend modes, a colour wheel, a frame timeline with onion sk
 Procreate's gesture vocabulary, PNG/GIF export and device-dependent MP4 export — all offline, with no account and
 no network permissions at all.
 
-- Package: `com.qalam.studio` · version 3.7 (versionCode 28)
+- Package: `com.qalam.studio` · version 3.8 (versionCode 29)
 - minSdk 26 (Android 8.0) · targetSdk 33 · armeabi-v7a/arm64/x86/x86_64 independent
   (everything is HTML/JS running inside the app's own `WebView`, so the APK has no
   native code)
-- APK: **`artifacts/Qalam-3.7.apk`** (~296 KB), signed with a v1+v2 scheme
+- APK: **`artifacts/Qalam-3.8.apk`** (~297 KB), signed with a v1+v2 scheme
 - The written analysis of Procreate that this app was specified from:
   [`docs/procreate-analysis.md`](procreate-analysis.md)
 
@@ -20,7 +20,7 @@ no network permissions at all.
 
 ## 1. Install
 
-1. Copy `artifacts/Qalam-3.7.apk` to the phone (USB, Drive, chat to yourself — anything).
+1. Copy `artifacts/Qalam-3.8.apk` to the phone (USB, Drive, chat to yourself — anything).
 2. Open it with the phone's file manager. Android will ask to allow installs from
    that app the first time ("Install unknown apps").
 3. Install and open **Qalam**. If an earlier Qalam version is already installed, Android should offer an update that preserves its data. Back up important artwork first. Android does not allow this app to silently uninstall itself; do not uninstall it unless you have backed up its local artwork.
@@ -324,6 +324,23 @@ Bottom bar: **Gallery · Layer · Brush · Colour · Timeline · Menu** (plus **
   Selections are temporary, unsaved and cleared when switching artworks;
   they apply across layer/frame switches. Lasso paths are limited to 2048 sampled
   points, are not feathered, and large edits can take time and memory.
+- **Actions → Create & edit → Cut, copy & paste** (also in Selection & transform,
+  or by swiping three fingers downward together) — cut or copy the selection on the
+  current layer and frame. With no selection, cut/copy uses the whole current cel.
+  Rectangles, lasso and Magic Wand masks are supported. Copy can read a hidden or
+  locked layer; cut requires a visible, unlocked layer with alpha lock off. Paste
+  ignores the current selection and creates a new topmost layer on the current frame,
+  at the copied pixel coordinates. Other frames stay blank on that layer. Pasting
+  into a smaller canvas crops outside pixels; a fully off-canvas paste is refused.
+  Paste into another artwork in the same session is supported. Cut and paste are
+  separately undoable; the clipboard itself is not part of undo history. The Qalam
+  clipboard is temporary memory only, not Android's system clipboard: it is not saved
+  with the project and is cleared when the app closes, or with Clear clipboard.
+  Copy is limited to 32 MiB of clipboard pixels; cut is limited to 64 MiB estimated
+  temporary allocations; a new pasted cel is limited to 64 MiB. Existing artwork and
+  undo history consume additional memory. Large selections may need to be copied in
+  smaller pieces. Three-finger tap remains undo and four-finger tap remains redo;
+  gesture behaviour needs testing on a physical device.
 - **Menu → Drawing guides** — show an adjustable 2D, isometric or one-, two- or
   three-point perspective overlay, or a symmetry overlay. Perspective horizon and
   point spread can be adjusted; perspective and grids are visual only, not snapping
@@ -346,6 +363,7 @@ Bottom bar: **Gallery · Layer · Brush · Colour · Timeline · Menu** (plus **
 | Two fingers drag | Pan the canvas |
 | Two fingers pinch / twist | Zoom / rotate |
 | **Three-finger tap** | Undo |
+| **Three-finger swipe down** | Open Cut, copy & paste |
 | **Four-finger tap** | Redo |
 | Hold layer eye, then release | Solo that layer or restore prior visibility |
 | Hold colour swatch, then release | Swap current and previous colour |
@@ -437,7 +455,7 @@ tools/
   tests/pixel_integration.mjs real raster and animation export checks
   tests/gif_roundtrip.mjs    encodes a GIF and decodes it with an independent decoder
   tests/ui_smoke.mjs         jsdom boot + full UI drive (gallery -> export)
-artifacts/Qalam-3.7.apk           the signed, installable artefact
+artifacts/Qalam-3.8.apk           the signed, installable artefact
 docs/procreate-analysis.md   the Procreate study this app was built from
 docs/qalam.md                this file
 ```
@@ -467,7 +485,7 @@ Design notes worth knowing before changing code:
 
 ```bash
 bash tools/fetch-toolchain.sh     # once per machine: JVM, apktool, aapt2, jars, npm
-bash tools/build.sh               # -> artifacts/Qalam-3.7.apk (signed + verified)
+bash tools/build.sh               # -> artifacts/Qalam-3.8.apk (signed + verified)
 bash tools/check_reference.sh     # optional: javac-check the Java mirrors
 ```
 
