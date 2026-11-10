@@ -23,9 +23,6 @@
 .method public sdk()I
     .locals 1
 
-    .annotation runtime Landroid/webkit/JavascriptInterface;
-    .end annotation
-
     sget v0, Landroid/os/Build$VERSION;->SDK_INT:I
 
     return v0
@@ -33,9 +30,6 @@
 
 .method public saveImage(Ljava/lang/String;Ljava/lang/String;Ljava/lang/String;)Z
     .locals 8
-
-    .annotation runtime Landroid/webkit/JavascriptInterface;
-    .end annotation
 
     const/4 v0, 0x0
 
@@ -66,16 +60,8 @@
 
     const-string v5, "relative_path"
 
-    const-string v6, "video/"
+    const-string v6, "Pictures/Qelem"
 
-    invoke-virtual {p2, v6}, Ljava/lang/String;->startsWith(Ljava/lang/String;)Z
-    move-result v3
-    if-eqz v3, :image_path
-    const-string v6, "Movies/Qalam"
-    goto :path_ready
-    :image_path
-    const-string v6, "Pictures/Qalam"
-    :path_ready
     invoke-virtual {v4, v5, v6}, Landroid/content/ContentValues;->put(Ljava/lang/String;Ljava/lang/String;)V
 
     iget-object v5, p0, Lcom/qalam/studio/Bridge;->act:Landroid/app/Activity;
@@ -83,12 +69,8 @@
     invoke-virtual {v5}, Landroid/app/Activity;->getContentResolver()Landroid/content/ContentResolver;
     move-result-object v5
 
-    if-eqz v3, :image_uri
-    sget-object v6, Landroid/provider/MediaStore$Video$Media;->EXTERNAL_CONTENT_URI:Landroid/net/Uri;
-    goto :uri_ready
-    :image_uri
     sget-object v6, Landroid/provider/MediaStore$Images$Media;->EXTERNAL_CONTENT_URI:Landroid/net/Uri;
-    :uri_ready
+
     invoke-virtual {v5, v6, v4}, Landroid/content/ContentResolver;->insert(Landroid/net/Uri;Landroid/content/ContentValues;)Landroid/net/Uri;
     move-result-object v6
 
@@ -148,9 +130,6 @@
 
 .method public folder()Ljava/lang/String;
     .locals 3
-
-    .annotation runtime Landroid/webkit/JavascriptInterface;
-    .end annotation
 
     const-string v0, ""
 

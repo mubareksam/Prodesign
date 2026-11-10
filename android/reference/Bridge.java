@@ -10,7 +10,6 @@ import android.net.Uri;
 import android.os.Build;
 import android.provider.MediaStore;
 import android.util.Base64;
-import android.webkit.JavascriptInterface;
 
 import java.io.File;
 import java.io.FileOutputStream;
@@ -23,13 +22,11 @@ public class Bridge {
         this.act = activity;
     }
 
-    @JavascriptInterface
     public int sdk() {
         return Build.VERSION.SDK_INT;
     }
 
     /** Writes the base64 payload to the user's gallery (API 29+) or app folder. */
-    @JavascriptInterface
     public boolean saveImage(String base64, String mime, String name) {
         boolean ok = false;
         try {
@@ -38,10 +35,9 @@ public class Bridge {
                 ContentValues cv = new ContentValues();
                 cv.put("_display_name", name);
                 cv.put("mime_type", mime);
-                boolean video = mime != null && mime.startsWith("video/");
-                cv.put("relative_path", video ? "Movies/Qalam" : "Pictures/Qalam");
+                cv.put("relative_path", "Pictures/Qelem");
                 ContentResolver cr = act.getContentResolver();
-                Uri uri = cr.insert(video ? MediaStore.Video.Media.EXTERNAL_CONTENT_URI : MediaStore.Images.Media.EXTERNAL_CONTENT_URI, cv);
+                Uri uri = cr.insert(MediaStore.Images.Media.EXTERNAL_CONTENT_URI, cv);
                 if (uri != null) {
                     OutputStream out = cr.openOutputStream(uri);
                     if (out != null) {
@@ -67,7 +63,6 @@ public class Bridge {
         return ok;
     }
 
-    @JavascriptInterface
     public String folder() {
         String path = "";
         File dir = act.getExternalFilesDir(null);

@@ -1,6 +1,6 @@
 /* Qalam — canvas viewport: rendering, pan/zoom/rotate, stylus input and the
- * Gestures: two-finger pan/pinch/rotate, three-finger undo/swipe for quick edit, four-finger redo,
- * long-press eyedropper and hold-to-snap QuickShape.
+ * Procreate-style gestures (two-finger pan/pinch/rotate, three-finger tap undo,
+ * four-finger tap redo, long-press eyedropper, hold-to-snap QuickShape).
  */
 (function () {
   'use strict';
@@ -17,7 +17,6 @@
     this.ty = 0;
     this.dirty = true;
     this.stroke = null;
-    this.quickShape = null;
     this.pointers = new Map();
     this.g = null;                 // transform gesture
     this.gestureTap = false;
@@ -26,32 +25,17 @@
     this.color = [24, 24, 26];
     this.size = 14;
     this.opacity = 1;
-    this.globalPressure = 1;
-    this.globalSmoothing = 0;
-    this.smudgeHardness = 1;
-    this.smudgePressure = false;
     this.tool = 'brush';
     this.onDocChange = null;
     this.onStrokeEnd = null;
     this.onUndo = null;
     this.onRedo = null;
-    this.onQuickEdit = null;
-    this.onClearCel = null;
     this.onPick = null;
-    this.onFill = null;
-    this.selection = null;
-    this.selectionDraft = null;
-    this.selectionOperation = 'replace';
-    this.motionDraft = null;
-    this.meshTransform = null;
-    this.meshPointer = null;
     this.lastPointerType = 'touch';
     this.holdTimer = 0;
     this.holdStart = 0;
-    this.gestureDelays = Q.sanitizeGestureDelays();
     this.onion = null;
     this.showGrid = false;
-    this.transparentPreview = false;
     this._loop = this._loop.bind(this);
     this._bindEvents();
     this.resize();
@@ -104,7 +88,7 @@
     sx = sx == null ? this.cssW / 2 : sx;
     sy = sy == null ? this.cssH / 2 : sy;
     const before = this.toDoc(sx, sy);
-    this.scale = Q.clamp(this.scale * factor, 0.02, 64);
+    this.scale = Q.clamp(this.scale * factor, 0.02, 24);
     const c = Math.cos(this.rot), s = Math.sin(this.rot);
     this.tx = sx - (before.x * c - before.y * s) * this.scale;
     this.ty = sy - (before.x * s + before.y * c) * this.scale;
@@ -125,7 +109,6 @@
 
   View.prototype._loop = function () {
     if (this.dirty) {
-      if (this.stroke) this.stroke._flush();
       this.dirty = false;
       try { this.render(); } catch (e) { Q.fatal(e); }
     }
@@ -145,7 +128,7 @@
     const c = this.ctx;
     const doc = this.doc;
     c.setTransform(1, 0, 0, 1, 0, 0);
-    c.fillStyle = '#393a3e';
+    c.fillStyle = '#0b0b0e';
     c.fillRect(0, 0, this.canvas.width, this.canvas.height);
     if (!doc) return;
 
@@ -156,120 +139,27 @@
 
     // paper
     c.save();
-    // Avoid re-rasterizing a large blurred shadow on every pen movement.
-    if (!this.stroke) {
-      c.shadowColor = 'rgba(0,0,0,0.55)';
-      c.shadowBlur = 26 / this.scale;
-      c.shadowOffsetY = 8 / this.scale;
-    }
-    if (this.transparentPreview) {
-      if (!this._checker) {
-        const tile=Q.canvas(32,32), t=tile.getContext('2d'); t.fillStyle='#eeeeee'; t.fillRect(0,0,32,32); t.fillStyle='#bbbbbb'; t.fillRect(0,0,16,16); t.fillRect(16,16,16,16); this._checker=tile;
-      }
-      c.fillStyle=c.createPattern(this._checker,'repeat') || '#eeeeee';
-    } else c.fillStyle = doc.bg;
+    c.shadowColor = 'rgba(0,0,0,0.55)';
+    c.shadowBlur = 26 / this.scale;
+    c.shadowOffsetY = 8 / this.scale;
+    c.fillStyle = doc.bg;
     c.fillRect(0, 0, doc.width, doc.height);
     c.restore();
 
-    // During playback show the non-destructive camera output without editing overlays.
-    if (Q.App && Q.App.playing && ((doc.cameraEnabled && doc.cameraKeys.length) || doc.hasLayerMotion())) {
-      doc.compositeCamera(c,doc.activeFrame);
-      c.lineWidth=1/this.scale; c.strokeStyle='rgba(255,255,255,0.12)'; c.strokeRect(0,0,doc.width,doc.height);
-      return;
+    // onion skin
+    if (doc.onion && doc.frames.length > 1) {
+      const prev = doc.activeFrame - 1, next = doc.activeFrame + 1;
+      if (prev >= 0) this._drawOnion(c, prev, '#ff5a7a', doc.onionAlpha * 0.85);
+      if (next < doc.frames.length) this._drawOnion(c, next, '#4fd1c5', doc.onionAlpha * 0.85);
     }
 
-    // Onion skins can appear beneath or above the current artwork.
-    if (!doc.onionAbove) this._drawOnionSkins(c,doc);
-    const mesh=this.meshTransform;
-    const preview=mesh && mesh.preview && mesh.doc===doc && mesh.frame===doc.frames[doc.activeFrame] && mesh.layer===doc.layer() && mesh.cel===doc.activeCel(false);
-    doc.composite(c,doc.activeFrame,preview ? {previewIndex:doc.activeLayer,previewCanvas:mesh.preview} : {});
-    if (doc.onionAbove) this._drawOnionSkins(c,doc);
+    // artwork
+    doc.composite(c, doc.activeFrame);
 
-    this._drawGuide(c, doc);
-    this._drawMotionGuide(c, doc);
-
-    // QuickShape is a temporary outline until the original pointer is lifted.
-    if (this.quickShape) {
-      const q=this.quickShape; c.save(); c.strokeStyle=Q.rgbToHex(q.color); c.globalAlpha=q.opacity; c.lineWidth=Math.max(1,q.size); c.lineCap='round'; c.lineJoin='round'; c.beginPath();
-      if(q.closed) c.ellipse(q.box.x+q.box.w/2,q.box.y+q.box.h/2,q.box.w/2,q.box.h/2,0,0,Math.PI*2);
-      else { c.moveTo(q.start.x,q.start.y); c.lineTo(q.end.x,q.end.y); } c.stroke(); c.restore();
-    }
-    if(this.meshTransform) {
-      const t=this.meshTransform,pts=t.points; c.save(); c.lineWidth=2/this.scale;c.strokeStyle='#ffcf32';c.setLineDash([6/this.scale,4/this.scale]);
-      for(let y=0;y<3;y++) {c.beginPath();c.moveTo(pts[y*3].x,pts[y*3].y);for(let x=1;x<3;x++)c.lineTo(pts[y*3+x].x,pts[y*3+x].y);c.stroke();}
-      for(let x=0;x<3;x++) {c.beginPath();c.moveTo(pts[x].x,pts[x].y);for(let y=1;y<3;y++)c.lineTo(pts[y*3+x].x,pts[y*3+x].y);c.stroke();}
-      c.setLineDash([]); const handles=t.mode==='warp' ? [0,1,2,3,4,5,6,7,8] : [0,2,6,8];
-      for(const i of handles) { c.beginPath();c.arc(pts[i].x,pts[i].y,7/this.scale,0,Math.PI*2);c.fillStyle='#ffcf32';c.fill();c.strokeStyle='#161616';c.stroke(); } c.restore();
-    }
-    // Selection is an editing overlay, never part of the exported artwork.
-    const selection = this.selectionDraft || this.selection;
-    if (selection && !this.meshTransform) {
-      c.save(); c.lineWidth = 2 / this.scale; c.strokeStyle = '#111111';
-      if (selection.runs) { c.beginPath(); c.rect(selection.x,selection.y,selection.w,selection.h); } else Q.selectionPath(c,selection); c.stroke();
-      c.strokeStyle = '#ffffff'; c.setLineDash([6 / this.scale, 4 / this.scale]);
-      if (selection.runs) { c.beginPath(); c.rect(selection.x,selection.y,selection.w,selection.h); } else Q.selectionPath(c,selection); c.stroke(); c.restore();
-    }
-
-    // Canvas border
+    // selection-free border
     c.lineWidth = 1 / this.scale;
     c.strokeStyle = 'rgba(255,255,255,0.12)';
     c.strokeRect(0, 0, doc.width, doc.height);
-  };
-
-  View.prototype._drawOnionSkins = function (c,doc) {
-    if (!doc.onion || doc.frames.length<2 || (Q.App && Q.App.playing)) return;
-    const neighbors=Q.onionNeighbors(doc);
-    // Draw distant eligible cels first; the nearest has the strongest tint.
-    for (let n=Math.max(neighbors.previous.length,neighbors.next.length)-1;n>=0;n--) {
-      const alpha=doc.onionAlpha*0.85/(n+1);
-      if (neighbors.previous[n] != null) this._drawOnion(c,neighbors.previous[n],doc.onionPrevColor,alpha);
-      if (neighbors.next[n] != null) this._drawOnion(c,neighbors.next[n],doc.onionNextColor,alpha);
-    }
-  };
-
-  View.prototype._drawMotionGuide = function (c,doc) {
-    const points=this.motionDraft || (doc.motionGuideVisible ? doc.motionGuide : []);
-    if (!points || points.length<2) return;
-    c.save(); c.beginPath(); c.rect(0,0,doc.width,doc.height); c.clip();
-    c.lineWidth=2/this.scale; c.strokeStyle='#ff9d26'; c.setLineDash([7/this.scale,5/this.scale]); c.beginPath();
-    c.moveTo(points[0].x,points[0].y); for(let i=1;i<points.length;i++) c.lineTo(points[i].x,points[i].y); c.stroke();
-    c.setLineDash([]); c.fillStyle='#ff9d26';
-    for (const p of [points[0],points[points.length-1]]) { c.beginPath(); c.arc(p.x,p.y,4/this.scale,0,Math.PI*2); c.fill(); }
-    c.restore();
-  };
-
-  View.prototype._drawGuide = function (c, doc) {
-    const guide = doc.guide;
-    if (!guide || guide.type === 'off') return;
-    const w = doc.width, h = doc.height, spacing = Q.clamp(Number(guide.spacing) || 100, 32, 500);
-    c.save(); c.beginPath(); c.rect(0,0,w,h); c.clip(); c.lineWidth = 1 / this.scale;
-    c.strokeStyle = 'rgba(35,110,210,0.5)'; c.beginPath();
-    if (guide.type === 'grid') {
-      for (let x = spacing; x < w; x += spacing) { c.moveTo(x,0); c.lineTo(x,h); }
-      for (let y = spacing; y < h; y += spacing) { c.moveTo(0,y); c.lineTo(w,y); }
-    } else if (guide.type === 'isometric') {
-      for (let y = spacing; y < h; y += spacing) { c.moveTo(0,y); c.lineTo(w,y); }
-      const slope = 0.57735;
-      for (let x = -h/slope; x < w+h/slope; x += spacing*2) {
-        c.moveTo(x,0); c.lineTo(x+h/slope,h);
-        c.moveTo(x,0); c.lineTo(x-h/slope,h);
-      }
-    } else if (guide.type === 'perspective1' || guide.type === 'perspective2' || guide.type === 'perspective3') {
-      const horizon = h * Q.clamp(Number(guide.horizon) || 0.5, 0.2, 0.8);
-      const spread = w * Q.clamp(Number(guide.spread) || 0.5, 0.2, 1);
-      const points = guide.type === 'perspective1' ? [{x:w/2,y:horizon}] : [{x:w/2-spread,y:horizon},{x:w/2+spread,y:horizon}];
-      if (guide.type === 'perspective3') points.push({x:w/2,y:-h*0.6});
-      c.moveTo(0,horizon); c.lineTo(w,horizon);
-      points.forEach(function (p) {
-        for (let x=0; x<=w; x+=spacing) { c.moveTo(p.x,p.y); c.lineTo(x,0); c.moveTo(p.x,p.y); c.lineTo(x,h); }
-        for (let y=0; y<=h; y+=spacing) { c.moveTo(p.x,p.y); c.lineTo(0,y); c.moveTo(p.x,p.y); c.lineTo(w,y); }
-      });
-    } else if (guide.type === 'symmetry') {
-      if (guide.symmetry === 'vertical' || guide.symmetry === 'quadrant' || guide.symmetry === 'radial') { c.moveTo(w/2,0); c.lineTo(w/2,h); }
-      if (guide.symmetry === 'horizontal' || guide.symmetry === 'quadrant' || guide.symmetry === 'radial') { c.moveTo(0,h/2); c.lineTo(w,h/2); }
-      if (guide.symmetry === 'radial') { const reach = Math.max(w,h); c.moveTo(w/2-reach,h/2-reach); c.lineTo(w/2+reach,h/2+reach); c.moveTo(w/2-reach,h/2+reach); c.lineTo(w/2+reach,h/2-reach); }
-    }
-    c.stroke(); c.restore();
   };
 
   View.prototype._drawOnion = function (c, frameIdx, tint, alpha) {
@@ -280,12 +170,11 @@
     g.globalAlpha = 1;
     g.globalCompositeOperation = 'source-over';
     g.clearRect(0, 0, cv.width, cv.height);
-    doc.composite(g, frameIdx, doc.onionLayerOnly ? {onlyLayer:doc.activeLayer} : {});
-    if (!doc.onionOriginalColor) {
-      g.globalCompositeOperation = 'source-in';
-      g.fillStyle = tint; g.fillRect(0, 0, cv.width, cv.height);
-      g.globalCompositeOperation = 'source-over';
-    }
+    doc.composite(g, frameIdx);
+    g.globalCompositeOperation = 'source-in';
+    g.fillStyle = tint;
+    g.fillRect(0, 0, cv.width, cv.height);
+    g.globalCompositeOperation = 'source-over';
 
     c.save();
     c.globalAlpha = alpha;
@@ -356,43 +245,6 @@
     });
   };
 
-  View.prototype.cancelActiveInput = function () {
-    this._disarmHold(); if (this.stroke) { this.stroke.cancel(); this.stroke=null; }
-    this.quickShape=null; this.pointers.clear(); this.g=null; this.selectionDraft=null; this.motionDraft=null; this.dirty=true;
-  };
-
-  // Throttled low-resolution raster preview; never writes to the artwork cel.
-  View.prototype.requestMeshPreview = function () {
-    const t=this.meshTransform; if(!t) return;
-    if(t.statusNode) t.statusNode.textContent='Updating approximate preview…';
-    if(t.previewTimer) return;
-    t.previewTimer=setTimeout(()=>{
-      t.previewTimer=0; if(this.meshTransform!==t || this.doc!==t.doc) return;
-      const d=t.doc, plan=Q.planMeshTransform(t.src,t.points,d.width,d.height,t.flipX || t.flipY);
-      if(plan.error) { t.preview=null; if(t.statusNode) t.statusNode.textContent=plan.error==='Nothing changed' ? 'Original artwork' : plan.error; this.dirty=true;return; }
-      try {
-        const factor=Math.min(1,384/Math.max(d.width,d.height)),pw=Math.max(1,Math.round(d.width*factor)),ph=Math.max(1,Math.round(d.height*factor)),sx=pw/d.width,sy=ph/d.height,src=t.src;
-        const canvas=Q.canvas(pw,ph),c=canvas.getContext('2d');c.drawImage(t.cel,0,0,pw,ph);
-        const sw=Math.max(1,Math.round(src.w*sx)),sh=Math.max(1,Math.round(src.h*sy)),crop=Q.canvas(sw,sh),cc=crop.getContext('2d');cc.drawImage(t.cel,src.x,src.y,src.w,src.h,0,0,sw,sh);
-        if(t.mask) {
-          if(!t.previewMask || t.previewMask.width!==sw || t.previewMask.height!==sh) {
-            const maskCanvas=Q.canvas(sw,sh),mc=maskCanvas.getContext('2d'),mi=mc.createImageData(sw,sh);
-            for(let y=0;y<sh;y++) for(let x=0;x<sw;x++) {const xx=Math.min(src.w-1,Math.floor((x+0.5)*src.w/sw)),yy=Math.min(src.h-1,Math.floor((y+0.5)*src.h/sh));mi.data[(y*sw+x)*4+3]=t.mask[yy*src.w+xx] ? 255 : 0;}
-            mc.putImageData(mi,0,0);t.previewMask=maskCanvas;
-          }
-          cc.globalCompositeOperation='destination-in';cc.drawImage(t.previewMask,0,0);cc.globalCompositeOperation='source-over';
-        }
-        const pts=t.points.map(p=>({x:p.x*sx,y:p.y*sy}));
-        const left=Math.max(0,Math.floor(Math.min(...pts.map(p=>p.x)))),top=Math.max(0,Math.floor(Math.min(...pts.map(p=>p.y)))),right=Math.min(pw,Math.ceil(Math.max(...pts.map(p=>p.x)))),bottom=Math.min(ph,Math.ceil(Math.max(...pts.map(p=>p.y))));
-        if(t.mask) {c.save();c.globalCompositeOperation='destination-out';c.drawImage(t.previewMask,src.x*sx,src.y*sy,src.w*sx,src.h*sy);c.restore();}
-        else c.clearRect(src.x*sx,src.y*sy,src.w*sx,src.h*sy);
-        if(right>left && bottom>top) {const r={x:left,y:top,w:right-left,h:bottom-top},image=cc.getImageData(0,0,sw,sh),data=Q.rasterMesh(image,pts,r,t.sampling,{x:t.flipX,y:t.flipY}),warp=Q.canvas(r.w,r.h),wc=warp.getContext('2d'),output=wc.createImageData(r.w,r.h);output.data.set(data);wc.putImageData(output,0,0);c.drawImage(warp,r.x,r.y);}
-        t.preview=canvas; if(t.statusNode) t.statusNode.textContent='Approximate preview · Apply for full resolution';
-      } catch(err) {t.preview=null;if(t.statusNode) t.statusNode.textContent='Preview unavailable · grid only';}
-      this.dirty=true;
-    },120);
-  };
-
   View.prototype._pos = function (e) {
     const r = this.canvas.getBoundingClientRect();
     return { x: e.clientX - r.left, y: e.clientY - r.top };
@@ -401,11 +253,6 @@
   View.prototype._down = function (e) {
     if (!this.doc || this.locked) return;
     const pos = this._pos(e);
-    if(this.meshTransform) {
-      if(this.meshPointer) return; const t=this.meshTransform, indices=t.mode==='warp' ? [0,1,2,3,4,5,6,7,8] : [0,2,6,8]; let hit=-1,dist=25;
-      for(const i of indices) {const p=this.toScreen(t.points[i].x,t.points[i].y), n=Q.dist(pos.x,pos.y,p.x,p.y); if(n<dist) {dist=n;hit=i;}}
-      this.meshPointer={id:e.pointerId,start:this.toDoc(pos.x,pos.y),hit:hit,points:t.points.map(p=>({...p}))}; try {this.canvas.setPointerCapture(e.pointerId);} catch(err) {} return;
-    }
     this.lastPointerType = e.pointerType || 'touch';
 
     // a *stylus* stroke in progress ignores extra fingers (palm rejection);
@@ -420,104 +267,40 @@
       pressure: this._pressure(e)
     });
 
-    if (this.quickShape) {
-      const rec=this.pointers.get(e.pointerId); rec.shapeAdjust=true; rec.previousDoc=this.toDoc(pos.x,pos.y); return;
-    }
     if (this.pointers.size === 1) {
       if (this.tool === 'eyedrop') {
         this._eyedropAt(pos.x, pos.y);
         return;
       }
-      if (this.tool === 'fill' || this.tool === 'wand') { this.pointers.get(e.pointerId).pendingFill = this.tool; return; }
-      if (this.tool === 'motionGuide') { const rec=this.pointers.get(e.pointerId), p=this.toDoc(pos.x,pos.y); rec.guidePoints=[{x:Q.clamp(p.x,0,this.doc.width),y:Q.clamp(p.y,0,this.doc.height)}]; this.motionDraft=rec.guidePoints; return; }
-      if (this.tool === 'select' || this.tool === 'lasso' || this.tool === 'ellipse') {
-        const rec=this.pointers.get(e.pointerId), p=this.toDoc(pos.x,pos.y);
-        rec.selectStart=p; rec.selectionOperation=this.selectionOperation || 'replace'; rec.selectionBase=this.selection; rec.selectEllipse=this.tool==='ellipse'; if (this.tool === 'lasso') rec.lassoPoints=[p]; this.selectionDraft=null; return;
-      }
       this._startStroke(pos, e);
     } else if (this.pointers.size === 2) {
-      this.selectionDraft=null; this.motionDraft=null; this.dirty=true;
       if (this.stroke) { this.stroke.cancel(); this.stroke = null; this.dirty = true; }
       this._startGesture();
     } else {
-      // Additional fingers count toward undo/redo only if the gesture stays still.
-      if (this.g) {
-        this.g.maxPointers = Math.max(this.g.maxPointers, this.pointers.size);
-        const pts=[...this.pointers.values()];
-        if (pts.length===3 && this.g.maxPointers===3 && !this.g.editSwipe && !this.g.cancelled && !this.g.moved && pts.every(p=>p.type==='touch') && Q.now()-Math.min(...pts.map(p=>p.t))<300) {
-          this.g.editSwipe={started:Q.now(),points:pts.map(p=>({id:p.id,x:p.x,y:p.y,endX:p.x,endY:p.y,minX:p.x,maxX:p.x,minY:p.y,maxY:p.y})),anchor:pts.reduce((n,p)=>n+p.x,0)/3,extreme:null,dir:0,turns:0,scrubInvalid:false};
-        }
-      }
+      // a third (or later) finger joins the running gesture: it only counts
+      // toward the tap -> three-finger undo or four-finger redo
+      if (this.g) this.g.maxPointers = Math.max(this.g.maxPointers, this.pointers.size);
       this.gestureTap = false;
     }
   };
 
   View.prototype._move = function (e) {
     const pos = this._pos(e);
-    if(this.meshTransform) {
-      const t=this.meshTransform,m=this.meshPointer; if(!m || m.id!==e.pointerId) return; const p=this.toDoc(pos.x,pos.y),dx=p.x-m.start.x,dy=p.y-m.start.y, pts=m.points.map(a=>({...a}));
-      if(m.hit<0) {for(const a of pts) {a.x+=dx;a.y+=dy;}}
-      else if(t.mode==='warp') {pts[m.hit].x+=dx;pts[m.hit].y+=dy;}
-      else if(t.mode==='distort') {pts[m.hit].x+=dx;pts[m.hit].y+=dy;t.points=Q.transformQuad(pts);this.requestMeshPreview();this.dirty=true;return;}
-      else if(t.mode==='rotate') {const center=pts[4],a=pts[m.hit], angle=Math.atan2(a.y+dy-center.y,a.x+dx-center.x)-Math.atan2(a.y-center.y,a.x-center.x),cs=Math.cos(angle),sn=Math.sin(angle);for(const point of pts) {const x=point.x-center.x,y=point.y-center.y;point.x=center.x+x*cs-y*sn;point.y=center.y+x*sn+y*cs;}}
-      else {const i=m.hit,j=8-i,anchor=pts[j],corner=pts[i],vx=corner.x-anchor.x,vy=corner.y-anchor.y;
-        if(t.mode==='uniform') {if(vx*vx+vy*vy<1e-12) return; const scale=Q.clamp(((vx+dx)*vx+(vy+dy)*vy)/(vx*vx+vy*vy),0.05,4);for(const a of pts){a.x=anchor.x+(a.x-anchor.x)*scale;a.y=anchor.y+(a.y-anchor.y)*scale;}}
-        else {const sx=Math.abs(vx)<1e-6 ? 1 : Q.clamp((vx+dx)/vx,0.05,4),sy=Math.abs(vy)<1e-6 ? 1 : Q.clamp((vy+dy)/vy,0.05,4);for(const a of pts){a.x=anchor.x+(a.x-anchor.x)*sx;a.y=anchor.y+(a.y-anchor.y)*sy;}}
-      }
-      t.points=pts;this.requestMeshPreview();this.dirty=true;return;
-    }
     const rec = this.pointers.get(e.pointerId);
     if (!rec) return;
     rec.x = pos.x;
     rec.y = pos.y;
-    if (this.g && Q.dist(rec.startX,rec.startY,rec.x,rec.y)>10) this.g.moved=true;
-    if (this.g && this.g.editSwipe) {
-      const swipe=this.g.editSwipe, point=swipe.points.find(p=>p.id===rec.id);
-      if(point) {
-        point.endX=rec.x; point.endY=rec.y; point.minX=Math.min(point.minX,rec.x); point.maxX=Math.max(point.maxX,rec.x); point.minY=Math.min(point.minY,rec.y); point.maxY=Math.max(point.maxY,rec.y);
-        if (this.pointers.size!==3 || this.g.maxPointers!==3) swipe.scrubInvalid=true;
-        else {
-          const x=swipe.points.reduce((n,p)=>n+p.endX,0)/3, threshold=36;
-          if (!swipe.dir && Math.abs(x-swipe.anchor)>=threshold) { swipe.dir=x>swipe.anchor ? 1 : -1; swipe.extreme=x; }
-          else if (swipe.dir) {
-            if ((x-swipe.extreme)*swipe.dir>0) swipe.extreme=x;
-            else if ((x-swipe.extreme)*swipe.dir<=-threshold) { swipe.dir=-swipe.dir; swipe.extreme=x; swipe.turns++; }
-          }
-        }
-      }
-    }
 
-    if (this.quickShape) {
-      if (rec.shapeAdjust) { const p=this.toDoc(pos.x,pos.y), q=this.quickShape, dx=p.x-rec.previousDoc.x,dy=p.y-rec.previousDoc.y; q.box.x+=dx; q.box.y+=dy; q.start.x+=dx; q.start.y+=dy; q.end.x+=dx; q.end.y+=dy; rec.previousDoc=p; this.dirty=true; } return;
-    }
-    if (rec.shapeAdjust) return;
     if (this.g) { this._moveGesture(); return; }
-    if (rec.guidePoints) {
-      const p=this.toDoc(pos.x,pos.y), points=rec.guidePoints, last=points[points.length-1];
-      const pt={x:Q.clamp(p.x,0,this.doc.width),y:Q.clamp(p.y,0,this.doc.height)};
-      if (points.length<512 && Q.dist(last.x,last.y,pt.x,pt.y)*this.scale>=3) points.push(pt);
-      this.dirty=true; return;
-    }
-    if (rec.selectStart) {
-      const p=this.toDoc(pos.x,pos.y);
-      if (rec.lassoPoints) {
-        const points=rec.lassoPoints, last=points[points.length-1];
-        if (points.length<2048 && Q.dist(last.x,last.y,p.x,p.y)*this.scale>=2) points.push(p);
-        this.selectionDraft=Q.lassoSelection(points,this.doc.width,this.doc.height);
-      } else this.selectionDraft=rec.selectEllipse ? Q.ellipseSelection(rec.selectStart,p,this.doc.width,this.doc.height) : Q.selectionRect(rec.selectStart,p,this.doc.width,this.doc.height);
-      this.dirty=true; return;
-    }
 
     if (this.stroke && rec.id === this.strokePointerId) {
-      const samples = e.getCoalescedEvents ? e.getCoalescedEvents() : null;
-      const evs = samples && samples.length ? samples : [e];
+      const evs = (e.getCoalescedEvents && e.getCoalescedEvents().length) ? e.getCoalescedEvents() : [e];
       for (let i = 0; i < evs.length; i++) {
         const ev = evs[i];
         const p = this._pos(ev);
         const pt = this.toDoc(p.x, p.y);
         pt.pressure = this._pressure(ev);
-        pt.t = ev.timeStamp || Q.now();
-        const b=this.shapeBounds; if (b) { b.minX=Math.min(b.minX,pt.x); b.minY=Math.min(b.minY,pt.y); b.maxX=Math.max(b.maxX,pt.x); b.maxY=Math.max(b.maxY,pt.y); b.end={x:pt.x,y:pt.y}; }
+        pt.t = Q.now();
         this.stroke.add(pt);
       }
       this._lastStampTime = Q.now();
@@ -526,27 +309,17 @@
   };
 
   View.prototype._up = function (e) {
-    if(this.meshTransform) {const m=this.meshPointer;if(m && m.id===e.pointerId) {if(e.type==='pointercancel') {this.meshTransform.points=m.points;this.requestMeshPreview();} this.meshPointer=null;this.dirty=true;} return;}
     const rec = this.pointers.get(e.pointerId);
     if (!rec) return;
     this.pointers.delete(e.pointerId);
-    if (this.quickShape) {
-      if (rec.id===this.quickShape.pointerId) { if(e.type==='pointercancel') { this.quickShape=null; this.dirty=true; } else this._commitQuickShape(); }
-      return;
-    }
-    if (rec.shapeAdjust) return;
 
     if (this.g) {
-      if (e.type === 'pointercancel') this.g.cancelled=true;
       const remaining = this.pointers.size;
       if (remaining === 0) {
-        const g=this.g, tap = !g.moved && !g.cancelled && Q.now()-g.started < 500, n=g.maxPointers, swipe=g.editSwipe;
-        const edit=n===3 && !g.cancelled && swipe && Q.now()-swipe.started<1100 && swipe.points.every(p=>{ const dx=p.endX-p.x,dy=p.endY-p.y; return dy>=55 && Math.abs(dx)<=Math.max(30,dy*0.5); });
-        const scrub=n===3 && !g.cancelled && swipe && !swipe.scrubInvalid && Q.now()-swipe.started<2000 && swipe.turns>=2 && swipe.points.every(p=>p.maxX-p.minX>=50 && p.maxY-p.minY<=40);
+        const tap = !this.g.moved;
+        const n = this.g.maxPointers;
         this.g = null;
-        if (scrub) { if(this.onClearCel) this.onClearCel(); }
-        else if (edit) { if(this.onQuickEdit) this.onQuickEdit(); }
-        else if (tap) {
+        if (tap) {
           if (n === 3) { if (this.onUndo) this.onUndo(); }
           else if (n === 4) { if (this.onRedo) this.onRedo(); }
         }
@@ -557,25 +330,9 @@
       return;
     }
 
-    if (rec.guidePoints) {
-      if (e.type !== 'pointercancel' && rec.guidePoints.length>=2) { this.doc.setMotionGuide(rec.guidePoints); Q.hint('Animation guide saved',1800); }
-      this.motionDraft=null; this.tool='brush'; this.dirty=true; return;
-    }
-    if (rec.selectStart) {
-      if (e.type !== 'pointercancel' && this.selectionDraft) {
-        if(rec.selectionOperation==='replace') { this.selection=this.selectionDraft; Q.hint('Selection ready · open Menu → Selection & transform',2500); }
-        else if(this.selection!==rec.selectionBase) Q.toast('Selection changed; try again',3500);
-        else { const result=Q.combineSelections(rec.selectionBase,this.selectionDraft,rec.selectionOperation,this.doc.width,this.doc.height); if(result.error) Q.toast(result.error,4000); else { this.selection=result.selection; Q.hint('Selection updated · dashed box shows bounds',2500); } }
-      }
-      this.selectionDraft=null; this.selectionOperation='replace'; this.tool='brush'; this.dirty=true; return;
-    }
-    if (e.type !== 'pointercancel' && rec.pendingFill && Q.dist(rec.startX, rec.startY, rec.x, rec.y) < 6 && this.onFill) {
-      const point = this.toDoc(rec.x, rec.y); if (rec.pendingFill === 'wand' && this.onWand) { this.onWand(point.x,point.y); this.tool='brush'; } else if (rec.pendingFill === 'fill') this.onFill(point.x, point.y); return;
-    }
     if (this.stroke && rec.id === this.strokePointerId) {
       const wasTap = Q.dist(rec.startX, rec.startY, rec.x, rec.y) < 6 && (Q.now() - rec.t) < 320;
-      if(e.type==='pointercancel' && this.stroke instanceof Q.SmudgeStroke) { this.stroke.cancel(); this.stroke=null; this.dirty=true; }
-      else { if(this.stroke instanceof Q.SmudgeStroke) { const pos=this._pos(e), p=this.toDoc(pos.x,pos.y); p.pressure=e.pressure>0 ? this._pressure(e) : this.stroke.pressure; this.stroke.add(p); } this._endStroke(wasTap); }
+      this._endStroke(wasTap);
     }
   };
 
@@ -583,9 +340,8 @@
     const p = (e.pointerType === 'pen' || e.pointerType === 'mouse')
       ? (e.pressure || 0)
       : 1;
-    if (e.pointerType !== 'pen') return p <= 0.001 ? 1 : Q.clamp(p,0.04,1);
-    const raw=p<=0.001 ? 0.35 : Q.clamp(p,0.04,1);
-    return Q.clamp(Math.pow(raw,this.globalPressure),0.04,1);
+    if (p <= 0.001) return e.pointerType === 'pen' ? 0.35 : 1;
+    return Q.clamp(p, 0.04, 1);
   };
 
   View.prototype._startStroke = function (pos, e) {
@@ -595,25 +351,17 @@
       Q.toast('This layer is hidden');
       return;
     }
-    if (layer.locked) { Q.toast('This layer is locked'); return; }
-    if (this.tool==='smudge' && layer.alphaLocked) { Q.toast('Turn off alpha lock to smudge'); return; }
-    if (this.tool==='smudge' && !doc.activeCel(false)) { Q.toast('Draw on this layer first'); return; }
-    if (this.tool!=='smudge' && layer.alphaLocked && this.brush.eraser) { Q.toast('Turn off alpha lock to erase'); return; }
     const p = this.toDoc(pos.x, pos.y);
     this.strokePointerId = e.pointerId;
     this.strokePointerType = e.pointerType || 'touch';
     const brushOpacity = this.opacity * (this.brush.opacity == null ? 1 : this.brush.opacity);
-    try {
-      this.stroke = this.tool==='smudge' ? new Q.SmudgeStroke(doc,this.size,this.opacity,this.selection,this.smudgeHardness,this.smudgePressure) : new Q.Stroke(doc, this.brush, this.color, this.size, brushOpacity, this.selection, this.globalSmoothing);
-      this.stroke.begin({ x: p.x, y: p.y, pressure: this._pressure(e), t: Q.now() });
-    } catch(err) { this.stroke=null; Q.toast('Could not start stroke on this device',4000); return; }
-    this._lastStampTime = Q.now();
+    this.stroke = new Q.Stroke(doc, this.brush, this.color, this.size, brushOpacity);
+    this.stroke.begin({ x: p.x, y: p.y, pressure: this._pressure(e), t: Q.now() });
     this.strokeStartScreen = { x: pos.x, y: pos.y };
     if (this.onDrawStart) this.onDrawStart();
     this.strokeStartDoc = p;
-    this.shapeBounds={minX:p.x,minY:p.y,maxX:p.x,maxY:p.y,end:{x:p.x,y:p.y}};
     this.dirty = true;
-    if(this.tool!=='smudge') this._armHold();
+    this._armHold();
   };
 
   View.prototype._endStroke = function (wasTap) {
@@ -631,17 +379,14 @@
     const self = this;
     this._disarmHold();
     this.holdStart = Q.now();
-    // Capture preferences at stroke start; a settings change cannot alter an
-    // in-progress hold. Polling means activation can be up to ~120 ms later.
-    const delays=Q.sanitizeGestureDelays(this.gestureDelays);
     this.holdTimer = setInterval(function () {
       if (!self.stroke) { self._disarmHold(); return; }
       const idle = Q.now() - (self._lastStampTime || self.holdStart);
+      if (idle < 380) return;
       if (self.stroke.len > self.stroke.size * 0.8) {
-        if (idle < delays.shape) return;
         self._disarmHold();
         self._quickShape();
-      } else if (idle > delays.eyedrop) {
+      } else if (idle > 520) {
         self._disarmHold();
         self._holdEyedrop();
       }
@@ -668,24 +413,34 @@
   };
 
   View.prototype._quickShape = function () {
-    const stroke=this.stroke, b=this.shapeBounds; if (!stroke || !stroke.cel || !b) return;
-    const start=this.strokeStartDoc, end=b.end, width=b.maxX-b.minX, height=b.maxY-b.minY;
-    const closed=width>=8 && height>=8 && Q.dist(start.x,start.y,end.x,end.y)<Math.max(width,height)*0.35 && stroke.len>Math.max(width,height)*1.5;
-    if (!closed && Q.dist(start.x,start.y,end.x,end.y)<8) return;
-    const circle=closed && width/height>=0.8 && width/height<=1.25;
-    const side=(width+height)/2, box=circle ? {x:(b.minX+b.maxX-side)/2,y:(b.minY+b.maxY-side)/2,w:side,h:side} : {x:b.minX,y:b.minY,w:width,h:height};
-    const q={pointerId:this.strokePointerId,doc:this.doc,frame:this.doc.activeFrame,layer:this.doc.activeLayer,closed:closed,circle:circle,box:box,start:{...start},end:{...end},brush:this.brush,color:this.color.slice(),size:this.size,opacity:this.opacity,selection:this.selection,globalSmoothing:this.globalSmoothing};
-    stroke.cancel(); this.stroke=null; this.quickShape=q; this.dirty=true; Q.haptic(12);
-    Q.hint(closed ? (circle ? 'Circle snapped · drag with another finger to move, release to commit' : 'Ellipse snapped · drag with another finger to move, release to commit') : 'Line snapped · drag with another finger to move, release to commit',3000);
-  };
-  View.prototype._commitQuickShape = function () {
-    const q=this.quickShape; this.quickShape=null; this.dirty=true;
-    if (!q || this.doc!==q.doc || q.doc.activeFrame!==q.frame || q.doc.activeLayer!==q.layer || q.doc.layer().locked) { Q.toast('QuickShape cancelled'); return; }
-    const shape=q.closed ? this._ellipsePoints(q.box) : [q.start,q.end], bop=q.opacity*(q.brush.opacity==null ? 1 : q.brush.opacity);
-    const stroke=new Q.Stroke(q.doc,q.brush,q.color,q.size,bop,q.selection,q.globalSmoothing);
-    stroke.begin({x:shape[0].x,y:shape[0].y,pressure:0.7,t:Q.now()});
-    for(let i=1;i<shape.length;i++) stroke.add({x:shape[i].x,y:shape[i].y,pressure:0.9,t:Q.now()+i});
-    stroke.end(); if(this.onDocChange) this.onDocChange(); if(this.onStrokeEnd) this.onStrokeEnd(false);
+    const stroke = this.stroke;
+    const doc = this.doc;
+    if (!stroke || !stroke.cel) return;
+
+    const p0 = this.strokeStartDoc;
+    const p1 = { x: stroke.lx, y: stroke.ly };
+    const w = Q.dist(p0.x, p0.y, p1.x, p1.y);
+    const bbox = stroke.dirty;
+    if (!bbox || w < 8) return;
+
+    const closed = w < Math.max(bbox.w, bbox.h) * 0.55;
+    stroke.cancel();
+    this.stroke = null;
+
+    // replay the idealised shape through a fresh stroke so it picks up brush dynamics
+    const shape = closed ? this._ellipsePoints(bbox) : [p0, p1];
+    const bop = this.opacity * (this.brush.opacity == null ? 1 : this.brush.opacity);
+    const s2 = new Q.Stroke(doc, this.brush, this.color, this.size, bop);
+    s2.begin({ x: shape[0].x, y: shape[0].y, pressure: 0.7, t: Q.now() });
+    for (let i = 1; i < shape.length; i++) {
+      s2.add({ x: shape[i].x, y: shape[i].y, pressure: 0.9, t: Q.now() + i });
+    }
+    s2.end();
+    this.stroke = null;
+    this.dirty = true;
+    Q.haptic(12);
+    Q.hint(closed ? 'Quickshape · ellipse' : 'Quickshape · line', 1200);
+    if (this.onDocChange) this.onDocChange();
   };
 
   View.prototype._ellipsePoints = function (bbox) {
@@ -720,10 +475,7 @@
     const prevMax = this.g ? this.g.maxPointers : 0;
     this.g = {
       maxPointers: Math.max(prevMax, pts.length),
-      moved: this.g ? this.g.moved : false,
-      cancelled: this.g ? this.g.cancelled : false,
-      editSwipe: this.g ? this.g.editSwipe : null,
-      started: this.g ? this.g.started : Q.now(),
+      moved: false,
       startScale: this.scale,
       startRot: this.rot,
       startCx: cx, startCy: cy,
@@ -735,7 +487,6 @@
 
   View.prototype._moveGesture = function () {
     const g = this.g;
-    if (g.maxPointers>=3) return; // three/four-finger gestures never zoom or pan
     const pts = [];
     this.pointers.forEach(function (p) { pts.push(p); });
     if (!pts.length) return;
@@ -746,7 +497,7 @@
     let scale = g.startScale, rot = g.startRot;
     if (pts.length > 1) {
       const dist = Q.dist(pts[0].x, pts[0].y, pts[1].x, pts[1].y);
-      if (g.startDist > 8) scale = Q.clamp(g.startScale * (dist / g.startDist), 0.02, 64);
+      if (g.startDist > 8) scale = Q.clamp(g.startScale * (dist / g.startDist), 0.02, 24);
       const ang = Math.atan2(pts[1].y - pts[0].y, pts[1].x - pts[0].x);
       let da = ang - g.startAngle;
       while (da > Math.PI) da -= Math.PI * 2;
