@@ -13,6 +13,12 @@ The supplied feature inventory is a roadmap, not a list of completed work.
   clutter. Effect thumbnails are generated offline from illustrative sample art,
   not a live preview. Real-device layout and touch testing remain necessary.
 
+- Three-finger horizontal scrub or Actions → Create & edit → Clear current cel
+  asks before clearing the active layer on the current frame, ignoring selection.
+  Undo/redo restores/re-clears the cel; other frames and layer properties remain.
+  Hidden, locked or alpha-locked layers are refused. Three-finger tap undo,
+  four-finger redo and downward Quick Edit swipe remain; physical touch testing is
+  still needed. The separate Layer → Clear command affects all frames.
 - Separate device-local QuickShape and eyedropper hold timings (200–2000 ms) apply
   to new strokes. Detection polls at 120 ms; activation may be later. Undo/redo,
   pinch and the hold timings of UI buttons are unchanged.

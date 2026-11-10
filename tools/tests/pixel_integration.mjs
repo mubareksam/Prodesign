@@ -827,4 +827,15 @@ function precisionOptions(opts={}) { return {width:2,height:4,dx:0,dy:0,angle:90
  ok(!!App.copyOrCut(false).error && !!App.copyOrCut(true).error && App.clipboard.sentinel && d.history.undoStack.length===0,'oversized copy and cut are refused before allocations or edits');
 }
 
+{
+ const d=setup(), first=d.activeCel(true), c=first.getContext('2d'); c.fillStyle='#ff0000'; c.fillRect(1,1,4,4);
+ d.addFrame(false); const second=d.activeCel(true); second.getContext('2d').fillRect(2,2,4,4); d.history.clear(); d.activeFrame=0;
+ App.view.selection={x:1,y:1,w:1,h:1}; ok(App.clearCurrentCel() && d.activeCel(false)===null && d.cel(1,0,false)===second && pixel(second,2,2)[3]===255, 'clear cel ignores selection and leaves other frames untouched');
+ ok(d.history.undoStack.length===1,'clear cel creates one history entry'); d.history.undo(); ok(d.activeCel(false)===first && pixel(first,1,1)[0]===255 && pixel(first,3,3)[0]===255, 'undo restores entire original cel');
+ d.history.redo(); ok(d.activeCel(false)===null && d.cel(1,0,false)===second, 'redo clears current cel only');
+ ok(!d.clearCurrentCel() && d.history.undoStack.length===1, 'already unallocated cel does not create history'); d.history.undo();
+ for (const flag of ['locked','alphaLocked']) { d.layer()[flag]=true; ok(!d.clearCurrentCel() && d.activeCel(false)===first,flag+' blocks clear cel'); d.layer()[flag]=false; }
+ d.layer().visible=false; ok(!d.clearCurrentCel() && d.activeCel(false)===first,'hidden layer blocks clear cel');
+}
+
 console.log(`all ${n} raster integration checks passed`);

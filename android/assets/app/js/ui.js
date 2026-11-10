@@ -918,7 +918,7 @@
     }
     group('Create & edit', [
       ['New canvas',ICON.plus,()=>UI.newCanvasDialog()], ['Import image as layer',ICON.photo,()=>UI.pickImage()], ['Effects',ICON.sparkle,()=>UI.effectsDialog()],
-      ['Selection & transform',ICON.copy,()=>UI.selectionDialog()], ['Cut, copy & paste',ICON.paste,()=>UI.quickEditDialog()], ['Fill settings',ICON.sparkle,()=>UI.fillSettings()]
+      ['Selection & transform',ICON.copy,()=>UI.selectionDialog()], ['Clear current cel',ICON.clear,()=>UI.clearCelDialog()], ['Cut, copy & paste',ICON.paste,()=>UI.quickEditDialog()], ['Fill settings',ICON.sparkle,()=>UI.fillSettings()]
     ]);
     group('Canvas & view', [
       ['Canvas background',ICON.sparkle,()=>UI.backgroundDialog()], ['Drawing guides',ICON.sparkle,()=>UI.guideDialog()],
@@ -1060,6 +1060,18 @@
     action('Precise transform',function () { UI.preciseTransformDialog(); },ICON.controls);
     card.appendChild(actions);
     const done=Q.crel('button','btn ghost','Close'); done.addEventListener('click',function () { UI.closeModal(); }); card.appendChild(done); UI.openModal(card);
+  };
+
+  UI.clearCelDialog = function () {
+    app().stopPlay(); const d=app().doc; if (!d) return; UI.closeTray();
+    const frame=d.frames[d.activeFrame], layer=d.layer(), cel=d.activeCel(false), undo=d.history.undoStack.slice(), redo=d.history.redoStack.slice();
+    if (!layer || !layer.visible) { Q.toast('This layer is hidden'); return; }
+    if (layer.locked || layer.alphaLocked) { Q.toast('Unlock the layer and alpha first'); return; }
+    if (!cel) { Q.toast('The current cel is already empty'); return; }
+    UI.confirm('Clear current cel?', 'This clears the entire active layer on the current frame, ignoring any selection. Other frames are unchanged. Undo can restore it.',function () {
+      if (app().doc!==d || d.frames[d.activeFrame]!==frame || d.layer()!==layer || d.activeCel(false)!==cel || !layer.visible || layer.locked || layer.alphaLocked || app().playing || undo.length!==d.history.undoStack.length || redo.length!==d.history.redoStack.length || undo.some((entry,i)=>entry!==d.history.undoStack[i]) || redo.some((entry,i)=>entry!==d.history.redoStack[i])) { Q.toast('Artwork, frame or layer changed; try again',4000); return; }
+      app().clearCurrentCel();
+    },'Clear cel');
   };
 
   UI.quickEditDialog = function () {
@@ -1707,6 +1719,7 @@
       ['Two fingers', 'Pan, pinch to zoom, twist to rotate'],
       ['Three-finger tap', 'Undo'],
       ['Three-finger swipe down', 'Open cut, copy and paste'],
+      ['Three-finger scrub', 'Move all three fingers right-left-right (or left-right-left) to confirm clearing the current cel'],
       ['Four-finger tap', 'Redo'],
       ['Hide interface', 'Actions → Canvas & view; tap the corner button or Android Back to restore'],
       ['Long press', 'Pick a colour (eyedropper)'],

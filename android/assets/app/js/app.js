@@ -31,6 +31,7 @@
     v.onUndo = function () { App.undo(); };
     v.onRedo = function () { App.redo(); };
     v.onQuickEdit = function () { Q.UI.closeTray(); Q.UI.quickEditDialog(); };
+    v.onClearCel = function () { Q.UI.clearCelDialog(); };
     v.onDrawStart = function () {
       if (!Q.el('#tray').classList.contains('hidden')) Q.UI.closeTray();
     };
@@ -365,6 +366,12 @@
     App.view.dirty = true;
     Q.UI.syncDoc();
     App.markDirty();
+  };
+
+  App.clearCurrentCel = function () {
+    const d=App.doc; if (!d || !d.clearCurrentCel()) return false;
+    App.view.dirty=true; Q.UI.syncDoc(); Q.UI.refreshTimeline(); App.markDirty();
+    Q.toast('Current cel cleared · Undo to restore'); return true;
   };
 
   App.clearLayer = function (idx) {

@@ -8,11 +8,11 @@ brushes, layers with blend modes, a colour wheel, a frame timeline with onion sk
 Procreate's gesture vocabulary, PNG/GIF export and device-dependent MP4 export — all offline, with no account and
 no network permissions at all.
 
-- Package: `com.qalam.studio` · version 4.2 (versionCode 33)
+- Package: `com.qalam.studio` · version 4.3 (versionCode 34)
 - minSdk 26 (Android 8.0) · targetSdk 33 · armeabi-v7a/arm64/x86/x86_64 independent
   (everything is HTML/JS running inside the app's own `WebView`, so the APK has no
   native code)
-- APK: **`artifacts/Qalam-4.2.apk`** (~301 KB), signed with a v1+v2 scheme
+- APK: **`artifacts/Qalam-4.3.apk`** (~302 KB), signed with a v1+v2 scheme
 - The written analysis of Procreate that this app was specified from:
   [`docs/procreate-analysis.md`](procreate-analysis.md)
 
@@ -20,7 +20,7 @@ no network permissions at all.
 
 ## 1. Install
 
-1. Copy `artifacts/Qalam-4.2.apk` to the phone (USB, Drive, chat to yourself — anything).
+1. Copy `artifacts/Qalam-4.3.apk` to the phone (USB, Drive, chat to yourself — anything).
 2. Open it with the phone's file manager. Android will ask to allow installs from
    that app the first time ("Install unknown apps").
 3. Install and open **Qalam**. If an earlier Qalam version is already installed, Android should offer an update that preserves its data. Back up important artwork first. Android does not allow this app to silently uninstall itself; do not uninstall it unless you have backed up its local artwork.
@@ -79,6 +79,17 @@ Bottom bar: **Gallery · Layer · Brush · Colour · Timeline · Menu** (plus **
   zero leaves its own setting alone. Both settings apply to brushes and erasers,
   are stored on the device, and leave brush presets and existing pixels unchanged.
   High smoothing can add lag; supported pressure depends on the device/stylus.
+- **Clear current cel** — use Actions → Create & edit → Clear current cel, or
+  put three fingers down together on the canvas and scrub right-left-right (or
+  left-right-left) within two seconds, keeping all three in contact and moving
+  roughly horizontally. The shortcut asks for confirmation. It clears the entire
+  active layer on the current frame, ignoring any selection; other frames, layer
+  settings and the selection are unchanged. Undo restores the cel; redo clears it
+  again. Hidden, locked and alpha-locked layers are refused. An unallocated cel
+  is already empty. The other Layer menu's Clear command clears that layer across
+  all frames. Three-finger tap remains undo, four-finger tap redo, and the
+  three-finger downward swipe still opens Quick Edit. Touch recognition needs
+  physical-device testing; use the menu action if the gesture is difficult.
 - **Actions → Preferences → Hold gesture timing** — independently set how long
   to hold a stroke still for QuickShape and how long to hold a nearly stationary
   press for the eyedropper, from 200–2000 ms. Defaults are 380 ms and 520 ms;
@@ -487,7 +498,7 @@ tools/
   tests/pixel_integration.mjs real raster and animation export checks
   tests/gif_roundtrip.mjs    encodes a GIF and decodes it with an independent decoder
   tests/ui_smoke.mjs         jsdom boot + full UI drive (gallery -> export)
-artifacts/Qalam-4.2.apk           the signed, installable artefact
+artifacts/Qalam-4.3.apk           the signed, installable artefact
 docs/procreate-analysis.md   the Procreate study this app was built from
 docs/qalam.md                this file
 ```
@@ -517,7 +528,7 @@ Design notes worth knowing before changing code:
 
 ```bash
 bash tools/fetch-toolchain.sh     # once per machine: JVM, apktool, aapt2, jars, npm
-bash tools/build.sh               # -> artifacts/Qalam-4.2.apk (signed + verified)
+bash tools/build.sh               # -> artifacts/Qalam-4.3.apk (signed + verified)
 bash tools/check_reference.sh     # optional: javac-check the Java mirrors
 ```
 

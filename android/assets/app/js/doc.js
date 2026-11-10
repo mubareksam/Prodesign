@@ -236,6 +236,13 @@
         lower.opacity = 1; lower.blend = 'source-over'; lower.visible = true; this.layers.splice(i,1); this.activeLayer = i-1;
       });
     }
+    // Clear only the current frame's cel. Retain the canvas by reference in
+    // structural history so undo restores it without allocating pixel copies.
+    clearCurrentCel() {
+      const layer=this.layer(), frame=this.frames[this.activeFrame], index=this.activeLayer;
+      if (!layer || !frame || !layer.visible || layer.locked || layer.alphaLocked || !frame.cels[index]) return false;
+      this.history.struct(function () { frame.cels[index]=null; }); return true;
+    }
     clearLayer(i) { if (i < 0 || i >= this.layers.length) return; if (this.layers[i].locked || this.layers[i].alphaLocked) { Q.toast('Unlock the layer and alpha first'); return; } return this.history.struct(function () { for (const f of this.frames) f.cels[i] = null; }); }
     addFrame(duplicate) { return this.history.struct(function () { const at = this.activeFrame+1; this.frames.splice(at,0,{ cels:duplicate ? this.cloneCels(this.frames[this.activeFrame].cels) : this.blankCels(), duration: duplicate ? (this.frames[this.activeFrame].duration || 1) : 1, group: duplicate ? (this.frames[this.activeFrame].group || '') : '', skipped: duplicate ? !!this.frames[this.activeFrame].skipped : false }); this.activeFrame=at; }); }
     setFrameDuration(i, duration) { if (!this.frames[i]) return; return this.history.struct(function () { this.frames[i].duration = Q.clamp(Math.round(duration) || 1,1,60); }); }

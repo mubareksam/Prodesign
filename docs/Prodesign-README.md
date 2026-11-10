@@ -4,12 +4,12 @@ Developed by **Qmer**. An offline painting and frame-animation studio for Androi
 brushes, layers, a colour wheel, a frame timeline with onion skin, Procreate's gesture
 vocabulary, and PNG/GIF export. No account, no ads, no network permission.
 
-**Download:** [`Qalam-4.2.apk`](../artifacts/Qalam-4.2.apk) (~301 KB)
+**Download:** [`Qalam-4.3.apk`](../artifacts/Qalam-4.3.apk) (~302 KB)
 
 | | |
 |---|---|
 | Package | `com.qalam.studio` |
-| Version | 4.2 (versionCode 33) |
+| Version | 4.3 (versionCode 34) |
 | Requires | Android 8.0+ (minSdk 26), built for targetSdk 33 |
 | Permissions | `VIBRATE` only — no internet, no storage, no location |
 | Signing | APK Signature Scheme v1 + v2, self-signed with a public test key |
@@ -17,7 +17,7 @@ vocabulary, and PNG/GIF export. No account, no ads, no network permission.
 
 ## Install
 
-1. Download `Qalam-4.2.apk` to the phone (or copy it over USB).
+1. Download `Qalam-4.3.apk` to the phone (or copy it over USB).
 2. Open it from the file manager. Android will ask you to allow installs from that
    app the first time ("Install unknown apps") — allow it, then install.
 3. Open **Qalam**.
@@ -43,6 +43,11 @@ stroke never darkens where it crosses itself.
 **Cut, copy & paste** — use Actions or swipe three fingers down. Copy from the
 current cel; paste creates a new top layer on the current frame at the original
 coordinates. The Qalam-only clipboard is temporary and does not share with Android.
+
+**Clear current cel** — scrub three fingers right-left-right (or the reverse),
+then confirm, or use Actions → Create & edit → Clear current cel. This clears the
+whole active cel, ignores the selection and leaves other frames unchanged; undo
+restores it. Hidden, locked and alpha-locked layers cannot be cleared this way.
 
 **Hold timing** — Actions → Preferences → Hold gesture timing sets separate
 QuickShape and eyedropper delays. Values apply to new strokes on this device;

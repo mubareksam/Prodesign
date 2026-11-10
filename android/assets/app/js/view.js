@@ -34,6 +34,7 @@
     this.onUndo = null;
     this.onRedo = null;
     this.onQuickEdit = null;
+    this.onClearCel = null;
     this.onPick = null;
     this.onFill = null;
     this.selection = null;
@@ -387,7 +388,7 @@
         this.g.maxPointers = Math.max(this.g.maxPointers, this.pointers.size);
         const pts=[...this.pointers.values()];
         if (pts.length===3 && this.g.maxPointers===3 && !this.g.editSwipe && !this.g.cancelled && !this.g.moved && pts.every(p=>p.type==='touch') && Q.now()-Math.min(...pts.map(p=>p.t))<300) {
-          this.g.editSwipe={started:Q.now(),points:pts.map(p=>({id:p.id,x:p.x,y:p.y,endX:p.x,endY:p.y}))};
+          this.g.editSwipe={started:Q.now(),points:pts.map(p=>({id:p.id,x:p.x,y:p.y,endX:p.x,endY:p.y,minX:p.x,maxX:p.x,minY:p.y,maxY:p.y})),anchor:pts.reduce((n,p)=>n+p.x,0)/3,extreme:null,dir:0,turns:0,scrubInvalid:false};
         }
       }
       this.gestureTap = false;
@@ -401,7 +402,21 @@
     rec.x = pos.x;
     rec.y = pos.y;
     if (this.g && Q.dist(rec.startX,rec.startY,rec.x,rec.y)>10) this.g.moved=true;
-    if (this.g && this.g.editSwipe) { const point=this.g.editSwipe.points.find(p=>p.id===rec.id); if(point) { point.endX=rec.x; point.endY=rec.y; } }
+    if (this.g && this.g.editSwipe) {
+      const swipe=this.g.editSwipe, point=swipe.points.find(p=>p.id===rec.id);
+      if(point) {
+        point.endX=rec.x; point.endY=rec.y; point.minX=Math.min(point.minX,rec.x); point.maxX=Math.max(point.maxX,rec.x); point.minY=Math.min(point.minY,rec.y); point.maxY=Math.max(point.maxY,rec.y);
+        if (this.pointers.size!==3 || this.g.maxPointers!==3) swipe.scrubInvalid=true;
+        else {
+          const x=swipe.points.reduce((n,p)=>n+p.endX,0)/3, threshold=36;
+          if (!swipe.dir && Math.abs(x-swipe.anchor)>=threshold) { swipe.dir=x>swipe.anchor ? 1 : -1; swipe.extreme=x; }
+          else if (swipe.dir) {
+            if ((x-swipe.extreme)*swipe.dir>0) swipe.extreme=x;
+            else if ((x-swipe.extreme)*swipe.dir<=-threshold) { swipe.dir=-swipe.dir; swipe.extreme=x; swipe.turns++; }
+          }
+        }
+      }
+    }
 
     if (this.quickShape) {
       if (rec.shapeAdjust) { const p=this.toDoc(pos.x,pos.y), q=this.quickShape, dx=p.x-rec.previousDoc.x,dy=p.y-rec.previousDoc.y; q.box.x+=dx; q.box.y+=dy; q.start.x+=dx; q.start.y+=dy; q.end.x+=dx; q.end.y+=dy; rec.previousDoc=p; this.dirty=true; } return;
@@ -457,8 +472,10 @@
       if (remaining === 0) {
         const g=this.g, tap = !g.moved && !g.cancelled && Q.now()-g.started < 500, n=g.maxPointers, swipe=g.editSwipe;
         const edit=n===3 && !g.cancelled && swipe && Q.now()-swipe.started<1100 && swipe.points.every(p=>{ const dx=p.endX-p.x,dy=p.endY-p.y; return dy>=55 && Math.abs(dx)<=Math.max(30,dy*0.5); });
+        const scrub=n===3 && !g.cancelled && swipe && !swipe.scrubInvalid && Q.now()-swipe.started<2000 && swipe.turns>=2 && swipe.points.every(p=>p.maxX-p.minX>=50 && p.maxY-p.minY<=40);
         this.g = null;
-        if (edit) { if(this.onQuickEdit) this.onQuickEdit(); }
+        if (scrub) { if(this.onClearCel) this.onClearCel(); }
+        else if (edit) { if(this.onQuickEdit) this.onQuickEdit(); }
         else if (tap) {
           if (n === 3) { if (this.onUndo) this.onUndo(); }
           else if (n === 4) { if (this.onRedo) this.onRedo(); }

@@ -1239,6 +1239,37 @@ async function run() {
   shape=doc.querySelector('[aria-label="QuickShape hold"]'); eye=doc.querySelector('[aria-label="Eyedropper hold"]'); ok(shape.value==='380' && eye.value==='520' && Q.Store.meta('gestureDelays').shape===380 && Q.Store.meta('gestureDelays').eyedrop===520,'reset restores and persists original timing'); Q.UI.closeModal();
   }
 
+  {
+  console.log('4.3 clear current cel');
+  App.createDoc(64,64,'Clear cel'); const d=App.doc, v=App.view, first=d.activeCel(true); d.addFrame(false); const second=d.activeCel(true); d.activeFrame=0; d.history.clear(); v.selection={x:5,y:5,w:10,h:10};
+  const ev=(type,id,x,y)=>({type,pointerId:id,pointerType:'touch',clientX:x,clientY:y,pressure:1});
+  function scrub(id,opts={}) {
+    for(let i=0;i<3;i++) v._down(ev('pointerdown',id+i,300+i*40,300));
+    for (const dx of [70,-70,70]) for(let i=0;i<3;i++) v._move(ev('pointermove',id+i,300+i*40+(opts.oneFinger && i!==0 ? 0 : dx*(opts.reverse ? -1 : 1)),300+(opts.vertical ? dx : 0)));
+    for(let i=0;i<3;i++) v._up(ev(opts.cancel && i===0 ? 'pointercancel' : 'pointerup',id+i,370+i*40,300));
+  }
+  scrub(1000); ok(visible(doc.querySelector('#modal')) && doc.querySelector('#modalBody h2').textContent==='Clear current cel?' && doc.querySelector('#modalBody').textContent.includes('ignoring any selection') && d.activeCel(false)===first && d.history.undoStack.length===0,'three-finger scrub requests confirmation without editing');
+  Array.from(doc.querySelectorAll('#modalBody button')).find(b=>b.textContent==='Cancel').click(); ok(d.activeCel(false)===first && d.history.undoStack.length===0,'cancel keeps current cel');
+  scrub(1005,{reverse:true}); ok(visible(doc.querySelector('#modal')), 'scrub works in either horizontal direction'); click('#modalBody .btn.danger'); ok(d.activeCel(false)===null && d.history.undoStack.length===1 && d.cel(1,0,false)===second, 'scrub confirmation clears only the active cel'); App.undo(); ok(d.activeCel(false)===first,'scrub clear is undoable'); d.history.clear();
+  scrub(1010,{cancel:true}); ok(!visible(doc.querySelector('#modal')),'cancelled scrub does not open confirmation');
+  scrub(1020,{oneFinger:true}); ok(!visible(doc.querySelector('#modal')),'one moving finger cannot trigger scrub');
+  scrub(1030,{vertical:true}); ok(!visible(doc.querySelector('#modal')),'large vertical motion cannot trigger scrub');
+  for(let i=0;i<4;i++) v._down(ev('pointerdown',1040+i,300+i*40,300)); for(const dx of [70,-70,70]) for(let i=0;i<4;i++) v._move(ev('pointermove',1040+i,300+i*40+dx,300)); for(let i=0;i<4;i++) v._up(ev('pointerup',1040+i,370+i*40,300)); ok(!visible(doc.querySelector('#modal')),'four fingers cannot trigger scrub');
+  for(let i=0;i<3;i++) v._down(ev('pointerdown',1050+i,300+i*40,300)); for(let i=0;i<3;i++) v._move(ev('pointermove',1050+i,370+i*40,300)); v._up(ev('pointerup',1050,370,300)); for(const dx of [-70,70]) for(let i=1;i<3;i++) v._move(ev('pointermove',1050+i,300+i*40+dx,300)); for(let i=1;i<3;i++) v._up(ev('pointerup',1050+i,370+i*40,300)); ok(!visible(doc.querySelector('#modal')),'lifting early prevents remaining fingers completing scrub');
+  Q.UI.openTray('menu'); const action=Array.from(doc.querySelectorAll('#trayBody button')).find(b=>b.textContent==='Clear current cel'); ok(action && action.querySelector('svg'),'clear current cel has an accessible menu action'); action.click();
+  click('#modalBody .btn.danger'); ok(d.activeCel(false)===null && d.cel(1,0,false)===second && d.history.undoStack.length===1 && v.selection.x===5,'confirmed action clears only the active cel in one undo step without changing selection');
+  App.undo(); ok(d.activeCel(false)===first && d.cel(1,0,false)===second,'undo restores cleared cel'); App.redo(); ok(d.activeCel(false)===null && d.cel(1,0,false)===second,'redo clears again'); App.undo();
+  Q.UI.clearCelDialog(); d.layer().locked=true; click('#modalBody .btn.danger'); ok(d.activeCel(false)===first,'lock acquired before confirmation blocks clear'); d.layer().locked=false;
+  Q.UI.clearCelDialog(); d.activeFrame=1; click('#modalBody .btn.danger'); ok(d.activeCel(false)===second && d.cel(0,0,false)===first,'frame change before confirmation blocks clear'); d.activeFrame=0;
+  Q.UI.clearCelDialog(); d.addLayer(); click('#modalBody .btn.danger'); ok(d.cel(0,0,false)===first,'layer/history change before confirmation blocks clear'); App.undo();
+  d.layer().alphaLocked=true; Q.UI.clearCelDialog(); ok(!visible(doc.querySelector('#modal')) && d.activeCel(false)===first,'alpha lock prevents confirmation'); d.layer().alphaLocked=false;
+  d.layer().visible=false; Q.UI.clearCelDialog(); ok(!visible(doc.querySelector('#modal')) && d.activeCel(false)===first,'hidden layer prevents confirmation'); d.layer().visible=true;
+  Q.UI.clearCelDialog(); d.history.struct(function(){this.bg='#eeeeee';}); click('#modalBody .btn.danger'); ok(d.activeCel(false)===first,'history change before confirmation blocks clearing same cel');
+  const n=d.history.undoStack.length; for(let i=0;i<3;i++) v._down(ev('pointerdown',1060+i,300+i*40,300)); for(let i=0;i<3;i++) v._up(ev('pointerup',1060+i,300+i*40,300)); ok(d.history.undoStack.length===n-1 && !visible(doc.querySelector('#modal')),'three-finger tap remains undo');
+  for(let i=0;i<4;i++) v._down(ev('pointerdown',1070+i,300+i*40,300)); for(let i=0;i<4;i++) v._up(ev('pointerup',1070+i,300+i*40,300)); ok(d.history.undoStack.length===n && !visible(doc.querySelector('#modal')),'four-finger tap remains redo');
+  for(let i=0;i<3;i++) v._down(ev('pointerdown',1080+i,300+i*40,300)); for(let i=0;i<3;i++) v._move(ev('pointermove',1080+i,300+i*40,380)); for(let i=0;i<3;i++) v._up(ev('pointerup',1080+i,300+i*40,380)); ok(doc.querySelector('#modalBody h2').textContent==='Cut, copy & paste','downward swipe still opens Quick Edit'); Q.UI.closeModal();
+  }
+
   await App.saveNow(false);
   console.log(failures ? `\n${failures} check(s) FAILED` : '\nall UI checks passed');
   process.exit(failures ? 1 : 0);
