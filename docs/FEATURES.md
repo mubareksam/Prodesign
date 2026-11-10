@@ -13,6 +13,9 @@ The supplied feature inventory is a roadmap, not a list of completed work.
   clutter. Effect thumbnails are generated offline from illustrative sample art,
   not a live preview. Real-device layout and touch testing remain necessary.
 
+- Colour picker pure hue button and square-corner double tap set saturation and
+  brightness to 100%; hue for neutral colours is remembered within the picker session.
+  Real-device touch behaviour has not been verified.
 - Brush button and size/opacity rail can be moved to either side and positioned
   vertically in device preferences; the other tool rail swaps sides. Rails compact
   and scroll in short workspaces, and the brush tray has horizontal size/opacity

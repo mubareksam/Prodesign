@@ -51,6 +51,7 @@
     sparkle: '<path d="M12 3l1.8 5.2L19 10l-5.2 1.8L12 17l-1.8-5.2L5 10l5.2-1.8z"/>',
     swatch: '<rect x="4" y="4" width="16" height="16" rx="3"/><path d="M4 16l8-8 8 8"/>',
     gradient: '<rect x="4" y="4" width="16" height="16" rx="3"/><path d="M8 5v14M12 5v14M16 5v14"/>',
+    pureHue: '<path d="M12 3C9 7 6 10 6 14a6 6 0 0012 0c0-4-3-7-6-11z"/><path d="M12 9v7M9 12.5h6"/>',
     railLayout: '<path d="M5 4v16M19 4v16M9 8h6M11 6L9 8l2 2M13 14h-4M13 12l2 2-2 2"/><circle cx="5" cy="8" r="2"/><circle cx="19" cy="16" r="2"/>',
     controls: '<path d="M4 7h16M4 17h16"/><circle cx="9" cy="7" r="2"/><circle cx="15" cy="17" r="2"/>',
     motion: '<path d="M4 18C4 7 9 6 12 12s5 6 8-6"/><circle cx="4" cy="18" r="2"/><circle cx="20" cy="6" r="2"/>',
@@ -199,7 +200,7 @@
 
     window.addEventListener('resize', function () {
       if (app().view) { app().view.resize(); app().view.dirty = true; }
-      if (tray === 'color') buildColor();
+      if (tray === 'color') UI.openTray('color');
       UI.scheduleRailLayout();
     });
 
@@ -699,7 +700,7 @@
   function currentHsv() {
     const rgb = app().view.color;
     const hsv = Q.rgbToHsv(rgb[0], rgb[1], rgb[2]);
-    return { hue: hsv[0], sat: hsv[1], val: hsv[2] };
+    return { hue: hsv[1] ? hsv[0] : wheelState.hue, sat: hsv[1], val: hsv[2] };
   }
 
   function buildColor(root) {
@@ -708,17 +709,20 @@
     wheelState.sat = hsv.sat;
     wheelState.val = hsv.val;
 
-    root.appendChild(trayHead('Colour', []));
+    root.appendChild(trayHead('Colour', [iconButton('Pure hue',ICON.pureHue,function () { applyColor(Q.hsvToRgb(wheelState.hue,1,1)); })]));
     const wrap = Q.crel('div', 'color-wrap');
 
     const wheel = Q.crel('canvas');
     wheel.id = 'wheel';
+    wheel.setAttribute('aria-label','Colour wheel and saturation/value square');
+    wheel.title = 'Double-tap the upper-right corner of the square for pure hue';
     wrap.appendChild(wheel);
 
     const side = Q.crel('div', 'color-side');
 
     const hexRow = Q.crel('div', 'hexrow');
     const hex = Q.crel('input');
+    hex.setAttribute('aria-label','Current hex colour');
     hex.value = Q.rgbToHex(app().view.color);
     hex.addEventListener('change', function () {
       const rgb = Q.hexToRgb(hex.value);
@@ -727,6 +731,7 @@
     });
     hexRow.appendChild(hex);
     side.appendChild(hexRow);
+    side.appendChild(Q.crel('div','layer-sub','Pure hue: use the droplet-plus button or double-tap the square’s upper-right corner.'));
 
     const sw = Q.crel('div', 'swatches');
     PALETTE.forEach(function (hexv) {
@@ -761,7 +766,7 @@
       app().setColor(rgb);
       hex.value = Q.rgbToHex(rgb);
       const h = Q.rgbToHsv(rgb[0], rgb[1], rgb[2]);
-      wheelState.hue = h[0]; wheelState.sat = h[1]; wheelState.val = h[2];
+      if (h[1]) wheelState.hue = h[0]; wheelState.sat = h[1]; wheelState.val = h[2];
       drawWheel(wheel);
     }
   }
@@ -823,7 +828,14 @@
   }
 
   function attachWheel(canvas) {
-    let mode = null;
+    let mode = null, tap = null, lastCornerTap = null;
+    // A deliberate double tap in the square's upper-right corner selects the
+    // current hue at full saturation and value. Other taps/drags remain picks.
+    function inPureCorner(e) {
+      const r=canvas.getBoundingClientRect(), S=Math.min(r.width,r.height), R=S/2-2;
+      const sq=(R-R*0.16-3)*0.92, x=e.clientX-r.left-r.width/2, y=e.clientY-r.top-r.height/2;
+      return sq>0 && x>=sq*0.22 && x<=sq/2 && y>=-sq/2 && y<=-sq*0.22;
+    }
     const pick = function (e) {
       const r = canvas.getBoundingClientRect();
       const S = Math.min(r.width, r.height);
@@ -856,13 +868,24 @@
 
     canvas.addEventListener('pointerdown', function (e) {
       canvas.setPointerCapture(e.pointerId);
+      tap={id:e.pointerId,x:e.clientX,y:e.clientY,corner:inPureCorner(e),moved:false,time:Q.now()};
       pick(e);
     });
     canvas.addEventListener('pointermove', function (e) {
+      if (tap && tap.id===e.pointerId && Math.hypot(e.clientX-tap.x,e.clientY-tap.y)>12) tap.moved=true;
       if (canvas.hasPointerCapture && canvas.hasPointerCapture(e.pointerId)) pick(e);
     });
-    canvas.addEventListener('pointerup', function () { mode = null; });
-    canvas.addEventListener('pointercancel', function () { mode = null; });
+    canvas.addEventListener('pointerup', function (e) {
+      const now=Q.now(), valid=tap && tap.id===e.pointerId && tap.corner && !tap.moved && now-tap.time<=350 && inPureCorner(e) && Math.hypot(e.clientX-tap.x,e.clientY-tap.y)<=12;
+      if (valid && lastCornerTap && now-lastCornerTap.time<=350 && Math.hypot(e.clientX-lastCornerTap.x,e.clientY-lastCornerTap.y)<=24) {
+        wheelState.sat=1; wheelState.val=1;
+        const rgb=Q.hsvToRgb(wheelState.hue,1,1); app().setColor(rgb);
+        const hexInput=Q.el('#trayBody .hexrow input'); if(hexInput) hexInput.value=Q.rgbToHex(rgb);
+        drawWheel(canvas); lastCornerTap=null;
+      } else lastCornerTap=valid ? {time:now,x:e.clientX,y:e.clientY} : null;
+      tap=null; mode=null;
+    });
+    canvas.addEventListener('pointercancel', function () { tap=null; lastCornerTap=null; mode=null; });
   }
 
   /* ── menu ───────────────────────────────────────────────── */

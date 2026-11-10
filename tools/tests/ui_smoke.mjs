@@ -237,6 +237,25 @@ async function run() {
   hex.value = '#22b8cf';
   hex.dispatchEvent(new win.Event('change', { bubbles: true }));
   ok(Q.rgbToHex(App.view.color) === '#22b8cf', 'hex field applied');
+  const pure=doc.querySelector('#trayBody [aria-label="Pure hue"]');
+  ok(pure && pure.querySelector('svg'), 'pure hue has an accessible icon button');
+  pure.click(); ok(Q.rgbToHex(App.view.color)==='#00ddff' && hex.value==='#00ddff', 'pure hue button sets full saturation and value and updates hex');
+  ok(Q.rgbToHex(App.previousColor)==='#22b8cf', 'pure hue participates in previous colour swap');
+  hex.value='#000000'; hex.dispatchEvent(new win.Event('change',{bubbles:true}));
+  let wheel=doc.querySelector('#wheel'); wheel.getBoundingClientRect=()=>({left:0,top:0,width:200,height:200,right:200,bottom:200});
+  pointer(wheel,'pointerdown',100,190,{id:801}); pointer(wheel,'pointerup',100,190,{id:801});
+  ok(Q.rgbToHex(App.view.color)==='#000000', 'choosing a hue while black leaves colour black');
+  Q.UI.closeTray(); Q.UI.openTray('color'); wheel=doc.querySelector('#wheel'); wheel.getBoundingClientRect=()=>({left:0,top:0,width:200,height:200,right:200,bottom:200});
+  click('#trayBody [aria-label="Pure hue"]'); ok(Q.rgbToHex(App.view.color)==='#80ff00', 'hue selected on black survives closing and reopening the tray');
+  App.setColor([80,40,20]); Q.UI.openTray('color'); wheel=doc.querySelector('#wheel'); wheel.getBoundingClientRect=()=>({left:0,top:0,width:200,height:200,right:200,bottom:200});
+  pointer(wheel,'pointerdown',130,70,{id:802}); pointer(wheel,'pointerup',130,70,{id:802});
+  ok(Q.rgbToHex(App.view.color)!=='#ff5500', 'single corner tap remains a normal colour pick');
+  pointer(wheel,'pointerdown',130,70,{id:803}); pointer(wheel,'pointerup',130,70,{id:803});
+  ok(Q.rgbToHex(App.view.color)==='#ff5500' && doc.querySelector('#trayBody .hexrow input').value==='#ff5500', 'double tapping square corner selects pure hue');
+  App.setColor([80,40,20]); Q.UI.openTray('color'); wheel=doc.querySelector('#wheel'); wheel.getBoundingClientRect=()=>({left:0,top:0,width:200,height:200,right:200,bottom:200});
+  pointer(wheel,'pointerdown',130,70,{id:804}); pointer(wheel,'pointermove',110,80,{id:804}); pointer(wheel,'pointerup',130,70,{id:804});
+  pointer(wheel,'pointerdown',130,70,{id:805}); pointer(wheel,'pointerup',130,70,{id:805}); ok(Q.rgbToHex(App.view.color)!=='#ff5500','drag does not count as the first double tap');
+  win.dispatchEvent(new win.Event('resize')); ok(doc.querySelectorAll('#trayBody #wheel').length===1 && doc.querySelector('#trayBody [aria-label="Pure hue"]'), 'resizing the colour tray rebuilds it without duplicates');
   Q.UI.closeTray();
 
   console.log('drawing guides');
