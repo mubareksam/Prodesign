@@ -450,7 +450,7 @@ async function run() {
 
   console.log('about');
   Q.UI.aboutSheet();
-  ok(doc.querySelector('#modalBody').textContent.includes('Developed by Qmer') && doc.querySelector('#modalBody').textContent.includes('Version 4.6'), 'About credits Qmer and shows current version');
+  ok(doc.querySelector('#modalBody').textContent.includes('Developed by Qmer') && doc.querySelector('#modalBody').textContent.includes('Version 4.7'), 'About credits Qmer and shows current version');
   Q.UI.closeModal();
 
   console.log('hardware back');
@@ -1327,6 +1327,23 @@ async function run() {
   App.undo(); ok(!current.layers[0].alphaLocked && current.activeLayer===active,'alpha-lock shortcut can be undone'); App.redo(); ok(current.layers[0].alphaLocked,'alpha-lock shortcut can be redone');
   await App.saveNow(false); const loaded=await Q.Store.load(current.id); ok(loaded.layers[0].alphaLocked && loaded.layers[0].opacity===0.6,'alpha lock and opacity survive save and reopen');
   Q.UI.closeTray(); Q.UI.setTheme('invalid',true); ok(doc.documentElement.getAttribute('data-theme')==='dark' && Q.Store.meta('interfaceTheme')==='dark','invalid themes fall back to dark');
+  }
+
+  {
+  console.log('4.7 creative helpers');
+  App.createDoc(64,64,'Creative helpers'); const d=App.doc, v=App.view; d.activeCel(true); d.history.clear();
+  App.setColor([255,0,0]); Q.UI.openTray('color'); const harmony=doc.querySelector('[aria-label="Colour harmonies"]'); ok(harmony && harmony.querySelector('svg'),'colour harmonies is accessible from the colour tray'); harmony.click();
+  let options=doc.querySelectorAll('#modalBody .harmony-item'); ok(options.length===5 && options[2].getAttribute('aria-label').includes('Complementary #00ffff') && options[2].querySelector('.harmony-sample'),'harmony dialog shows labeled colour previews');
+  options[2].click(); ok(v.color.join(',')==='0,255,255' && !visible(doc.querySelector('#modal')) && doc.querySelector('[aria-label="Current hex colour"]').value==='#00ffff','choosing a harmony updates brush colour and picker');
+  ok(d.history.undoStack.length===0,'colour suggestions do not edit artwork'); Q.UI.closeTray();
+  Q.UI.openTray('menu'); let toggle=Array.from(doc.querySelectorAll('#trayBody button')).find(b=>b.textContent==='Preview transparency'); ok(toggle && toggle.querySelector('svg'),'transparency preview is discoverable in Actions'); toggle.click();
+  ok(v.transparentPreview && d.bg==='#ffffff' && d.history.undoStack.length===0 && Array.from(doc.querySelectorAll('#trayBody button')).some(b=>b.textContent==='Show canvas background'),'checker preview toggles without changing document background or history');
+  toggle=Array.from(doc.querySelectorAll('#trayBody button')).find(b=>b.textContent==='Show canvas background'); toggle.click(); ok(!v.transparentPreview,'transparency preview toggles off');
+  v.transparentPreview=true; App.createDoc(64,64,'New canvas'); ok(!v.transparentPreview,'transparency preview resets on artwork switch');
+  const fresh=App.doc; fresh.history.clear(); v.selection={x:10,y:10,w:20,h:20}; Q.UI.selectionDialog(); let invert=Array.from(doc.querySelectorAll('#modalBody button')).find(b=>b.textContent==='Invert selection');
+  ok(invert && invert.querySelector('svg'),'invert selection is available in selection tools'); invert.click(); ok(v.selection.runs && fresh.history.undoStack.length===0,'inversion changes temporary selection without artwork history');
+  const inverted=v.selection; Q.UI.selectionDialog(); Array.from(doc.querySelectorAll('#modalBody button')).find(b=>b.textContent==='Invert selection').click(); ok(v.selection!==inverted && v.selection.x===10 && v.selection.y===10 && v.selection.w===20 && v.selection.h===20,'inverting again returns to the original rectangle pixels');
+  v.selection={x:0,y:0,w:64,h:64}; const all=v.selection; Q.UI.selectionDialog(); Array.from(doc.querySelectorAll('#modalBody button')).find(b=>b.textContent==='Invert selection').click(); ok(v.selection===all && doc.querySelector('#toast').textContent.includes('empty'),'empty inverse is rejected without changing selection');
   }
 
   await App.saveNow(false);

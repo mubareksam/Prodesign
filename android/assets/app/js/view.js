@@ -46,6 +46,7 @@
     this.gestureDelays = Q.sanitizeGestureDelays();
     this.onion = null;
     this.showGrid = false;
+    this.transparentPreview = false;
     this._loop = this._loop.bind(this);
     this._bindEvents();
     this.resize();
@@ -156,7 +157,12 @@
       c.shadowBlur = 26 / this.scale;
       c.shadowOffsetY = 8 / this.scale;
     }
-    c.fillStyle = doc.bg;
+    if (this.transparentPreview) {
+      if (!this._checker) {
+        const tile=Q.canvas(32,32), t=tile.getContext('2d'); t.fillStyle='#eeeeee'; t.fillRect(0,0,32,32); t.fillStyle='#bbbbbb'; t.fillRect(0,0,16,16); t.fillRect(16,16,16,16); this._checker=tile;
+      }
+      c.fillStyle=c.createPattern(this._checker,'repeat') || '#eeeeee';
+    } else c.fillStyle = doc.bg;
     c.fillRect(0, 0, doc.width, doc.height);
     c.restore();
 

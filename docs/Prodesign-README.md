@@ -4,20 +4,20 @@ Developed by **Qmer**. An offline painting and frame-animation studio for Androi
 brushes, layers, a colour wheel, a frame timeline with onion skin, Procreate's gesture
 vocabulary, and PNG/GIF export. No account, no ads, no network permission.
 
-**Download:** [`Qalam-4.6.apk`](../artifacts/Qalam-4.6.apk) (~306 KB)
+**Download:** [`Qalam-4.7.apk`](../artifacts/Qalam-4.7.apk) (~308 KB)
 
 | | |
 |---|---|
 | Package | `com.qalam.studio` |
-| Version | 4.6 (versionCode 37) |
+| Version | 4.7 (versionCode 38) |
 | Requires | Android 8.0+ (minSdk 26), built for targetSdk 33 |
 | Permissions | `VIBRATE` only — no internet, no storage, no location |
 | Signing | APK Signature Scheme v1 + v2, self-signed with a public test key |
-| SHA-256 | `e303dc7bbc2e05cbca41d314b24cfed369e5595f679d8109d343507f2a1f26f7` |
+| SHA-256 | `6b61aa0acfeb62c17e68f9b71f3f3ae7553edde64ad168a025bbc47ea604c84a` |
 
 ## Install
 
-1. Download `Qalam-4.6.apk` to the phone (or copy it over USB).
+1. Download `Qalam-4.7.apk` to the phone (or copy it over USB).
 2. Open it from the file manager. Android will ask you to allow installs from that
    app the first time ("Install unknown apps") — allow it, then install.
 3. Open **Qalam**.
@@ -43,6 +43,11 @@ stroke never darkens where it crosses itself.
 **Cut, copy & paste** — use Actions or swipe three fingers down. Copy from the
 current cel; paste creates a new top layer on the current frame at the original
 coordinates. The Qalam-only clipboard is temporary and does not share with Android.
+
+**Creative helpers** — the Colour tray offers analogous, complementary and
+triadic hue suggestions; Actions → Canvas & view can preview transparency over
+checkerboard without changing exports; Selection & transform can invert a selection
+within the 4-megapixel/4096-run limits. See the guide for details and limitations.
 
 **Interface and shortcuts** — choose a light or dark interface in Actions →
 Preferences → Interface appearance; the artwork is unchanged. Tap the framed-square

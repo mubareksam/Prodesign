@@ -102,6 +102,14 @@
     return [parseInt(hex.slice(0, 2), 16), parseInt(hex.slice(2, 4), 16), parseInt(hex.slice(4, 6), 16)];
   };
 
+  // Hue relationships retain saturation and value, with a useful minimum for
+  // neutrals; achromatic hue comes from the colour picker's remembered hue.
+  Q.colorHarmonies = function (h,s,v) {
+    h=Number.isFinite(h) ? ((h%360)+360)%360 : 210;
+    s=Q.clamp(Number.isFinite(s) ? s : 0,0.5,1); v=Q.clamp(Number.isFinite(v) ? v : 0,0.65,1);
+    return [['Analogous −30°',-30],['Analogous +30°',30],['Complementary',180],['Triadic −120°',-120],['Triadic +120°',120]].map(function(entry){ return {name:entry[0],rgb:Q.hsvToRgb((h+entry[1]+360)%360,s,v)}; });
+  };
+
   Q.rgbToHex = function (rgb) {
     return '#' + rgb.map(function (v) {
       const s = Q.clamp(Math.round(v), 0, 255).toString(16);

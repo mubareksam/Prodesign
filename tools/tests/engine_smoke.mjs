@@ -92,6 +92,11 @@ ok(crowded.sliderHeight===80 && crowded.brushHeight===80 && crowded.toolsHeight=
 const sane=Q.sanitizeRailPreferences({side:'other',position:Infinity}), clamped=Q.sanitizeRailPreferences({side:'right',position:-10});
 ok(sane.side==='left' && sane.position===50 && clamped.side==='right' && clamped.position===0, 'saved rail preferences are sanitized');
 
+console.log('colour harmony suggestions');
+const harmonies=Q.colorHarmonies(0,1,1), muted=Q.colorHarmonies(210,0,0);
+ok(harmonies.length===5 && harmonies[2].rgb.join(',')==='0,255,255' && harmonies[3].rgb.join(',')==='0,0,255' && harmonies[4].rgb.join(',')==='0,255,0','complement and triadic colours use the correct hue rotations');
+ok(muted.every(c=>Math.max(...c.rgb)>=165 && Math.min(...c.rgb)<Math.max(...c.rgb)), 'neutral colours produce visible chromatic suggestions');
+
 console.log('gesture delay validation');
 const delays=Q.sanitizeGestureDelays(), badDelays=Q.sanitizeGestureDelays({shape:Infinity,eyedrop:'500'}), clampedDelays=Q.sanitizeGestureDelays({shape:181,eyedrop:2050}), roundedDelays=Q.sanitizeGestureDelays({shape:431,eyedrop:1510});
 ok(delays.shape===380 && delays.eyedrop===520 && badDelays.shape===380 && badDelays.eyedrop===520, 'gesture timing defaults survive missing or corrupt settings');

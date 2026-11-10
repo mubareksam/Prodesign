@@ -34,6 +34,34 @@
     for (let i=0;i<mask.length;i++) mask[i]=rgba[i*4+3]>=128 ? 1 : 0;
     return mask;
   };
+  // Complement an existing selection using the same hard mask as pixel edits.
+  // A null selection means "unrestricted" elsewhere, so an empty result must
+  // not be represented as null (which would accidentally select everything).
+  Q.invertSelection = function (selection,width,height) {
+    if (!selection) return {error:'Make a selection first'};
+    if (!Number.isInteger(width) || !Number.isInteger(height) || width<1 || height<1 || !Number.isInteger(selection.x) || !Number.isInteger(selection.y) || !Number.isInteger(selection.w) || !Number.isInteger(selection.h) || selection.w<1 || selection.h<1 || selection.x<0 || selection.y<0 || selection.x+selection.w>width || selection.y+selection.h>height) return {error:'Invalid selection'};
+    if (width*height>4*1024*1024) return {error:'Canvas exceeds the 4 megapixel inversion limit'};
+    if ((selection.points || selection.runs) && selection.w*selection.h>4*1024*1024) return {error:'Selection mask exceeds the 4 megapixel inversion limit'};
+    try {
+      const mask=Q.selectionMask(selection), runs=[]; let minX=width,minY=height,maxX=0,maxY=0;
+      for (let y=0;y<height;y++) {
+        let start=-1;
+        for (let x=0;x<=width;x++) {
+          let selected=false;
+          if (x<width && x>=selection.x && x<selection.x+selection.w && y>=selection.y && y<selection.y+selection.h) selected=mask ? !!mask[(y-selection.y)*selection.w+x-selection.x] : true;
+          const include=x<width && !selected;
+          if (include && start<0) start=x;
+          if (!include && start>=0) {
+            if (runs.length>=4096) return {error:'Inverted selection is too complex (maximum 4096 runs)'};
+            runs.push({x:start,y:y,w:x-start}); minX=Math.min(minX,start); maxX=Math.max(maxX,x); minY=Math.min(minY,y); maxY=y+1; start=-1;
+          }
+        }
+      }
+      if (!runs.length) return {error:'Inversion would be empty; selection left unchanged'};
+      return {selection:{x:minX,y:minY,w:maxX-minX,h:maxY-minY,runs:runs}};
+    } catch(e) { return {error:'Not enough memory to invert selection'}; }
+  };
+
   Q.intersectRect = function (a, b) {
     const x=Math.max(a.x,b.x), y=Math.max(a.y,b.y);
     const right=Math.min(a.x+a.w,b.x+b.w), bottom=Math.min(a.y+a.h,b.y+b.h);

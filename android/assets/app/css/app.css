@@ -552,3 +552,7 @@ select, .select {
 .alpha-lock.on { background: #f0b46a; color: #21170a; border-color: #f6d8a9; }
 :root[data-theme="light"] .alpha-lock { color: #302e2b; border-color: #9c968d; }
 :root[data-theme="light"] .alpha-lock.on { background: #f8d9aa; color: #49300e; border-color: #986725; }
+
+.harmony-grid { display: grid; grid-template-columns: repeat(2, minmax(0,1fr)); gap: 8px; margin: 12px 0; }
+.harmony-item { min-width: 0; display: flex; align-items: center; gap: 8px; text-align: left; font-size: 11px; color: var(--txt); background: var(--panel-2); border: 1px solid var(--line); border-radius: 10px; padding: 8px; }
+.harmony-sample { flex: none; width: 36px; height: 36px; border: 1px solid #888; border-radius: 8px; }

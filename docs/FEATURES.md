@@ -13,6 +13,16 @@ The supplied feature inventory is a roadmap, not a list of completed work.
   clutter. Effect thumbnails are generated offline from illustrative sample art,
   not a live preview. Real-device layout and touch testing remain necessary.
 
+- Colour tray harmony suggestions offer analogous, complementary and triadic
+  hue-based colours with clickable previews. Saturation/brightness have minimums;
+  neutral colours use the last picker hue. Suggestions are not saved as a palette.
+- Temporary checkerboard transparency preview replaces the canvas background in
+  the editor, without changing artwork, saved thumbnails or exports; resets when
+  switching artwork. It does not toggle transparent export.
+- Invert rectangle, lasso or wand selections into a hard run mask. It is temporary,
+  has a bounding-box outline, and supports selection-clipped painting/fills/effects;
+  transforms remain rectangle-only. Empty inverse, >4-megapixel canvas or >4096
+  runs are refused without changing the selection; lasso edges use a 50% threshold.
 - Light/dark interface appearance is saved locally and leaves artwork and exports
   unchanged; the workspace outside the canvas and system bars remain dark. Real
   Android display contrast and layout have not been tested.

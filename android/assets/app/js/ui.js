@@ -51,6 +51,9 @@
     sparkle: '<path d="M12 3l1.8 5.2L19 10l-5.2 1.8L12 17l-1.8-5.2L5 10l5.2-1.8z"/>',
     swatch: '<rect x="4" y="4" width="16" height="16" rx="3"/><path d="M4 16l8-8 8 8"/>',
     gradient: '<rect x="4" y="4" width="16" height="16" rx="3"/><path d="M8 5v14M12 5v14M16 5v14"/>',
+    harmony: '<circle cx="8" cy="8" r="3"/><circle cx="16" cy="8" r="3"/><circle cx="12" cy="16" r="3"/>',
+    transparency: '<rect x="3" y="3" width="18" height="18" rx="2"/><path d="M3 9h18M3 15h18M9 3v18M15 3v18"/>',
+    invertSelection: '<rect x="3" y="3" width="18" height="18" rx="2" stroke-dasharray="3 2"/><path d="M8 12h8M12 8v8"/>',
     alphaLock: '<rect x="4" y="4" width="16" height="16" rx="2"/><path d="M8 4v4H4M16 20v-4h4M8 12h4V8M12 16v4M16 8h4M8 16H4"/>',
     appearance: '<circle cx="12" cy="12" r="7"/><path d="M12 5v14M12 2v1M12 21v1M2 12h1M21 12h1"/>',
     gestureDelay: '<circle cx="12" cy="12" r="8"/><path d="M12 7v5l3 2M8 2h8"/>',
@@ -754,7 +757,7 @@
     wheelState.sat = hsv.sat;
     wheelState.val = hsv.val;
 
-    root.appendChild(trayHead('Colour', [iconButton('Pure hue',ICON.pureHue,function () { applyColor(Q.hsvToRgb(wheelState.hue,1,1)); })]));
+    root.appendChild(trayHead('Colour', [iconButton('Colour harmonies',ICON.harmony,function () { UI.harmonyDialog(applyColor); }), iconButton('Pure hue',ICON.pureHue,function () { applyColor(Q.hsvToRgb(wheelState.hue,1,1)); })]));
     const wrap = Q.crel('div', 'color-wrap');
 
     const wheel = Q.crel('canvas');
@@ -815,6 +818,19 @@
       drawWheel(wheel);
     }
   }
+
+  UI.harmonyDialog = function (applyColor) {
+    const source=currentHsv(), colors=Q.colorHarmonies(source.hue,source.sat,source.val), card=Q.crel('div');
+    card.appendChild(Q.crel('h2',null,'Colour harmonies'));
+    card.appendChild(Q.crel('p','sub','Suggestions from the current hue: analogous, complementary and triadic. Saturation is at least 50% and brightness at least 65%; neutral colours use the last picker hue. Tap a suggestion to use it. Reopen to generate from your new colour.'));
+    const grid=Q.crel('div','harmony-grid');
+    colors.forEach(function (entry) {
+      const hex=Q.rgbToHex(entry.rgb), b=Q.crel('button','harmony-item'); b.setAttribute('aria-label',entry.name+' '+hex); b.title=entry.name+' '+hex;
+      const sample=Q.crel('span','harmony-sample'); sample.style.background=hex; b.appendChild(sample); b.appendChild(Q.crel('span',null,entry.name+' · '+hex));
+      b.addEventListener('click',function () { applyColor(entry.rgb); UI.closeModal(); }); grid.appendChild(b);
+    }); card.appendChild(grid);
+    const close=Q.crel('button','btn ghost','Close'); close.addEventListener('click',()=>UI.closeModal()); card.appendChild(close); UI.openModal(card);
+  };
 
   function drawWheel(canvas) {
     const dpr = Math.min(window.devicePixelRatio || 1, 2.5);
@@ -955,6 +971,7 @@
       ['Canvas background',ICON.sparkle,()=>UI.backgroundDialog()], ['Drawing guides',ICON.sparkle,()=>UI.guideDialog()],
       ['Canvas reference',ICON.photo,()=>{UI.closeTray(); UI.openReference();}], ['Flip canvas',ICON.flip,()=>app().flipCanvas()],
       ['Rotate 90°',ICON.reset,()=>app().view.rotateBy(90)], ['Zoom to fit',ICON.layers,()=>app().view.fit()],
+      [app().view.transparentPreview ? 'Show canvas background' : 'Preview transparency',ICON.transparency,()=>{ app().view.transparentPreview=!app().view.transparentPreview; app().view.dirty=true; Q.toast(app().view.transparentPreview ? 'Transparency preview on' : 'Canvas background shown'); root.innerHTML=''; buildMenu(root); }],
       ['Hide interface',ICON.focus,()=>UI.setFocusMode(true)]
     ]);
     const animation=[['Add frame',ICON.film,()=>app().addFrame(true)], ['Animation timeline',ICON.film,()=>{UI.closeTray(); if (!timelineOpen) UI.toggleTimeline();}],
@@ -1092,6 +1109,7 @@
     action('Draw lasso',function () { v.tool='lasso'; v.selectionDraft=null; Q.el('#btnFill').classList.remove('on'); Q.el('#btnEyedrop').classList.remove('on'); Q.hint('Draw a closed selection around an area',3000); });
     action('Magic wand',function () { v.tool='wand'; v.selectionDraft=null; Q.el('#btnFill').classList.remove('on'); Q.el('#btnEyedrop').classList.remove('on'); Q.hint('Tap connected pixels on the active layer · tolerance in Fill settings',3500); });
     action('Select all',function () { v.selection={x:0,y:0,w:d.width,h:d.height}; v.dirty=true; Q.hint('Entire canvas selected',1600); });
+    action('Invert selection',function () { const result=Q.invertSelection(v.selection,d.width,d.height); if(result.error) { Q.toast(result.error,3500); return; } v.selection=result.selection; v.selectionDraft=null; v.dirty=true; Q.hint('Selection inverted · dashed box shows bounds',2500); },ICON.invertSelection);
     action('Deselect',function () { v.selection=null; v.selectionDraft=null; if (v.tool === 'select' || v.tool === 'lasso' || v.tool === 'wand') v.tool='brush'; v.dirty=true; });
     action(v.selection && (v.selection.points || v.selection.runs) ? 'Fill selection' : 'Fill rectangle',function () { app().editSelection('fill'); });
     action(v.selection && (v.selection.points || v.selection.runs) ? 'Clear selection' : 'Clear rectangle',function () { app().editSelection('clear'); });
@@ -1838,7 +1856,7 @@
     card.appendChild(Q.crel('p', 'sub', 'A paint, sketch and frame-by-frame animation studio for Android. Artwork is stored on this device only — nothing is uploaded.'));
     card.appendChild(Q.crel('p', 'sub', 'Developed by Qmer'));
     card.appendChild(Q.crel('p', 'sub', 'ቀለም (qalam) means “pen” or “ink”.'));
-    card.appendChild(Q.crel('p', 'sub', 'Version 4.6'));
+    card.appendChild(Q.crel('p', 'sub', 'Version 4.7'));
     const actions = Q.crel('div', 'modal-actions');
     const close = Q.crel('button', 'btn primary', 'Close');
     close.addEventListener('click', function () { UI.closeModal(); });

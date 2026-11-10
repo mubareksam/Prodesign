@@ -862,4 +862,33 @@ function precisionOptions(opts={}) { return {width:2,height:4,dx:0,dy:0,angle:90
  const large={...target(d),bounds:{x:0,y:0,w:4096,h:4096}}; const ow=d.width,oh=d.height; d.width=4096; d.height=4096; ok(App.validateRecolor(large,[0,0,0],[255,0,0],0).error.includes('64 MiB'),'oversized recolour is refused before allocation'); d.width=ow; d.height=oh;
 }
 
+console.log('4.7 inverted selections and transparency preview');
+{
+ const d=setup(), cel=d.activeCel(true), rect={x:4,y:4,w:8,h:8}; let result=Q.invertSelection(rect,16,16);
+ ok(!!result.selection && result.selection.runs.length===24,'rectangle inversion produces a bounded run mask');
+ App.view.selection=result.selection; App.view.color=[255,0,0]; App.editSelection('fill');
+ ok(pixel(cel,2,2)[0]===255 && pixel(cel,4,4)[3]===0 && pixel(cel,15,15)[0]===255,'fill affects the complement and preserves the original rectangle');
+ d.history.undo(); ok(pixel(cel,2,2)[3]===0,'inverted selection fill undoes normally');
+ const stroke=new Q.Stroke(d,pen,[0,0,255],10,1,App.view.selection); stroke.begin({x:4,y:8,pressure:1,t:1}); stroke.end();
+ ok(pixel(cel,3,8)[2]===255 && pixel(cel,4,8)[3]===0,'brush strokes clip against the inverted mask'); d.history.undo();
+
+ result=Q.invertSelection(result.selection,16,16); const double=Q.selectionMask(result.selection);
+ ok(result.selection.x===4 && result.selection.y===4 && result.selection.w===8 && result.selection.h===8 && double.every(v=>v===1),'double inversion restores the selected pixels');
+ const wand={x:1,y:1,w:4,h:2,runs:[{x:1,y:1,w:2},{x:4,y:2,w:1}]}, inv=Q.invertSelection(wand,16,16).selection, im=Q.selectionMask(inv);
+ ok(im[1*inv.w+1]===0 && im[2*inv.w+4]===0 && im[1*inv.w+3]===1,'wand inversion preserves nonrectangular pixel mask');
+ const lasso={x:1,y:1,w:6,h:6,points:[{x:1,y:1},{x:7,y:1},{x:1,y:7}]}, lm=Q.selectionMask(lasso), linv=Q.invertSelection(lasso,16,16).selection, lim=Q.selectionMask(linv);
+ let consistent=true; for(let y=1;y<7;y++) for(let x=1;x<7;x++) if(lim[y*linv.w+x]===lm[(y-1)*6+x-1]) consistent=false;
+ ok(consistent,'lasso inversion uses the same hard mask as editing');
+ ok(!!Q.invertSelection(null,16,16).error && !!Q.invertSelection({x:0,y:0,w:16,h:16},16,16).error,'missing and fully selected canvases reject inversion instead of treating empty as all');
+ ok(!!Q.invertSelection({x:1,y:0,w:1,h:4096},3,4096).error,'excessive run counts are rejected');
+ ok(!!Q.invertSelection({x:0,y:0,w:2049,h:2049,runs:[]},4096,4096).error,'oversized canvases are rejected before allocation');
+}
+{
+ const d=setup(), cel=d.activeCel(true), c=cel.getContext('2d'); c.fillStyle='#ff0000'; c.fillRect(20,20,2,2); c.fillRect(4,4,2,2);
+ const out=createCanvas(16,16), view=Object.create(Q.View.prototype); Object.assign(view,{canvas:out,ctx:out.getContext('2d'),doc:d,dpr:1,scale:1,rot:0,tx:0,ty:0,stroke:null,transparentPreview:false,selection:null,selectionDraft:null,motionDraft:null});
+ view.render(); ok(same(pixel(out,10,10),[255,255,255,255]),'normal canvas renders the document background');
+ view.transparentPreview=true; view.render(); ok(same(pixel(out,10,10),[187,187,187,255]) && pixel(out,4,4)[0]===255 && pixel(out,4,4)[1]===0,'transparency preview shows checker beneath artwork');
+ ok(same(pixel(d.flatten(0,{background:d.bg}),10,10),[255,255,255,255]) && pixel(d.flatten(0,{background:false}),10,10)[3]===0,'checker preview does not alter normal or transparent exports');
+}
+
 console.log(`all ${n} raster integration checks passed`);

@@ -8,11 +8,11 @@ brushes, layers with blend modes, a colour wheel, a frame timeline with onion sk
 Procreate's gesture vocabulary, PNG/GIF export and device-dependent MP4 export — all offline, with no account and
 no network permissions at all.
 
-- Package: `com.qalam.studio` · version 4.6 (versionCode 37)
+- Package: `com.qalam.studio` · version 4.7 (versionCode 38)
 - minSdk 26 (Android 8.0) · targetSdk 33 · armeabi-v7a/arm64/x86/x86_64 independent
   (everything is HTML/JS running inside the app's own `WebView`, so the APK has no
   native code)
-- APK: **`artifacts/Qalam-4.6.apk`** (~306 KB), signed with a v1+v2 scheme
+- APK: **`artifacts/Qalam-4.7.apk`** (~308 KB), signed with a v1+v2 scheme
 - The written analysis of Procreate that this app was specified from:
   [`docs/procreate-analysis.md`](procreate-analysis.md)
 
@@ -20,7 +20,7 @@ no network permissions at all.
 
 ## 1. Install
 
-1. Copy `artifacts/Qalam-4.6.apk` to the phone (USB, Drive, chat to yourself — anything).
+1. Copy `artifacts/Qalam-4.7.apk` to the phone (USB, Drive, chat to yourself — anything).
 2. Open it with the phone's file manager. Android will ask to allow installs from
    that app the first time ("Install unknown apps").
 3. Install and open **Qalam**. If an earlier Qalam version is already installed, Android should offer an update that preserves its data. Back up important artwork first. Android does not allow this app to silently uninstall itself; do not uninstall it unless you have backed up its local artwork.
@@ -79,6 +79,29 @@ Side rails provide brushes, size/opacity, colour, eyedropper, fill, eraser, fit 
   keeps the current size and opacity, is temporary and does not change the original
   brush. Switch back to the painting brush to edit its settings. Erasing is blocked
   on alpha-locked layers. This is a basic editor, not the full Procreate Brush Studio.
+- **Colour harmonies** — tap the three-circle icon in the Colour tray to see
+  five clickable hue suggestions: two analogous (±30°), a complement (180°)
+  and two triadic (±120°). The suggestions use the current colour's hue, with
+  saturation at least 50% and brightness at least 65%; for grey or black the
+  picker's last hue is used (initially blue). Tap a swatch to use it, or close
+  without changing the colour. Reopen to generate from the new colour. These
+  are temporary suggestions, not saved palettes; colour choice does not edit art.
+- **Actions → Canvas & view → Preview transparency** — replaces the canvas
+  background in the editor with a checkerboard, so transparent pixels are easy
+  to spot. Use Show canvas background to turn it off. It is a temporary view
+  setting, reset when changing artwork; it does not change the canvas background,
+  history, saved thumbnail or normal/transparent export. Guides and onion skins
+  can still appear; camera/layer motion is only shown during playback as usual.
+- **Selection & transform → Invert selection** — selects the opposite pixels
+  across the canvas for an existing rectangle, lasso or magic-wand selection.
+  The inverse is a hard pixel mask; lasso edges use the existing 50% alpha
+  threshold, and its dashed outline shows only the bounding box. Inverting
+  changes the temporary selection, not the artwork or undo history. If there is
+  no selection, the inverse is empty, the canvas exceeds 4 megapixels, or the
+  result exceeds 4096 horizontal runs, the original selection is retained and a
+  message appears. Inverse masks work for painting, fills, effects and copying;
+  transforms still require rectangles. A full-canvas inverse cannot be represented
+  as an empty selection because deselection means unrestricted editing.
 - **Actions → Preferences → Interface appearance** — switch between dark and
   light interface colours. Changes apply immediately and are saved on this device;
   Reset restores dark. This changes the interface, not canvas background, artwork
@@ -534,7 +557,7 @@ tools/
   tests/pixel_integration.mjs real raster and animation export checks
   tests/gif_roundtrip.mjs    encodes a GIF and decodes it with an independent decoder
   tests/ui_smoke.mjs         jsdom boot + full UI drive (gallery -> export)
-artifacts/Qalam-4.6.apk           the signed, installable artefact
+artifacts/Qalam-4.7.apk           the signed, installable artefact
 docs/procreate-analysis.md   the Procreate study this app was built from
 docs/qalam.md                this file
 ```
@@ -564,7 +587,7 @@ Design notes worth knowing before changing code:
 
 ```bash
 bash tools/fetch-toolchain.sh     # once per machine: JVM, apktool, aapt2, jars, npm
-bash tools/build.sh               # -> artifacts/Qalam-4.6.apk (signed + verified)
+bash tools/build.sh               # -> artifacts/Qalam-4.7.apk (signed + verified)
 bash tools/check_reference.sh     # optional: javac-check the Java mirrors
 ```
 
