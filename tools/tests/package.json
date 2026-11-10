@@ -4,10 +4,12 @@
   "type": "module",
   "description": "Engine, real raster, GIF and jsdom UI checks for Qalam",
   "scripts": {
-    "test": "node engine_smoke.mjs && node pixel_integration.mjs && node gif_roundtrip.mjs && node ui_smoke.mjs"
+    "test": "node engine_smoke.mjs && node pixel_integration.mjs && node gif_roundtrip.mjs && node ui_smoke.mjs",
+    "test:browser": "node ui_layout_browser.mjs"
   },
   "devDependencies": {
     "@napi-rs/canvas": "^0.1.100",
-    "jsdom": "^24.1.3"
+    "jsdom": "^24.1.3",
+    "playwright-core": "^1.65.0"
   }
 }

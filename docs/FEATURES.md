@@ -5,6 +5,13 @@ The supplied feature inventory is a roadmap, not a list of completed work.
 
 ## Available now
 
+- Canvas-first interface refresh: neutral studio toolbar with direct selection,
+  list-style brush previews, blue active states and redesigned gallery, panels,
+  layers and timeline. Panels have a close button, use a phone bottom sheet or a
+  floating panel at wider sizes, and follow the tool rail when swapped. Artwork
+  can be renamed via Actions → File & help → Artwork details. This is inspired
+  by Procreate, not an exact UI or feature clone; real Android testing is needed.
+
 - The Layers Add menu offers blank and imported-image layers as well as solid
   colour and two-colour horizontal, vertical, diagonal, radial or custom-angle gradient raster
   layers. HSV sliders, presets and HEX controls update a scaled preview; gradients

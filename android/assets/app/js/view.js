@@ -141,7 +141,7 @@
     const c = this.ctx;
     const doc = this.doc;
     c.setTransform(1, 0, 0, 1, 0, 0);
-    c.fillStyle = '#0b0b0e';
+    c.fillStyle = '#393a3e';
     c.fillRect(0, 0, this.canvas.width, this.canvas.height);
     if (!doc) return;
 

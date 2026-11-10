@@ -8,11 +8,11 @@ brushes, layers with blend modes, a colour wheel, a frame timeline with onion sk
 Procreate's gesture vocabulary, PNG/GIF export and device-dependent MP4 export — all offline, with no account and
 no network permissions at all.
 
-- Package: `com.qalam.studio` · version 4.9 (versionCode 40)
+- Package: `com.qalam.studio` · version 5.0 (versionCode 41)
 - minSdk 26 (Android 8.0) · targetSdk 33 · armeabi-v7a/arm64/x86/x86_64 independent
   (everything is HTML/JS running inside the app's own `WebView`, so the APK has no
   native code)
-- APK: **`artifacts/Qalam-4.9.apk`** (~313 KB), signed with a v1+v2 scheme
+- APK: **`artifacts/Qalam-5.0.apk`** (~316 KB), signed with a v1+v2 scheme
 - The written analysis of Procreate that this app was specified from:
   [`docs/procreate-analysis.md`](procreate-analysis.md)
 
@@ -20,7 +20,7 @@ no network permissions at all.
 
 ## 1. Install
 
-1. Copy `artifacts/Qalam-4.9.apk` to the phone (USB, Drive, chat to yourself — anything).
+1. Copy `artifacts/Qalam-5.0.apk` to the phone (USB, Drive, chat to yourself — anything).
 2. Open it with the phone's file manager. Android will ask to allow installs from
    that app the first time ("Install unknown apps").
 3. Install and open **Qalam**. If an earlier Qalam version is already installed, Android should offer an update that preserves its data. Back up important artwork first. Android does not allow this app to silently uninstall itself; do not uninstall it unless you have backed up its local artwork.
@@ -65,8 +65,19 @@ Everything is autosaved on the device (`IndexedDB`, with a `localStorage` fallba
 
 ## 3. Tools and panels
 
-The top bar provides **Gallery, Undo, Redo, Timeline, Effects** and **Actions**.
-Side rails provide brushes, size/opacity, colour, eyedropper, fill, smudge, eraser, fit and layers.
+The top bar provides **Gallery, Actions, Effects, Selection & transform, Undo,
+Redo** and **Timeline**. Side rails provide brushes, size/opacity, colour,
+eyedropper, fill, smudge, eraser, fit and layers. The swatch remains between
+the size and opacity sliders. The artwork name in the top bar is editable; on
+small screens it may be truncated, so Actions → File & help → Artwork details
+also lets you rename it and see dimensions, layer and frame counts.
+
+Panels use a bottom sheet on phones and a floating side panel on wider screens;
+each has an explicit close button. If the brush controls are moved to the right,
+the floating panel moves to the left. Panels and the timeline scroll when space
+is short. Dark and light interface settings remain available. These are
+Procreate-inspired design changes, not an exact replica or feature parity;
+Android WebView touch and physical-device layout still need testing.
 
 - **Brush tray** — 28 presets, with labelled ink, pencil, paint and eraser icons and sample stroke thumbnails. Thumbnails are generated using each preset’s brush engine; erasers are shown as painted marks. Search by brush name or choose an ink, pencil, paint or eraser category; both filters combine and remain until cleared or the app restarts.
   Select a brush and open **Brush studio** to adjust spacing, flow, opacity, edge
@@ -577,7 +588,8 @@ tools/
   tests/pixel_integration.mjs real raster and animation export checks
   tests/gif_roundtrip.mjs    encodes a GIF and decodes it with an independent decoder
   tests/ui_smoke.mjs         jsdom boot + full UI drive (gallery -> export)
-artifacts/Qalam-4.9.apk           the signed, installable artefact
+  tests/ui_layout_browser.mjs optional Chromium layout and interaction checks
+artifacts/Qalam-5.0.apk           the signed, installable artefact
 docs/procreate-analysis.md   the Procreate study this app was built from
 docs/qalam.md                this file
 ```
@@ -607,7 +619,7 @@ Design notes worth knowing before changing code:
 
 ```bash
 bash tools/fetch-toolchain.sh     # once per machine: JVM, apktool, aapt2, jars, npm
-bash tools/build.sh               # -> artifacts/Qalam-4.9.apk (signed + verified)
+bash tools/build.sh               # -> artifacts/Qalam-5.0.apk (signed + verified)
 bash tools/check_reference.sh     # optional: javac-check the Java mirrors
 ```
 
@@ -623,7 +635,9 @@ bash tools/check_reference.sh     # optional: javac-check the Java mirrors
 
 ```bash
 cd tools/tests && npm install
-npm test        # engine_smoke (156 checks) + pixel_integration + gif_roundtrip + ui_smoke
+npm test        # engine_smoke + pixel_integration + gif_roundtrip + ui_smoke
+# Optional, with Chromium already installed:
+CHROMIUM_PATH=/path/to/chromium npm run test:browser
 ```
 
 `pixel_integration.mjs` uses a native desktop canvas implementation to verify
@@ -634,6 +648,10 @@ timeline → playback → save → reopen from the gallery → gestures (pinch, 
 undo, four-finger redo, long-press eyedropper, QuickShape) → Android back button →
 PNG export into the native bridge. It is the regression net for anything that
 touches `ui.js`, `view.js`, `app.js` or `storage.js`.
+
+`ui_layout_browser.mjs` exercises responsive layout and interactions in Chromium at
+phone, tablet and landscape sizes. It needs a local Chromium executable; it is not
+an Android WebView or physical touchscreen test.
 
 `verify_apk.py` re-reads the finished APK independently: zip entries, `resources.arsc`
 alignment, `classes.dex` magic/version/size, the v2 signature block and the RSA

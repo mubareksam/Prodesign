@@ -4,20 +4,20 @@ Developed by **Qmer**. An offline painting and frame-animation studio for Androi
 brushes, layers, a colour wheel, a frame timeline with onion skin, Procreate's gesture
 vocabulary, and PNG/GIF export. No account, no ads, no network permission.
 
-**Download:** [`Qalam-4.9.apk`](../artifacts/Qalam-4.9.apk) (~313 KB)
+**Download:** [`Qalam-5.0.apk`](../artifacts/Qalam-5.0.apk) (~316 KB)
 
 | | |
 |---|---|
 | Package | `com.qalam.studio` |
-| Version | 4.9 (versionCode 40) |
+| Version | 5.0 (versionCode 41) |
 | Requires | Android 8.0+ (minSdk 26), built for targetSdk 33 |
 | Permissions | `VIBRATE` only — no internet, no storage, no location |
 | Signing | APK Signature Scheme v1 + v2, self-signed with a public test key |
-| SHA-256 | `18395d13fa2e1c37141a5f91fd0385f06b4dfc5c5e3d6169c4a4ff14c06c2c13` |
+| SHA-256 | `80314879d4f8f9f8759700a152adcd3a15ba9c79c1251e76193e4be469025db2` |
 
 ## Install
 
-1. Download `Qalam-4.9.apk` to the phone (or copy it over USB).
+1. Download `Qalam-5.0.apk` to the phone (or copy it over USB).
 2. Open it from the file manager. Android will ask you to allow installs from that
    app the first time ("Install unknown apps") — allow it, then install.
 3. Open **Qalam**.
@@ -26,6 +26,12 @@ Because the APK is self-signed, Android shows "installed from an unknown source"
 once. That is expected for any app that doesn't come through the Play Store.
 
 ## What's inside
+
+**Studio interface** — canvas-first neutral toolbar, direct selection shortcut,
+list-style brush previews, layers and Actions panels, and light/dark themes. Panels
+are bottom sheets on phones and floating on larger screens, with explicit close
+controls. Actions → File & help → Artwork details provides another way to rename.
+This is inspired by Procreate, not an exact copy.
 
 **Canvas** — 2048², portrait, landscape, 1920×1080, 1280² animation and 1080×1920
 story presets and custom sizes from 64 to 4096 pixels per side; full-screen canvas with two-finger pan, pinch zoom and twist rotate.

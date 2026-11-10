@@ -122,6 +122,7 @@
     el('#btnTimeline').addEventListener('click', function () { UI.toggleTimeline(); });
     el('#btnMenu').addEventListener('click', function () { UI.toggleTray('menu'); });
     el('#btnEffects').addEventListener('click', function () { UI.closeTray(); UI.effectsDialog(); });
+    el('#btnSelection').addEventListener('click', function () { UI.closeTray(); UI.selectionDialog(); });
     el('#audioImport').addEventListener('change', function () {
       const file=this.files && this.files[0], target=UI.audioTarget;
       this.value=''; UI.audioTarget=null;
@@ -395,9 +396,9 @@
   };
 
   UI.openTray = function (kind) {
-    tray = kind;
-    const t = Q.el('#tray');
-    t.classList.remove('hidden');
+    const previous=tray; tray = kind;
+    const t = Q.el('#tray'); if(previous!==kind) t.scrollTop=0;
+    t.classList.remove('hidden'); t.setAttribute('data-panel',kind);
     Q.el('#trayBody').innerHTML = '';
     if (BUILDERS[kind]) BUILDERS[kind](Q.el('#trayBody'));
     UI.syncBrushUi();
@@ -405,21 +406,23 @@
     Q.el('#btnLayers').classList.toggle('on', kind === 'layers');
     Q.el('#btnColor').classList.toggle('on', kind === 'color');
     Q.el('#btnMenu').classList.toggle('on', kind === 'menu');
+    [['#btnBrush','brushes'],['#btnLayers','layers'],['#btnColor','color'],['#btnMenu','menu']].forEach(function(x){ Q.el(x[0]).setAttribute('aria-expanded',kind===x[1] ? 'true' : 'false'); });
   };
 
   UI.closeTray = function () {
     tray = null;
     Q.el('#tray').classList.add('hidden');
     ['#btnBrush', '#btnLayers', '#btnColor', '#btnMenu'].forEach(function (s) {
-      Q.el(s).classList.remove('on');
+      Q.el(s).classList.remove('on'); Q.el(s).setAttribute('aria-expanded','false');
     });
   };
 
   function trayHead(title, rightNodes) {
-    const head = Q.crel('div', 'tray-head');
+    const head = Q.crel('div', 'tray-head panel-head');
     head.appendChild(Q.crel('h3', null, title));
     const row = Q.crel('div', 'row');
     (rightNodes || []).forEach(function (n) { row.appendChild(n); });
+    row.appendChild(iconButton('Close panel',ICON.close,function(){ UI.closeTray(); }));
     head.appendChild(row);
     return head;
   }
@@ -440,7 +443,7 @@
   /* ── brushes ────────────────────────────────────────────── */
 
   function buildBrushes(root) {
-    root.appendChild(trayHead('Brush library', [iconButton('Brush size presets',ICON.controls,function () { UI.sizePresetsDialog(); }),chip('Brush studio', false, function () { UI.brushStudio(); }, ICON.wrench)]));
+    root.appendChild(trayHead('Brush library', [iconButton('Brush size presets',ICON.controls,function () { UI.sizePresetsDialog(); }),iconButton('Brush studio', ICON.wrench, function () { UI.brushStudio(); })]));
     function brushSlider(label,id,value,min,max,change) {
       const row=Q.crel('div','field studio-field'); row.appendChild(Q.crel('label',null,label)); const input=Q.crel('input'); input.id=id+'Slider'; input.type='range'; input.min=min; input.max=max; input.value=value; input.setAttribute('aria-label',label); const out=Q.crel('div','val',value+(id==='trayOpacity'?'%':'')); out.id=id+'Value'; input.addEventListener('input',()=>change(Number(input.value))); row.appendChild(input); row.appendChild(out); root.appendChild(row);
     }
@@ -1028,7 +1031,7 @@
       ['Export MP4',ICON.film,()=>{UI.closeTray(); UI.mp4Dialog();}]
     ]);
     group('Preferences', [ ['Smudge edge',ICON.controls,()=>UI.smudgePreferences()], ['Interface appearance',ICON.appearance,()=>UI.themeDialog()], ['Pressure & smoothing',ICON.controls,()=>UI.pressurePreferences()], ['Brush slider layout',ICON.railLayout,()=>UI.railPreferencesDialog()], ['Hold gesture timing',ICON.gestureDelay,()=>UI.gesturePreferences()] ]);
-    group('File & help', [ ['Save now',ICON.save,()=>app().saveNow(true)], ['Gestures & help',ICON.sparkle,()=>UI.helpSheet()], ['About Qalam',ICON.layers,()=>UI.aboutSheet()] ]);
+    group('File & help', [ ['Artwork details',ICON.controls,()=>UI.artworkDetails()], ['Save now',ICON.save,()=>app().saveNow(true)], ['Gestures & help',ICON.sparkle,()=>UI.helpSheet()], ['About Qalam',ICON.layers,()=>UI.aboutSheet()] ]);
 
     const info = Q.crel('div', 'layer-sub');
     info.style.margin = '12px 2px 0';
@@ -1072,6 +1075,14 @@
       const thumb = app().doc.thumbnail(app().doc.activeFrame, 260), cv = Q.el('#referenceCanvas');
       cv.width = thumb.width; cv.height = thumb.height; cv.getContext('2d').drawImage(thumb, 0, 0);
     }, 120);
+  };
+
+  UI.artworkDetails = function () {
+    const d=app().doc; if(!d) return; const card=Q.crel('div'); card.appendChild(Q.crel('h2',null,'Artwork details'));
+    card.appendChild(Q.crel('p','sub',d.width+' × '+d.height+' px · '+d.layers.length+' layers · '+d.frames.length+' frames'));
+    const row=Q.crel('div','field'); row.appendChild(Q.crel('label',null,'Name')); const name=Q.crel('input','select'); name.type='text'; name.value=d.name; name.setAttribute('aria-label','Artwork name in details'); row.appendChild(name); card.appendChild(row);
+    const error=Q.crel('p','canvas-error'); error.setAttribute('role','alert'); card.appendChild(error);
+    const actions=Q.crel('div','modal-actions'), cancel=Q.crel('button','btn ghost','Cancel'), save=Q.crel('button','btn primary','Save'); cancel.addEventListener('click',()=>UI.closeModal()); save.addEventListener('click',function(){ if(app().doc!==d) { error.textContent='Artwork changed; reopen details'; return; } d.name=name.value.trim() || 'Untitled'; Q.el('#docTitle').value=d.name; app().markDirty(true); UI.closeModal(); }); actions.appendChild(cancel); actions.appendChild(save); card.appendChild(actions); UI.openModal(card);
   };
 
   UI.setTheme = function (theme,persist) {
@@ -1909,7 +1920,7 @@
     card.appendChild(Q.crel('p', 'sub', 'A paint, sketch and frame-by-frame animation studio for Android. Artwork is stored on this device only — nothing is uploaded.'));
     card.appendChild(Q.crel('p', 'sub', 'Developed by Qmer'));
     card.appendChild(Q.crel('p', 'sub', 'ቀለም (qalam) means “pen” or “ink”.'));
-    card.appendChild(Q.crel('p', 'sub', 'Version 4.9'));
+    card.appendChild(Q.crel('p', 'sub', 'Version 5.0'));
     const actions = Q.crel('div', 'modal-actions');
     const close = Q.crel('button', 'btn primary', 'Close');
     close.addEventListener('click', function () { UI.closeModal(); });

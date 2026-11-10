@@ -450,7 +450,7 @@ async function run() {
 
   console.log('about');
   Q.UI.aboutSheet();
-  ok(doc.querySelector('#modalBody').textContent.includes('Developed by Qmer') && doc.querySelector('#modalBody').textContent.includes('Version 4.9'), 'About credits Qmer and shows current version');
+  ok(doc.querySelector('#modalBody').textContent.includes('Developed by Qmer') && doc.querySelector('#modalBody').textContent.includes('Version 5.0'), 'About credits Qmer and shows current version');
   Q.UI.closeModal();
 
   console.log('hardware back');
@@ -1308,7 +1308,7 @@ async function run() {
   ok(theme.value==='dark' && doc.documentElement.getAttribute('data-theme')==='dark','appearance defaults to dark');
   const docBg=d.bg, undoBefore=d.history.undoStack.length; theme.value='light'; theme.dispatchEvent(new win.Event('change',{bubbles:true}));
   ok(doc.documentElement.getAttribute('data-theme')==='light' && Q.Store.meta('interfaceTheme')==='light' && d.bg===docBg && d.history.undoStack.length===undoBefore,'light theme applies and persists without changing artwork');
-  ok(win.getComputedStyle(doc.querySelector('#modalBody')).backgroundColor==='rgb(255, 254, 251)' && win.getComputedStyle(doc.querySelector('.topbar')).color!=='rgb(244, 244, 248)','light theme sets a light modal surface and distinct toolbar styling');
+  ok(win.getComputedStyle(doc.querySelector('#modalBody')).backgroundColor==='rgb(251, 251, 252)' && win.getComputedStyle(doc.querySelector('.topbar')).color!=='rgb(244, 244, 248)','light theme sets a light modal surface and distinct toolbar styling');
   Array.from(doc.querySelectorAll('#modalBody button')).find(b=>b.textContent==='Reset').click(); ok(theme.value==='dark' && Q.Store.meta('interfaceTheme')==='dark' && doc.documentElement.getAttribute('data-theme')==='dark','appearance reset returns to dark');
   theme.value='light'; theme.dispatchEvent(new win.Event('change',{bubbles:true})); Q.UI.closeModal(); Q.UI.closeTray();
   App.createDoc(32,64,'Another canvas'); ok(doc.documentElement.getAttribute('data-theme')==='light','appearance persists between artworks');
@@ -1394,6 +1394,20 @@ async function run() {
   let captured=null; const old=App.addPaintLayer; App.addPaintLayer=function(...args){captured=args; return old(...args);}; click('#modalBody .btn.primary'); App.addPaintLayer=old;
   ok(captured[3]==='angle' && captured[5].angle===90 && captured[5].alpha1===0.8 && captured[5].alpha2===0.2 && current.layers.length===2,'designer applies selected angle and alpha to an undoable layer'); App.undo(); ok(current.layers.length===1,'gradient creation is undoable');
   Q.UI.paintLayerDialog('solid'); ok(doc.querySelector('[aria-label="Colour opacity"]'),'solid colour designer has opacity'); Q.UI.closeModal();
+  }
+
+  {
+  console.log('5.0 studio interface refresh');
+  App.createDoc(64,64,'UI refresh'); const d=App.doc, before=d.history.undoStack.length;
+  const buttons=[...doc.querySelectorAll('.topbar button')].map(b=>b.id); ok(buttons.join(',')==='btnGallery,btnMenu,btnEffects,btnSelection,btnUndo,btnRedo,btnTimeline','studio toolbar groups actions and editing controls in a predictable order');
+  ok(doc.querySelector('#btnSelection svg') && doc.querySelector('#btnSelection').getAttribute('aria-label')==='Selection and transform','selection has a direct accessible toolbar shortcut');
+  Q.UI.openTray('brushes'); ok(doc.querySelector('#btnBrush').getAttribute('aria-expanded')==='true' && doc.querySelector('#tray').getAttribute('data-panel')==='brushes','active panel state is exposed accessibly');
+  const close=doc.querySelector('#trayBody [aria-label="Close panel"]'); ok(close && close.querySelector('svg'),'panel has an explicit icon-only close button'); close.click(); ok(!visible(doc.querySelector('#tray')) && doc.querySelector('#btnBrush').getAttribute('aria-expanded')==='false','panel close button restores canvas view');
+  click('#btnLayers'); click('#btnSelection'); ok(!visible(doc.querySelector('#tray')) && visible(doc.querySelector('#modal')) && doc.querySelector('#modalBody h2').textContent==='Selection & transform','selection shortcut opens existing selection tools and closes the panel'); Q.UI.closeModal();
+  Q.UI.openTray('menu'); const details=[...doc.querySelectorAll('#trayBody details')].find(x=>x.textContent.includes('Artwork details')); const entry=[...details.querySelectorAll('button')].find(x=>x.textContent==='Artwork details'); ok(!!entry,'artwork details is accessible from Actions on compact screens'); entry.click();
+  const name=doc.querySelector('[aria-label="Artwork name in details"]'); name.value='New title'; click('#modalBody .btn.primary'); ok(d.name==='New title' && doc.querySelector('#docTitle').value==='New title' && d.history.undoStack.length===before,'artwork details renames the active project without editing pixels');
+  await App.saveNow(false); const loaded=await Q.Store.load(d.id); ok(loaded.name==='New title','artwork name is persisted');
+  Q.UI.artworkDetails(); const original=d; App.createDoc(64,64,'Other artwork'); click('#modalBody .btn.primary'); ok(original.name==='New title' && App.doc.name==='Other artwork' && doc.querySelector('.canvas-error').textContent.includes('changed'),'stale details dialog cannot rename a different artwork'); Q.UI.closeModal(); Q.UI.closeTray();
   }
 
   await App.saveNow(false);
