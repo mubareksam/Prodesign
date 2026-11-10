@@ -4,20 +4,20 @@ Developed by **Qmer**. An offline painting and frame-animation studio for Androi
 brushes, layers, a colour wheel, a frame timeline with onion skin, Procreate's gesture
 vocabulary, and PNG/JPEG/GIF export. No account, no ads, no network permission.
 
-**Download:** [`Qelem-6.0.apk`](../artifacts/Qelem-6.0.apk) (~337 KB)
+**Download:** [`Qelem-6.1.apk`](../artifacts/Qelem-6.1.apk) (~338 KB)
 
 | | |
 |---|---|
 | Package | `com.qalam.studio` |
-| Version | 6.0 (versionCode 51) |
+| Version | 6.1 (versionCode 52) |
 | Requires | Android 8.0+ (minSdk 26), built for targetSdk 33 |
 | Permissions | `VIBRATE` only — no internet, no storage, no location |
 | Signing | APK Signature Scheme v1 + v2, self-signed with a public test key |
-| SHA-256 | `f5ca8e560c0bddbc0ae1210609278f44c463efaa21ec960c7d8f513ba33686ff` |
+| SHA-256 | `6e2f47880ec9fea6957d63d57aa7ab1d7160332bec41d26a5d66d3463747964b` |
 
 ## Install
 
-1. Download `Qelem-6.0.apk` to the phone (or copy it over USB).
+1. Download `Qelem-6.1.apk` to the phone (or copy it over USB).
 2. Open it from the file manager. Android will ask you to allow installs from that
    app the first time ("Install unknown apps") — allow it, then install.
 3. Open **Qelem**.
@@ -37,10 +37,12 @@ This is inspired by Procreate, not an exact copy.
 story presets and custom sizes from 64 to 4096 pixels per side; full-screen canvas with two-finger pan, pinch zoom and twist rotate.
 
 **Canvas transform** — drag on-canvas handles to move, scale, rotate, distort or
-apply a basic nine-point warp to the active cel or rectangular selection. The grid
-is the only preview; pixels update on Apply. Undo restores pixels. This nearest-
-neighbour raster operation has a 2 MP and estimated 64 MiB limit, may block on
-large areas, and is not a full smooth or perspective-correct warp.
+apply a basic nine-point warp to the active cel or rectangular selection. A throttled,
+low-resolution artwork preview is approximate; Apply renders full-resolution pixels
+with Smooth or Pixelated sampling and undo restores pixels. Switching styles preserves
+the grid; a Distort corner move rebuilds its interior. This raster operation has a
+2 MP and estimated 64 MiB limit, may block on large areas, and is not a full or
+perspective-correct warp.
 
 **Fill sampling** — fill, colour drop and Magic wand can sample the active layer or
 the visible-layer composite, and match connected or all similar pixels. Fill edits

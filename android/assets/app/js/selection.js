@@ -135,7 +135,7 @@
       }
     }
   };
-  // A 3×3 piecewise-affine mesh. Preview is the grid, not a live raster.
+  // A 3×3 piecewise-affine mesh with nearest or premultiplied-alpha bilinear sampling.
   Q.transformGrid = function (r) { return Array.from({length:9},(_,i)=>({x:r.x+(i%3)*r.w/2,y:r.y+Math.floor(i/3)*r.h/2})); };
   Q.transformQuad = function (p) {
     const corners=[p[0],p[2],p[6],p[8]];
@@ -152,7 +152,7 @@
     const bounds=Q.intersectRect({x:Math.floor(Math.min(...pts.map(p=>p.x))),y:Math.floor(Math.min(...pts.map(p=>p.y))),w:Math.ceil(Math.max(...pts.map(p=>p.x)))-Math.floor(Math.min(...pts.map(p=>p.x))),h:Math.ceil(Math.max(...pts.map(p=>p.y)))-Math.floor(Math.min(...pts.map(p=>p.y)))},{x:0,y:0,w:w,h:h});
     return {rect:rect,bounds:bounds};
   };
-  Q.rasterMesh = function (source,pts,rect) {
+  Q.rasterMesh = function (source,pts,rect,sampling) {
     const out=new Uint8ClampedArray(rect.w*rect.h*4), sw=source.width,sh=source.height, data=source.data;
     for(const [ia,ib,ic] of Q.meshTriangles()) {
       const a=pts[ia],b=pts[ib],c=pts[ic], det=(b.x-a.x)*(c.y-a.y)-(b.y-a.y)*(c.x-a.x);
@@ -160,8 +160,13 @@
       for(let y=y0;y<y1;y++) for(let x=x0;x<x1;x++) {
         const dx=x+0.5-a.x,dy=y+0.5-a.y, u=(dx*(c.y-a.y)-dy*(c.x-a.x))/det,v=((b.x-a.x)*dy-(b.y-a.y)*dx)/det;
         if(u< -1e-8 || v< -1e-8 || u+v>1+1e-8) continue;
-        const sx=Math.min(sw-1,Math.max(0,Math.floor(((ia%3)*(1-u-v)+(ib%3)*u+(ic%3)*v)*sw/2))),sy=Math.min(sh-1,Math.max(0,Math.floor((Math.floor(ia/3)*(1-u-v)+Math.floor(ib/3)*u+Math.floor(ic/3)*v)*sh/2))), si=(sy*sw+sx)*4,di=((y-rect.y)*rect.w+x-rect.x)*4;
-        out[di]=data[si];out[di+1]=data[si+1];out[di+2]=data[si+2];out[di+3]=data[si+3];
+        const fx=((ia%3)*(1-u-v)+(ib%3)*u+(ic%3)*v)*sw/2, fy=(Math.floor(ia/3)*(1-u-v)+Math.floor(ib/3)*u+Math.floor(ic/3)*v)*sh/2, di=((y-rect.y)*rect.w+x-rect.x)*4;
+        if(sampling!=='smooth') { const sx=Math.min(sw-1,Math.max(0,Math.floor(fx))),sy=Math.min(sh-1,Math.max(0,Math.floor(fy))),si=(sy*sw+sx)*4;out[di]=data[si];out[di+1]=data[si+1];out[di+2]=data[si+2];out[di+3]=data[si+3]; }
+        else {
+          const xx=Math.max(0,Math.min(sw-1,fx-0.5)),yy=Math.max(0,Math.min(sh-1,fy-0.5)),x0=Math.floor(xx),y0=Math.floor(yy),x1=Math.min(sw-1,x0+1),y1=Math.min(sh-1,y0+1), tx=xx-x0,ty=yy-y0;
+          const i00=(y0*sw+x0)*4,i10=(y0*sw+x1)*4,i01=(y1*sw+x0)*4,i11=(y1*sw+x1)*4,w00=(1-tx)*(1-ty)*data[i00+3],w10=tx*(1-ty)*data[i10+3],w01=(1-tx)*ty*data[i01+3],w11=tx*ty*data[i11+3],alpha=w00+w10+w01+w11;
+          out[di+3]=alpha;if(alpha>0) for(let ch=0;ch<3;ch++) out[di+ch]=(data[i00+ch]*w00+data[i10+ch]*w10+data[i01+ch]*w01+data[i11+ch]*w11)/alpha;
+        }
       }
     }
     return out;

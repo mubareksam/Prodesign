@@ -450,7 +450,7 @@ async function run() {
 
   console.log('about');
   Q.UI.aboutSheet();
-  ok(doc.querySelector('#modalBody').textContent.includes('Developed by Qmer') && doc.querySelector('#modalBody').textContent.includes('Version 6.0'), 'About credits Qmer and shows current version');
+  ok(doc.querySelector('#modalBody').textContent.includes('Developed by Qmer') && doc.querySelector('#modalBody').textContent.includes('Version 6.1'), 'About credits Qmer and shows current version');
   Q.UI.closeModal();
 
   console.log('hardware back');
@@ -1589,7 +1589,7 @@ async function run() {
   App.createDoc(64,64,'Canvas transform');const d=App.doc,v=App.view;d.activeCel(true);d.history.clear();v.selection={x:10,y:10,w:24,h:24};Q.UI.selectionDialog();
   const entry=[...doc.querySelectorAll('#modalBody button')].find(b=>b.textContent==='Canvas transform');ok(entry && entry.querySelector('svg'),'canvas transform is discoverable from selection tools');entry.click();
   const mode=doc.querySelector('[aria-label="Transform style"]');ok(mode && mode.options.length===5 && v.meshTransform && doc.querySelector('[aria-label="Canvas transform"]'),'canvas toolbar shows five named transform styles');
-  mode.value='warp';mode.dispatchEvent(new win.Event('change',{bubbles:true}));ok(v.meshTransform.mode==='warp','warp is selectable');v.meshTransform.points[4].x+=4;[...doc.querySelectorAll('.mesh-toolbar button')].find(b=>b.textContent==='Reset').click();ok(v.meshTransform.points[4].x===22,'reset restores mesh geometry');
+  v.meshTransform.points[4].x+=4; mode.value='warp';mode.dispatchEvent(new win.Event('change',{bubbles:true}));ok(v.meshTransform.mode==='warp' && v.meshTransform.points[4].x===26,'switching style keeps existing mesh'); const quality=doc.querySelector('[aria-label="Transform resampling"]');ok(quality.value==='smooth','smooth resampling is the default');quality.value='nearest';quality.dispatchEvent(new win.Event('change',{bubbles:true}));ok(v.meshTransform.sampling==='nearest','pixelated resampling can be selected');[...doc.querySelectorAll('.mesh-toolbar button')].find(b=>b.textContent==='Reset').click();ok(v.meshTransform.points[4].x===22,'reset restores mesh geometry');
   [...doc.querySelectorAll('.mesh-toolbar button')].find(b=>b.textContent==='Cancel').click();ok(!v.meshTransform && !doc.querySelector('.mesh-toolbar') && d.history.undoStack.length===0,'cancel removes the temporary transform without history');
   Q.UI.canvasTransform(); mode && (mode.value='distort'); pointer(doc.querySelector('#btnLayers'),'pointerdown',5,5,{id:2400});ok(!v.meshTransform && !doc.querySelector('.mesh-toolbar'),'other toolbar actions cancel pending transform');
   }

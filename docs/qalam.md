@@ -8,11 +8,11 @@ brushes, layers with blend modes, a colour wheel, a frame timeline with onion sk
 Procreate's gesture vocabulary, PNG/GIF export and device-dependent MP4 export — all offline, with no account and
 no network permissions at all.
 
-- Package: `com.qalam.studio` · version 6.0 (versionCode 51)
+- Package: `com.qalam.studio` · version 6.1 (versionCode 52)
 - minSdk 26 (Android 8.0) · targetSdk 33 · armeabi-v7a/arm64/x86/x86_64 independent
   (everything is HTML/JS running inside the app's own `WebView`, so the APK has no
   native code)
-- APK: **`artifacts/Qelem-6.0.apk`** (~337 KB), signed with a v1+v2 scheme
+- APK: **`artifacts/Qelem-6.1.apk`** (~338 KB), signed with a v1+v2 scheme
 - The written analysis of Procreate that this app was specified from:
   [`docs/procreate-analysis.md`](procreate-analysis.md)
 
@@ -20,7 +20,7 @@ no network permissions at all.
 
 ## 1. Install
 
-1. Copy `artifacts/Qelem-6.0.apk` to the phone (USB, Drive, chat to yourself — anything).
+1. Copy `artifacts/Qelem-6.1.apk` to the phone (USB, Drive, chat to yourself — anything).
 2. Open it with the phone's file manager. Android will ask to allow installs from
    that app the first time ("Install unknown apps").
 3. Install and open **Qelem**. If an earlier Qalam version is already installed, Android should offer an update that preserves its data. Back up important artwork first. Android does not allow this app to silently uninstall itself; do not uninstall it unless you have backed up its local artwork.
@@ -480,22 +480,30 @@ Android WebView touch and physical-device layout still need testing.
   It uses the active cel on the current frame and either the rectangular selection
   or the whole cel. Choose Uniform, Freeform, Rotate, Distort or Warp in the floating
   bar. Drag a yellow corner to scale, rotate or distort; Warp exposes nine movable
-  grid points. Drag away from a handle to translate. The grid is a guide: the artwork
-  is **not** live-transformed in preview. Apply renders the result; Reset restores
-  the original grid, Cancel changes nothing, and choosing another style resets it.
-  Tapping other interface controls cancels the pending transform. Canvas pinch/pan,
-  multi-touch shortcuts and drawing are unavailable while the transform is active.
-  Fit/zoom before opening it. Apply makes one pixel undo step, but selection bounds
-  are temporary and are not restored by undo. Outside-canvas pixels are cropped;
-  overlapping destination pixels are composited. This is a basic 3×3 piecewise-affine
-  mesh with nearest-neighbour sampling, not smooth/projection-correct perspective or
-  a full Procreate warp. It may look jagged when resized or rotated. Folded/collapsed
-  grids are rejected. Rectangular selections only; locked, hidden and alpha-locked
-  layers cannot be transformed. The source and affected rectangle are limited to
-  2 megapixels and an estimated 64 MiB of temporary buffers (actual memory can be
-  higher); smaller areas may be refused. Rasterization runs on the main thread and
-  may pause on large areas. The existing numeric precise transform offers smooth
-  resampling and an approximate artwork preview for resize/rotation instead.
+  grid points. Drag away from a handle to translate. Switching styles retains the
+  grid, so you can combine operations; a Distort corner drag recomputes the inner
+  grid from its corners. Reset restores the original grid and Cancel changes nothing.
+  The canvas shows an **approximate** preview of the edited cel, capped at 384 pixels
+  on its longest side and throttled during dragging; fine detail, edges and small
+  selections may differ or disappear. Layer opacity, blend and clipping are applied.
+  The status shows when the preview is updating or unavailable; invalid grids show
+  original pixels. Apply renders at full resolution with Smooth (bilinear,
+  alpha-aware) or Pixelated (nearest-neighbour) resampling. Smooth sampling is not
+  edge antialiasing and may soften or alias details. Apply changes the artwork once;
+  selection bounds are temporary and are not restored by undo. Tapping other UI
+  controls cancels the pending transform. Canvas pinch/pan, multi-touch shortcuts
+  and drawing are unavailable while transforming; fit/zoom before opening it.
+  Pixels outside the canvas are cropped and overlapping destination pixels are
+  composited. This is a basic 3×3 piecewise-affine mesh, not projection-correct
+  perspective or full Procreate warp. Folded/collapsed grids are rejected. Freeform
+  scaling uses canvas axes; if opposite corners are aligned on an axis, that axis
+  cannot be scaled with that handle until the shape is rotated or adjusted. Only
+  rectangles or the whole cel; hidden, locked and alpha-locked layers are refused.
+  The source and affected rectangle are limited to 2 megapixels and an estimated
+  64 MiB of temporary buffers (actual memory can be higher); smaller areas may be
+  refused. Preview and full-resolution rasterization run on the main thread and may
+  pause on large areas or slow devices. The existing numeric precise transform
+  remains available for exact dimensions, offsets and angles.
 - **Fill and colour drop** — tap the bucket or drag the top colour swatch onto
   the canvas. **Menu → Fill settings** controls tolerance, sample layers (active
   or all visible) and match area (connected or all matching, including disconnected
@@ -705,7 +713,7 @@ tools/
   tests/gif_roundtrip.mjs    encodes a GIF and decodes it with an independent decoder
   tests/ui_smoke.mjs         jsdom boot + full UI drive (gallery -> export)
   tests/ui_layout_browser.mjs optional Chromium layout and interaction checks
-artifacts/Qelem-6.0.apk           the signed, installable artefact
+artifacts/Qelem-6.1.apk           the signed, installable artefact
 docs/procreate-analysis.md   the Procreate study this app was built from
 docs/qalam.md                this file
 ```
@@ -735,7 +743,7 @@ Design notes worth knowing before changing code:
 
 ```bash
 bash tools/fetch-toolchain.sh     # once per machine: JVM, apktool, aapt2, jars, npm
-bash tools/build.sh               # -> artifacts/Qelem-6.0.apk (signed + verified)
+bash tools/build.sh               # -> artifacts/Qelem-6.1.apk (signed + verified)
 bash tools/check_reference.sh     # optional: javac-check the Java mirrors
 ```
 

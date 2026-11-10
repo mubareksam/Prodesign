@@ -1287,17 +1287,20 @@
   UI.cancelCanvasTransform = function () {
     if(meshOutside) document.removeEventListener('pointerdown',meshOutside,true); meshOutside=null;
     if(meshPanel) meshPanel.remove(); meshPanel=null;
-    if(meshView) {meshView.meshTransform=null;meshView.meshPointer=null;meshView.dirty=true;} meshView=null;
+    if(meshView) {if(meshView.meshTransform && meshView.meshTransform.previewTimer) clearTimeout(meshView.meshTransform.previewTimer); meshView.meshTransform=null;meshView.meshPointer=null;meshView.dirty=true;} meshView=null;
   };
   UI.canvasTransform = function () {
     UI.cancelCanvasTransform(); const result=app().beginCanvasTransform(); if(result.error) {Q.toast(result.error,4000);return;}
     const v=app().view;meshView=v; const panel=Q.crel('div','mesh-toolbar');meshPanel=panel;panel.setAttribute('role','region');panel.setAttribute('aria-label','Canvas transform');
     const title=Q.crel('strong',null,'Canvas transform'); panel.appendChild(title);
     const modes=Q.crel('select');modes.setAttribute('aria-label','Transform style'); [['uniform','Uniform'],['freeform','Freeform'],['rotate','Rotate'],['distort','Distort'],['warp','Warp']].forEach(p=>{const o=Q.crel('option');o.value=p[0];o.textContent=p[1];modes.appendChild(o);});panel.appendChild(modes);
-    const description=Q.crel('div','mesh-help','Drag a corner to scale or elsewhere to move. Grid preview only; pixels change on Apply. Changing style resets the grid.');panel.appendChild(description);
-    modes.addEventListener('change',function(){const t=v.meshTransform;if(!t)return;t.mode=modes.value;t.points=Q.transformGrid(t.src);v.meshPointer=null;v.dirty=true;description.textContent=(modes.value==='warp' ? 'Drag any grid point to warp' : modes.value==='rotate' ? 'Drag corners to rotate around the centre' : modes.value==='distort' ? 'Drag corners independently to distort' : modes.value==='freeform' ? 'Drag corners to resize freely' : 'Drag corners to scale uniformly')+'. Drag elsewhere to move. Changing style resets the grid. Pixels change on Apply.';});
+    const quality=Q.crel('select');quality.setAttribute('aria-label','Transform resampling');[['smooth','Smooth'],['nearest','Pixelated']].forEach(p=>{const o=Q.crel('option');o.value=p[0];o.textContent=p[1];quality.appendChild(o);});panel.appendChild(Q.crel('span','mesh-quality-label','Resampling'));panel.appendChild(quality);
+    const description=Q.crel('div','mesh-help','Drag a corner to scale or elsewhere to move. Preview is approximate; pixels change on Apply.');panel.appendChild(description);
+    const status=Q.crel('div','mesh-status','Original artwork');status.setAttribute('role','status');panel.appendChild(status);v.meshTransform.statusNode=status;
+    modes.addEventListener('change',function(){const t=v.meshTransform;if(!t)return;t.mode=modes.value;v.meshPointer=null;v.dirty=true;description.textContent=(modes.value==='warp' ? 'Drag any grid point to warp' : modes.value==='rotate' ? 'Drag corners to rotate around the centre' : modes.value==='distort' ? 'Drag corners to distort (rebuilds inner grid)' : modes.value==='freeform' ? 'Drag corners to resize freely' : 'Drag corners to scale uniformly')+'. Drag elsewhere to move. Preview is approximate; pixels change on Apply.';});
+    quality.addEventListener('change',function(){if(v.meshTransform){v.meshTransform.sampling=quality.value;v.requestMeshPreview();}});
     const buttons=Q.crel('div','mesh-buttons'),reset=Q.crel('button','btn ghost','Reset'),cancel=Q.crel('button','btn ghost','Cancel'),apply=Q.crel('button','btn primary','Apply');
-    reset.addEventListener('click',function(){if(v.meshTransform){v.meshTransform.points=Q.transformGrid(v.meshTransform.src);v.meshPointer=null;v.dirty=true;}}); cancel.addEventListener('click',UI.cancelCanvasTransform);
+    reset.addEventListener('click',function(){if(v.meshTransform){v.meshTransform.points=Q.transformGrid(v.meshTransform.src);v.meshPointer=null;v.requestMeshPreview();v.dirty=true;}}); cancel.addEventListener('click',UI.cancelCanvasTransform);
     apply.addEventListener('click',function(){const r=app().applyCanvasTransform();if(r.error) {Q.toast(r.error,4000);return;} UI.cancelCanvasTransform();Q.toast('Transform applied · Undo to revert',3000);});
     buttons.appendChild(reset);buttons.appendChild(cancel);buttons.appendChild(apply);panel.appendChild(buttons);Q.el('#studio').appendChild(panel);
     meshOutside=function(e){if(!panel.contains(e.target) && e.target!==v.canvas) UI.cancelCanvasTransform();};document.addEventListener('pointerdown',meshOutside,true);
@@ -2142,7 +2145,7 @@
     card.appendChild(Q.crel('p', 'sub', 'A paint, sketch and frame-by-frame animation studio for Android. Artwork is stored on this device only — nothing is uploaded.'));
     card.appendChild(Q.crel('p', 'sub', 'Developed by Qmer'));
     card.appendChild(Q.crel('p', 'sub', 'ቀለም (qalam) means “pen” or “ink”.'));
-    card.appendChild(Q.crel('p', 'sub', 'Version 6.0'));
+    card.appendChild(Q.crel('p', 'sub', 'Version 6.1'));
     const actions = Q.crel('div', 'modal-actions');
     const close = Q.crel('button', 'btn primary', 'Close');
     close.addEventListener('click', function () { UI.closeModal(); });

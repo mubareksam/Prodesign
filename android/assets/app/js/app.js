@@ -832,7 +832,7 @@
     if(!cel) return {error:'Draw on this layer first'}; if(sel && Q.complexSelection(sel)) return {error:'Use a rectangular selection'};
     const src=sel ? {x:sel.x,y:sel.y,w:sel.w,h:sel.h} : {x:0,y:0,w:d.width,h:d.height};
     if(src.w*src.h>2*1024*1024) return {error:'Select an area up to 2 megapixels'};
-    v.meshTransform={doc:d,frame:d.frames[d.activeFrame],layer:layer,cel:cel,selection:sel,src:src,points:Q.transformGrid(src),mode:'uniform',undo:d.history.undoStack.slice(),redo:d.history.redoStack.slice()}; v.dirty=true; return {};
+    v.meshTransform={doc:d,frame:d.frames[d.activeFrame],layer:layer,cel:cel,selection:sel,src:src,points:Q.transformGrid(src),mode:'uniform',sampling:'smooth',undo:d.history.undoStack.slice(),redo:d.history.redoStack.slice()}; v.dirty=true; return {};
   };
   App.applyCanvasTransform = function () {
     const d=App.doc,v=App.view,t=v && v.meshTransform;
@@ -840,7 +840,7 @@
     const plan=Q.planMeshTransform(t.src,t.points,d.width,d.height); if(plan.error) return plan;
     const r=plan.rect,src=t.src,ctx=t.cel.getContext('2d');
     try {
-      const image=ctx.getImageData(src.x,src.y,src.w,src.h), warped=Q.rasterMesh(image,t.points,r), warp=Q.canvas(r.w,r.h), wc=warp.getContext('2d'), output=wc.createImageData(r.w,r.h); output.data.set(warped); wc.putImageData(output,0,0);
+      const image=ctx.getImageData(src.x,src.y,src.w,src.h), warped=Q.rasterMesh(image,t.points,r,t.sampling), warp=Q.canvas(r.w,r.h), wc=warp.getContext('2d'), output=wc.createImageData(r.w,r.h); output.data.set(warped); wc.putImageData(output,0,0);
       const stage=Q.canvas(r.w,r.h), sc=stage.getContext('2d'); sc.drawImage(t.cel,r.x,r.y,r.w,r.h,0,0,r.w,r.h);sc.clearRect(src.x-r.x,src.y-r.y,src.w,src.h);sc.drawImage(warp,0,0);
       const before=ctx.getImageData(r.x,r.y,r.w,r.h), after=sc.getImageData(0,0,r.w,r.h);
       try {ctx.putImageData(after,r.x,r.y);} catch(err) {try {ctx.putImageData(before,r.x,r.y);} catch(ignore) {} throw err;}

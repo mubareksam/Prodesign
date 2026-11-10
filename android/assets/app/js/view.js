@@ -180,7 +180,9 @@
 
     // Onion skins can appear beneath or above the current artwork.
     if (!doc.onionAbove) this._drawOnionSkins(c,doc);
-    doc.composite(c, doc.activeFrame);
+    const mesh=this.meshTransform;
+    const preview=mesh && mesh.preview && mesh.doc===doc && mesh.frame===doc.frames[doc.activeFrame] && mesh.layer===doc.layer() && mesh.cel===doc.activeCel(false);
+    doc.composite(c,doc.activeFrame,preview ? {previewIndex:doc.activeLayer,previewCanvas:mesh.preview} : {});
     if (doc.onionAbove) this._drawOnionSkins(c,doc);
 
     this._drawGuide(c, doc);
@@ -359,6 +361,29 @@
     this.quickShape=null; this.pointers.clear(); this.g=null; this.selectionDraft=null; this.motionDraft=null; this.dirty=true;
   };
 
+  // Throttled low-resolution raster preview; never writes to the artwork cel.
+  View.prototype.requestMeshPreview = function () {
+    const t=this.meshTransform; if(!t) return;
+    if(t.statusNode) t.statusNode.textContent='Updating approximate preview…';
+    if(t.previewTimer) return;
+    t.previewTimer=setTimeout(()=>{
+      t.previewTimer=0; if(this.meshTransform!==t || this.doc!==t.doc) return;
+      const d=t.doc, plan=Q.planMeshTransform(t.src,t.points,d.width,d.height);
+      if(plan.error) { t.preview=null; if(t.statusNode) t.statusNode.textContent=plan.error==='Nothing changed' ? 'Original artwork' : plan.error; this.dirty=true;return; }
+      try {
+        const factor=Math.min(1,384/Math.max(d.width,d.height)),pw=Math.max(1,Math.round(d.width*factor)),ph=Math.max(1,Math.round(d.height*factor)),sx=pw/d.width,sy=ph/d.height,src=t.src;
+        const canvas=Q.canvas(pw,ph),c=canvas.getContext('2d');c.drawImage(t.cel,0,0,pw,ph);
+        const sw=Math.max(1,Math.round(src.w*sx)),sh=Math.max(1,Math.round(src.h*sy)),crop=Q.canvas(sw,sh),cc=crop.getContext('2d');cc.drawImage(t.cel,src.x,src.y,src.w,src.h,0,0,sw,sh);
+        const pts=t.points.map(p=>({x:p.x*sx,y:p.y*sy}));
+        const left=Math.max(0,Math.floor(Math.min(...pts.map(p=>p.x)))),top=Math.max(0,Math.floor(Math.min(...pts.map(p=>p.y)))),right=Math.min(pw,Math.ceil(Math.max(...pts.map(p=>p.x)))),bottom=Math.min(ph,Math.ceil(Math.max(...pts.map(p=>p.y))));
+        c.clearRect(src.x*sx,src.y*sy,src.w*sx,src.h*sy);
+        if(right>left && bottom>top) {const r={x:left,y:top,w:right-left,h:bottom-top},image=cc.getImageData(0,0,sw,sh),data=Q.rasterMesh(image,pts,r,t.sampling),warp=Q.canvas(r.w,r.h),wc=warp.getContext('2d'),output=wc.createImageData(r.w,r.h);output.data.set(data);wc.putImageData(output,0,0);c.drawImage(warp,r.x,r.y);}
+        t.preview=canvas; if(t.statusNode) t.statusNode.textContent='Approximate preview · Apply for full resolution';
+      } catch(err) {t.preview=null;if(t.statusNode) t.statusNode.textContent='Preview unavailable · grid only';}
+      this.dirty=true;
+    },120);
+  };
+
   View.prototype._pos = function (e) {
     const r = this.canvas.getBoundingClientRect();
     return { x: e.clientX - r.left, y: e.clientY - r.top };
@@ -424,13 +449,13 @@
       const t=this.meshTransform,m=this.meshPointer; if(!m || m.id!==e.pointerId) return; const p=this.toDoc(pos.x,pos.y),dx=p.x-m.start.x,dy=p.y-m.start.y, pts=m.points.map(a=>({...a}));
       if(m.hit<0) {for(const a of pts) {a.x+=dx;a.y+=dy;}}
       else if(t.mode==='warp') {pts[m.hit].x+=dx;pts[m.hit].y+=dy;}
-      else if(t.mode==='distort') {pts[m.hit].x+=dx;pts[m.hit].y+=dy;t.points=Q.transformQuad(pts);this.dirty=true;return;}
+      else if(t.mode==='distort') {pts[m.hit].x+=dx;pts[m.hit].y+=dy;t.points=Q.transformQuad(pts);this.requestMeshPreview();this.dirty=true;return;}
       else if(t.mode==='rotate') {const center=pts[4],a=pts[m.hit], angle=Math.atan2(a.y+dy-center.y,a.x+dx-center.x)-Math.atan2(a.y-center.y,a.x-center.x),cs=Math.cos(angle),sn=Math.sin(angle);for(const point of pts) {const x=point.x-center.x,y=point.y-center.y;point.x=center.x+x*cs-y*sn;point.y=center.y+x*sn+y*cs;}}
       else {const i=m.hit,j=8-i,anchor=pts[j],corner=pts[i],vx=corner.x-anchor.x,vy=corner.y-anchor.y;
-        if(t.mode==='uniform') {const scale=Q.clamp(((vx+dx)*vx+(vy+dy)*vy)/(vx*vx+vy*vy),0.05,4);for(const a of pts){a.x=anchor.x+(a.x-anchor.x)*scale;a.y=anchor.y+(a.y-anchor.y)*scale;}}
-        else {const sx=Q.clamp((vx+dx)/vx,0.05,4),sy=Q.clamp((vy+dy)/vy,0.05,4);for(const a of pts){a.x=anchor.x+(a.x-anchor.x)*sx;a.y=anchor.y+(a.y-anchor.y)*sy;}}
+        if(t.mode==='uniform') {if(vx*vx+vy*vy<1e-12) return; const scale=Q.clamp(((vx+dx)*vx+(vy+dy)*vy)/(vx*vx+vy*vy),0.05,4);for(const a of pts){a.x=anchor.x+(a.x-anchor.x)*scale;a.y=anchor.y+(a.y-anchor.y)*scale;}}
+        else {const sx=Math.abs(vx)<1e-6 ? 1 : Q.clamp((vx+dx)/vx,0.05,4),sy=Math.abs(vy)<1e-6 ? 1 : Q.clamp((vy+dy)/vy,0.05,4);for(const a of pts){a.x=anchor.x+(a.x-anchor.x)*sx;a.y=anchor.y+(a.y-anchor.y)*sy;}}
       }
-      t.points=pts;this.dirty=true;return;
+      t.points=pts;this.requestMeshPreview();this.dirty=true;return;
     }
     const rec = this.pointers.get(e.pointerId);
     if (!rec) return;
@@ -492,7 +517,7 @@
   };
 
   View.prototype._up = function (e) {
-    if(this.meshTransform) {const m=this.meshPointer;if(m && m.id===e.pointerId) {if(e.type==='pointercancel') this.meshTransform.points=m.points; this.meshPointer=null;this.dirty=true;} return;}
+    if(this.meshTransform) {const m=this.meshPointer;if(m && m.id===e.pointerId) {if(e.type==='pointercancel') {this.meshTransform.points=m.points;this.requestMeshPreview();} this.meshPointer=null;this.dirty=true;} return;}
     const rec = this.pointers.get(e.pointerId);
     if (!rec) return;
     this.pointers.delete(e.pointerId);

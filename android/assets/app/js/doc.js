@@ -582,6 +582,8 @@
     setLayerPropLive(i,key,value) { if (this.layers[i]) this.layers[i][key]=value; }
     composite(ctx,frameIdx,opts = {}) {
       const f=this.frames[frameIdx]; if (!f) return;
+      // A downsampled, temporary cel may be shown in the viewport only.
+      const cel=i=>opts.previewIndex===i && opts.previewCanvas ? opts.previewCanvas : f.cels[i];
       const visible=i=>this.layers[i] && (this.layers[i].visible || opts.includeHidden);
       const opacity=i=>opts.ignoreOpacity ? 1 : this.layers[i].opacity;
       const outer=opts.alpha == null ? 1 : opts.alpha;
@@ -590,14 +592,14 @@
         const p=Q.layerMotionPose(layer,frameIdx);
         context.translate(this.width/2+p.x,this.height/2+p.y); context.rotate(p.angle*Math.PI/180); context.scale(p.scale,p.scale); context.translate(-this.width/2,-this.height/2);
       };
-      const draw=(image,alpha,blend,layerIndex)=>{ ctx.save(); ctx.globalAlpha=outer*alpha; ctx.globalCompositeOperation=blend || 'source-over'; if (layerIndex!=null) transform(ctx,layerIndex); ctx.drawImage(image,0,0); ctx.restore(); };
-      const bufferLayer=(g,index,alpha,blend)=>{ g.save(); g.globalAlpha=alpha; g.globalCompositeOperation=blend; transform(g,index); g.drawImage(f.cels[index],0,0); g.restore(); };
+      const draw=(image,alpha,blend,layerIndex)=>{ ctx.save(); ctx.globalAlpha=outer*alpha; ctx.globalCompositeOperation=blend || 'source-over'; if (layerIndex!=null) transform(ctx,layerIndex); if(image===opts.previewCanvas) ctx.drawImage(image,0,0,this.width,this.height); else ctx.drawImage(image,0,0); ctx.restore(); };
+      const bufferLayer=(g,index,alpha,blend)=>{ g.save(); g.globalAlpha=alpha; g.globalCompositeOperation=blend; transform(g,index); const image=cel(index); if(image===opts.previewCanvas) g.drawImage(image,0,0,this.width,this.height); else g.drawImage(image,0,0); g.restore(); };
       if (opts.onlyLayer != null) {
         const i=opts.onlyLayer, layer=this.layers[i];
-        if (!layer || !visible(i) || !f.cels[i]) return;
-        if (!layer.clipped) { draw(f.cels[i],opacity(i),layer.blend,i); return; }
+        if (!layer || !visible(i) || !cel(i)) return;
+        if (!layer.clipped) { draw(cel(i),opacity(i),layer.blend,i); return; }
         const base=this.clipBase(i);
-        if (base<0 || !visible(base) || !f.cels[base]) return;
+        if (base<0 || !visible(base) || !cel(base)) return;
         const g=this.clipBuffer(); bufferLayer(g,i,opacity(i),'source-over'); bufferLayer(g,base,opacity(base),'destination-in');
         draw(this._clipBuffer,1,'source-over',null); return;
       }
@@ -605,13 +607,13 @@
         const layer=this.layers[i];
         if (layer.clipped) { i++; continue; }
         let end=i+1; while (end<this.layers.length && this.layers[end].clipped) end++;
-        if (visible(i) && f.cels[i]) {
+        if (visible(i) && cel(i)) {
           let hasVisibleClip=false;
-          for (let j=i+1;j<end;j++) if (visible(j) && f.cels[j] && opacity(j)>0) { hasVisibleClip=true; break; }
-          if (!hasVisibleClip) draw(f.cels[i],opacity(i),layer.blend,i);
+          for (let j=i+1;j<end;j++) if (visible(j) && cel(j) && opacity(j)>0) { hasVisibleClip=true; break; }
+          if (!hasVisibleClip) draw(cel(i),opacity(i),layer.blend,i);
           else {
             const g=this.clipBuffer(); bufferLayer(g,i,opacity(i),'source-over');
-            for (let j=i+1;j<end;j++) if (visible(j) && f.cels[j]) bufferLayer(g,j,opacity(j),'source-atop');
+            for (let j=i+1;j<end;j++) if (visible(j) && cel(j)) bufferLayer(g,j,opacity(j),'source-atop');
             draw(this._clipBuffer,1,layer.blend,null);
           }
         }

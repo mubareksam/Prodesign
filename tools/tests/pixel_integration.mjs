@@ -1155,4 +1155,27 @@ console.log('6.0 canvas mesh transforms');
  const d=setup();d.activeCel(true); App.view.selection={x:0,y:0,w:16,h:16,shape:'ellipse'};ok(App.beginCanvasTransform().error.includes('rectangular'),'mesh rejects nonrectangular selection'); App.view.selection=null; d.layer().alphaLocked=true;ok(App.beginCanvasTransform().error.includes('alpha'),'mesh rejects alpha-locked layers');
  const big=new Q.Doc({width:2048,height:2048});big.activeCel(true);App.doc=big;App.view={selection:null,locked:false};ok(App.beginCanvasTransform().error.includes('2 megapixels'),'mesh limits oversized sources before starting');
 }
+console.log('6.1 smooth resampling and preview');
+{
+ const image={width:2,height:1,data:new Uint8ClampedArray([255,0,0,255,0,0,255,255])}, p=Q.transformGrid({x:0,y:0,w:4,h:2}),r={x:0,y:0,w:4,h:2};
+ const nearest=Q.rasterMesh(image,p,r,'nearest'),smooth=Q.rasterMesh(image,p,r,'smooth');ok(nearest[4]===255 && nearest[6]===0 && smooth[4]>180 && smooth[4]<200 && smooth[6]>50 && smooth[6]<70,'bilinear sampling blends neighboring colours where nearest stays sharp');
+ image.data=new Uint8ClampedArray([255,0,0,255,0,0,255,0]);const a=Q.rasterMesh(image,p,r,'smooth');ok(a[4]===255 && a[6]===0 && a[7]>180 && a[7]<200,'smooth interpolation uses premultiplied alpha and avoids transparent colour fringes');
+}
+{
+ const d=setup(),c=d.activeCel(true),ctx=c.getContext('2d');ctx.fillStyle='#f00';ctx.fillRect(1,1,1,2);ctx.fillStyle='#00f';ctx.fillRect(2,1,1,2);d.history.clear();App.view.selection={x:1,y:1,w:2,h:2};App.beginCanvasTransform();let t=App.view.meshTransform;t.points=Q.transformGrid({x:7,y:7,w:4,h:4});ok(!App.applyCanvasTransform().error,'smooth mesh applies through the real edit path');const smooth=pixel(c,8,7);ok(smooth[0]>180 && smooth[0]<200 && smooth[2]>50 && smooth[2]<70,'smooth option changes committed pixels');d.history.undo();ok(pixel(c,1,1)[0]===255 && pixel(c,8,7)[3]===0,'smooth transform undo restores original bytes');
+ App.view.selection={x:1,y:1,w:2,h:2};App.beginCanvasTransform();t=App.view.meshTransform;t.sampling='nearest';t.points=Q.transformGrid({x:7,y:7,w:4,h:4});ok(!App.applyCanvasTransform().error && pixel(c,8,7)[0]===255 && pixel(c,8,7)[2]===0,'pixelated option commits nearest-neighbour pixels');
+}
+{
+ const d=setup(),c=d.activeCel(true),ctx=c.getContext('2d');ctx.fillStyle='#f00';ctx.fillRect(2,2,4,4);d.history.clear();App.view={doc:d,selection:{x:2,y:2,w:4,h:4},locked:false,dirty:false,requestMeshPreview:Q.View.prototype.requestMeshPreview};App.beginCanvasTransform();const t=App.view.meshTransform;t.points=t.points.map(p=>({x:p.x+4,y:p.y}));App.view.requestMeshPreview();await new Promise(r=>setTimeout(r,200));
+ ok(t.preview && pixel(t.preview,2,2)[3]===0 && pixel(t.preview,6,2)[0]===255 && pixel(c,2,2)[0]===255 && !d.history.canUndo(),'preview shows moved pixels without changing the source or history');
+ const cv=Q.canvas(16,16);d.composite(cv.getContext('2d'),0,{previewIndex:0,previewCanvas:t.preview});ok(pixel(cv,2,2)[3]===0 && pixel(cv,6,2)[0]===255 && d.activeCel(false)===c,'compositing a temporary preview never replaces the real cel');
+ t.points[0]={...t.points[8]};App.view.requestMeshPreview();await new Promise(r=>setTimeout(r,200));ok(!t.preview && pixel(c,2,2)[0]===255,'invalid folded mesh drops the preview and preserves artwork');
+}
+{
+ const d=new Q.Doc({width:1000,height:200});App.doc=d;const cel=d.activeCel(true);cel.getContext('2d').fillRect(10,10,20,20);App.view={doc:d,selection:{x:10,y:10,w:20,h:20},locked:false,requestMeshPreview:Q.View.prototype.requestMeshPreview};App.beginCanvasTransform();const t=App.view.meshTransform;t.points=t.points.map(p=>({x:p.x+10,y:p.y}));App.view.requestMeshPreview();await new Promise(r=>setTimeout(r,200));ok(t.preview && t.preview.width===384 && t.preview.height===77,'preview raster is capped at 384 pixels on its longest side');
+ t.points=t.points.map(p=>({x:p.x+10,y:p.y}));App.view.requestMeshPreview();App.view.meshTransform=null;await new Promise(r=>setTimeout(r,200));ok(d.activeCel(false)===cel && !d.history.canUndo(),'late preview work cannot modify artwork after cancellation');
+}
+{
+ const d=setup(),base=d.activeCel(true),bc=base.getContext('2d');bc.fillStyle='#f00';bc.fillRect(0,0,8,16);d.addLayer();const clip=d.activeCel(true);d.layer().clipped=true;d.layer().opacity=0.5;const p=Q.canvas(8,8);p.getContext('2d').fillStyle='#00f';p.getContext('2d').fillRect(0,0,8,8);const cv=Q.canvas(16,16);d.composite(cv.getContext('2d'),0,{previewIndex:1,previewCanvas:p});const inside=pixel(cv,3,3),outside=pixel(cv,12,3);ok(inside[0]>0 && inside[2]>0 && outside[3]===0 && d.activeCel(false)===clip,'temporary preview honors clipped base and layer opacity');
+}
 console.log(`all ${n} raster integration checks passed`);
