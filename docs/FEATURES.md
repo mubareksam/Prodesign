@@ -5,6 +5,22 @@ The supplied feature inventory is a roadmap, not a list of completed work.
 
 ## Available now
 
+- Smudge uses distance-spaced dabs to reduce dependence on event frequency,
+  includes the final pointer-up position, and blends alpha as well as colour so
+  transparent source can reduce opacity. Up to 256 dabs per input segment bound
+  work during extreme jumps; exceptionally large jumps can be coarse. Selection
+  clips the destination, but sampling may come from outside the selection.
+- Smudge undo captures touched 128-pixel tiles rather than an entire canvas at
+  stroke start. A 64 MiB captured-tile limit stops and rolls back a stroke;
+  readback and history can require additional memory. Undo readback failure is
+  reported without discarding its history entry. Many tiles, complex selections,
+  large brushes and device-specific rendering can still be slow.
+- Optional stylus pressure controls smudge strength using the global pressure
+  curve, while finger input uses full pressure. It is off by default, device-local
+  and applies to new strokes. Smudge remains circular and does not use brush
+  texture, pressure size, symmetry, smoothing or QuickShape. Physical Android
+  latency and stylus behaviour still require testing.
+
 - Insert multiple blank frames with a chosen hold, anywhere in the timeline, in
   one undo step (60-frame limit). Existing frame pixels and metadata remain;
   playback range and camera/layer keys remain at their numeric positions, so
@@ -94,8 +110,8 @@ The supplied feature inventory is a roadmap, not a list of completed work.
   strength and a device-local adjustable soft/hard edge; selection clips the
   destination and each moved stroke can be undone.
   It refuses hidden, locked, alpha-locked or empty cels; does not use brush texture,
-  pressure, smoothing, symmetry, QuickShape or hold eyedropper. Not Procreate's
-  smudge engine. Pinch cancels a finger smudge; real-device latency is untested.
+  pressure size, smoothing, symmetry, QuickShape or hold eyedropper. Optional
+  stylus pressure affects strength. Not Procreate's smudge engine. Pinch cancels a finger smudge; real-device latency is untested.
 - Colour swatch now sits between rectangular size and opacity sliders; the opposite
   rail contains smudge and other tools. Rails compact and scroll in short layouts.
 - Brush library has 28 presets and generated sample strokes using the actual preset

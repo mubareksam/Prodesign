@@ -8,11 +8,11 @@ brushes, layers with blend modes, a colour wheel, a frame timeline with onion sk
 Procreate's gesture vocabulary, PNG/GIF export and device-dependent MP4 export — all offline, with no account and
 no network permissions at all.
 
-- Package: `com.qalam.studio` · version 5.6 (versionCode 47)
+- Package: `com.qalam.studio` · version 5.7 (versionCode 48)
 - minSdk 26 (Android 8.0) · targetSdk 33 · armeabi-v7a/arm64/x86/x86_64 independent
   (everything is HTML/JS running inside the app's own `WebView`, so the APK has no
   native code)
-- APK: **`artifacts/Qelem-5.6.apk`** (~327 KB), signed with a v1+v2 scheme
+- APK: **`artifacts/Qelem-5.7.apk`** (~329 KB), signed with a v1+v2 scheme
 - The written analysis of Procreate that this app was specified from:
   [`docs/procreate-analysis.md`](procreate-analysis.md)
 
@@ -20,7 +20,7 @@ no network permissions at all.
 
 ## 1. Install
 
-1. Copy `artifacts/Qelem-5.6.apk` to the phone (USB, Drive, chat to yourself — anything).
+1. Copy `artifacts/Qelem-5.7.apk` to the phone (USB, Drive, chat to yourself — anything).
 2. Open it with the phone's file manager. Android will ask to allow installs from
    that app the first time ("Install unknown apps").
 3. Install and open **Qelem**. If an earlier Qalam version is already installed, Android should offer an update that preserves its data. Back up important artwork first. Android does not allow this app to silently uninstall itself; do not uninstall it unless you have backed up its local artwork.
@@ -103,18 +103,26 @@ Android WebView touch and physical-device layout still need testing.
   keeps the current size and opacity, is temporary and does not change the original
   brush. Switch back to the painting brush to edit its settings. Erasing is blocked
   on alpha-locked layers. This is a basic editor, not the full Procreate Brush Studio.
-- **Smudge** — tap the hand icon on the tool rail and drag over existing pixels
-  on the active layer and frame. Size sets the circular tip; opacity controls how
-  strongly sampled pixels are blended at each dab. The temporary selection clips
-  the destination; other layers and frames are unaffected. Each moved stroke is
-  undoable; a stationary tap does nothing. Hidden, locked, alpha-locked and empty
-  cels are refused. Pinching with a second finger cancels a finger smudge; stylus
-  strokes retain palm rejection. QuickShape, hold eyedropper, symmetry, pressure,
-  brush texture and smoothing do not apply to this basic pixel-drag smudge. It can
-  create an undo step on an entirely transparent region. It is not Procreate's
-  brush-based smudge, and large tips may be slower on a phone. Actions → Preferences
-  → Smudge edge sets hardness from 0% (soft falloff) to 100% (hard, the default).
-  Changes are saved on this device and apply to new strokes; Reset restores 100%.
+- **Smudge** — tap the hand icon on the tool rail and drag existing pixels on
+  the active layer and frame. Size sets the circular tip; opacity controls strength.
+  The destination is clipped by selection, but the source may be sampled outside
+  it. Colour and transparency are blended; transparent source can reduce alpha.
+  Dabs are spaced by distance rather than input-event count and include the final
+  release position. Work is capped at 256 dabs per input segment, so exceptionally
+  large jumps can be coarse. A moved stroke is undoable; a stationary tap does
+  nothing. Hidden, locked, alpha-locked and empty cels are refused. Pinching with
+  a second finger cancels a finger smudge; stylus strokes retain palm rejection.
+  Undo stores touched 128-pixel tiles, up to 64 MiB of tile pixels per stroke.
+  If that limit or an allocation is hit, the stroke is rolled back; existing
+  artwork, history and readback buffers use additional memory. Smudging an empty
+  part of an allocated cel may still create an undo step.
+  **Actions → Preferences → Smudge edge** controls edge hardness and optionally
+  enables stylus pressure for strength (off by default). Pressure follows the
+  global pressure curve; touch uses full pressure. Both are device settings for
+  future strokes. This basic circular smudge does not use brush texture, pressure
+  size, smoothing, symmetry, QuickShape or the hold eyedropper. Large tips and
+  complex selections can still be slow. Real Android latency and stylus behaviour
+  remain untested; it is not Procreate's brush-based smudge engine.
 - **Saved palette** — tap the four-square icon in the Colour tray. Add the current
   brush colour, tap a saved swatch to choose it, or enable Remove mode and tap a
   swatch to remove it. Clear palette asks for confirmation. One palette of up to
@@ -661,7 +669,7 @@ tools/
   tests/gif_roundtrip.mjs    encodes a GIF and decodes it with an independent decoder
   tests/ui_smoke.mjs         jsdom boot + full UI drive (gallery -> export)
   tests/ui_layout_browser.mjs optional Chromium layout and interaction checks
-artifacts/Qelem-5.6.apk           the signed, installable artefact
+artifacts/Qelem-5.7.apk           the signed, installable artefact
 docs/procreate-analysis.md   the Procreate study this app was built from
 docs/qalam.md                this file
 ```
@@ -691,7 +699,7 @@ Design notes worth knowing before changing code:
 
 ```bash
 bash tools/fetch-toolchain.sh     # once per machine: JVM, apktool, aapt2, jars, npm
-bash tools/build.sh               # -> artifacts/Qelem-5.6.apk (signed + verified)
+bash tools/build.sh               # -> artifacts/Qelem-5.7.apk (signed + verified)
 bash tools/check_reference.sh     # optional: javac-check the Java mirrors
 ```
 

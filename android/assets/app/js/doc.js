@@ -138,13 +138,19 @@
     canRedo() { return !!this.redoStack.length; }
     apply(e, undo) {
       if (e.type === 'struct') this.applyStruct(undo ? e.before : e.after);
-      else {
+      else if (e.type === 'pixelTiles') {
+        const c=this.doc.cel(e.f,e.l,true).getContext('2d');
+        // Read all redo data before writing, so a readback failure leaves pixels untouched.
+        const current=e.tiles.map(t=>c.getImageData(t.x,t.y,t.w,t.h));
+        e.tiles.forEach((t,i)=>{ c.putImageData(t.before,t.x,t.y); t.before=current[i]; });
+        this.doc.activeFrame=e.f; this.doc.activeLayer=e.l;
+      } else {
         const r = e.rect, c = this.doc.cel(e.f,e.l,true).getContext('2d'), current = c.getImageData(r.x,r.y,r.w,r.h);
         c.putImageData(e.before,r.x,r.y); e.before = current; this.doc.activeFrame = e.f; this.doc.activeLayer = e.l;
       }
     }
-    undo() { const e = this.undoStack.pop(); if (!e) return false; this.apply(e,true); this.redoStack.push(e); this.notify(); return true; }
-    redo() { const e = this.redoStack.pop(); if (!e) return false; this.apply(e,false); this.undoStack.push(e); this.notify(); return true; }
+    undo() { const e = this.undoStack[this.undoStack.length-1]; if (!e) return false; try { this.apply(e,true); } catch(err) { Q.toast('Not enough memory to undo',4000); return false; } this.undoStack.pop(); this.redoStack.push(e); this.notify(); return true; }
+    redo() { const e = this.redoStack[this.redoStack.length-1]; if (!e) return false; try { this.apply(e,false); } catch(err) { Q.toast('Not enough memory to redo',4000); return false; } this.redoStack.pop(); this.undoStack.push(e); this.notify(); return true; }
     clear() { this.undoStack.length = 0; this.redoStack.length = 0; this.notify(); }
   }
   class Doc {

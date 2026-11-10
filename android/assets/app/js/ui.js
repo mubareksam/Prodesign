@@ -1189,11 +1189,12 @@
 
   UI.smudgePreferences = function () {
     const v=app().view, card=Q.crel('div'); card.appendChild(Q.crel('h2',null,'Smudge edge'));
-    card.appendChild(Q.crel('p','sub','Set the edge hardness for future smudge strokes. Zero makes a soft falloff; 100% keeps the original hard edge. This device setting does not change existing artwork or painting brushes. The opacity slider still controls smudge strength.'));
+    card.appendChild(Q.crel('p','sub','Set the edge hardness for future smudge strokes. Zero makes a soft falloff; 100% keeps the original hard edge. This device setting does not change existing artwork or painting brushes. The opacity slider controls strength; optional stylus pressure also changes strength. Fingers use full pressure.'));
     const row=Q.crel('div','field studio-field'), slider=Q.crel('input'), out=Q.crel('span','val'); row.appendChild(Q.crel('label',null,'Hardness')); slider.type='range'; slider.min=0; slider.max=100; slider.value=Math.round(Q.sanitizeSmudgeHardness(v.smudgeHardness)*100); slider.setAttribute('aria-label','Smudge edge hardness');
     function update() { v.smudgeHardness=Number(slider.value)/100; out.textContent=slider.value+'%'; Q.Store.meta('smudgeHardness',v.smudgeHardness); }
     out.textContent=slider.value+'%'; slider.addEventListener('input',update); row.appendChild(slider); row.appendChild(out); card.appendChild(row);
-    const actions=Q.crel('div','modal-actions'), reset=Q.crel('button','btn ghost','Reset'), done=Q.crel('button','btn primary','Done'); reset.addEventListener('click',function(){ slider.value=100; update(); }); done.addEventListener('click',()=>UI.closeModal()); actions.appendChild(reset); actions.appendChild(done); card.appendChild(actions); UI.openModal(card);
+    const pressureRow=Q.crel('div','field studio-field'); pressureRow.appendChild(Q.crel('label',null,'Stylus pressure')); const pressure=Q.crel('select'); pressure.setAttribute('aria-label','Smudge stylus pressure'); [['off','Off'],['on','Strength']].forEach(pair=>{ const option=Q.crel('option'); option.value=pair[0]; option.textContent=pair[1]; pressure.appendChild(option); }); pressure.value=v.smudgePressure ? 'on' : 'off'; pressure.addEventListener('change',function(){ v.smudgePressure=pressure.value==='on'; Q.Store.meta('smudgePressure',v.smudgePressure); }); pressureRow.appendChild(pressure); card.appendChild(pressureRow);
+    const actions=Q.crel('div','modal-actions'), reset=Q.crel('button','btn ghost','Reset'), done=Q.crel('button','btn primary','Done'); reset.addEventListener('click',function(){ slider.value=100; update(); pressure.value='off'; v.smudgePressure=false; Q.Store.meta('smudgePressure',false); }); done.addEventListener('click',()=>UI.closeModal()); actions.appendChild(reset); actions.appendChild(done); card.appendChild(actions); UI.openModal(card);
   };
 
   UI.railPreferencesDialog = function () {
@@ -2080,7 +2081,7 @@
     card.appendChild(Q.crel('p', 'sub', 'A paint, sketch and frame-by-frame animation studio for Android. Artwork is stored on this device only — nothing is uploaded.'));
     card.appendChild(Q.crel('p', 'sub', 'Developed by Qmer'));
     card.appendChild(Q.crel('p', 'sub', 'ቀለም (qalam) means “pen” or “ink”.'));
-    card.appendChild(Q.crel('p', 'sub', 'Version 5.6'));
+    card.appendChild(Q.crel('p', 'sub', 'Version 5.7'));
     const actions = Q.crel('div', 'modal-actions');
     const close = Q.crel('button', 'btn primary', 'Close');
     close.addEventListener('click', function () { UI.closeModal(); });

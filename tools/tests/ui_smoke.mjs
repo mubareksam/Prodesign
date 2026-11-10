@@ -450,7 +450,7 @@ async function run() {
 
   console.log('about');
   Q.UI.aboutSheet();
-  ok(doc.querySelector('#modalBody').textContent.includes('Developed by Qmer') && doc.querySelector('#modalBody').textContent.includes('Version 5.6'), 'About credits Qmer and shows current version');
+  ok(doc.querySelector('#modalBody').textContent.includes('Developed by Qmer') && doc.querySelector('#modalBody').textContent.includes('Version 5.7'), 'About credits Qmer and shows current version');
   Q.UI.closeModal();
 
   console.log('hardware back');
@@ -1541,6 +1541,15 @@ async function run() {
   Q.UI.clearCelRangeDialog(); d.addFrame(false); button('Clear cels').click(); ok(doc.querySelector('.canvas-error').textContent.includes('frames changed'),'cel clear rejects a stale frame list before confirmation'); Q.UI.closeModal();
   Q.UI.clearCelRangeDialog(); button('Clear cels').click(); const index=d.frames.findIndex(f=>f.cels[0]), otherIndex=d.frames.findIndex((f,i)=>i!==index && f.cels[0]), oldCel=d.frames[index].cels[0]; d.frames[index].cels[0]=null; click('#modalBody .btn.danger'); ok(d.frames[otherIndex].cels[0] && doc.querySelector('#toast').textContent.includes('changed'),'clear refuses when targeted cel changes after confirmation'); d.frames[index].cels[0]=oldCel;
   Q.UI.findFrameDialog(); App.createDoc(64,64,'Different document'); button('Next label').click(); ok(doc.querySelector('#modalBody [role="status"]').textContent.includes('Artwork changed'),'frame navigator refuses a stale artwork'); Q.UI.closeModal();
+  }
+
+  {
+  console.log('5.7 smudge controls and input');
+  App.createDoc(64,64,'Smudge improvements'); let v=App.view; const d=App.doc; d.activeCel(true); d.history.clear();
+  Q.UI.smudgePreferences(); const pressure=doc.querySelector('[aria-label="Smudge stylus pressure"]'); ok(pressure && pressure.value==='off','stylus pressure defaults to off for compatibility'); pressure.value='on'; pressure.dispatchEvent(new win.Event('change',{bubbles:true})); ok(v.smudgePressure && Q.Store.meta('smudgePressure')===true,'stylus pressure setting persists on this device'); Q.UI.closeModal();
+  App.init(); await tick(); v=App.view; ok(v.smudgePressure===true,'stylus pressure setting restores on startup'); App.createDoc(64,64,'Smudge input'); const d2=App.doc, canvas=doc.querySelector('#view'); d2.activeCel(true); d2.history.clear(); v.tool='smudge'; v.globalPressure=1;
+  const a=v.toScreen(16,20), b=v.toScreen(26,20), c=v.toScreen(32,20); pointer(canvas,'pointerdown',a.x,a.y,{id:1890,pointerType:'pen',pressure:0.25}); ok(v.stroke && v.stroke.pressureStrength && Math.abs(v.stroke.pressure-0.25)<0.001,'new stylus strokes capture pressure setting and input'); pointer(canvas,'pointermove',b.x,b.y,{id:1890,pointerType:'pen',pressure:0.25}); const stroke=v.stroke; pointer(canvas,'pointerup',c.x,c.y,{id:1890,pointerType:'pen',pressure:0}); ok(Math.abs(stroke.lx-32)<0.01 && stroke.pressure===0.25 && d2.history.undoStack.length===1,'pointer release uses the final position without false zero pressure');
+  Q.UI.smudgePreferences(); [...doc.querySelectorAll('#modalBody button')].find(b=>b.textContent==='Reset').click(); ok(!v.smudgePressure && Q.Store.meta('smudgePressure')===false && doc.querySelector('[aria-label="Smudge stylus pressure"]').value==='off','smudge reset restores pressure default'); Q.UI.closeModal();
   }
 
   await App.saveNow(false);

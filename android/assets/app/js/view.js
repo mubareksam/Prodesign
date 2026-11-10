@@ -29,6 +29,7 @@
     this.globalPressure = 1;
     this.globalSmoothing = 0;
     this.smudgeHardness = 1;
+    this.smudgePressure = false;
     this.tool = 'brush';
     this.onDocChange = null;
     this.onStrokeEnd = null;
@@ -512,7 +513,8 @@
     }
     if (this.stroke && rec.id === this.strokePointerId) {
       const wasTap = Q.dist(rec.startX, rec.startY, rec.x, rec.y) < 6 && (Q.now() - rec.t) < 320;
-      if(e.type==='pointercancel' && this.stroke instanceof Q.SmudgeStroke) { this.stroke.cancel(); this.stroke=null; this.dirty=true; } else this._endStroke(wasTap);
+      if(e.type==='pointercancel' && this.stroke instanceof Q.SmudgeStroke) { this.stroke.cancel(); this.stroke=null; this.dirty=true; }
+      else { if(this.stroke instanceof Q.SmudgeStroke) { const pos=this._pos(e), p=this.toDoc(pos.x,pos.y); p.pressure=e.pressure>0 ? this._pressure(e) : this.stroke.pressure; this.stroke.add(p); } this._endStroke(wasTap); }
     }
   };
 
@@ -541,7 +543,7 @@
     this.strokePointerType = e.pointerType || 'touch';
     const brushOpacity = this.opacity * (this.brush.opacity == null ? 1 : this.brush.opacity);
     try {
-      this.stroke = this.tool==='smudge' ? new Q.SmudgeStroke(doc,this.size,this.opacity,this.selection,this.smudgeHardness) : new Q.Stroke(doc, this.brush, this.color, this.size, brushOpacity, this.selection, this.globalSmoothing);
+      this.stroke = this.tool==='smudge' ? new Q.SmudgeStroke(doc,this.size,this.opacity,this.selection,this.smudgeHardness,this.smudgePressure) : new Q.Stroke(doc, this.brush, this.color, this.size, brushOpacity, this.selection, this.globalSmoothing);
       this.stroke.begin({ x: p.x, y: p.y, pressure: this._pressure(e), t: Q.now() });
     } catch(err) { this.stroke=null; Q.toast('Could not start stroke on this device',4000); return; }
     this._lastStampTime = Q.now();

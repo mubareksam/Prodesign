@@ -51,6 +51,7 @@
     if (typeof threshold === 'number') App.fillThreshold = Q.clamp(threshold, 0, 128);
     const pressure=Q.Store.meta('globalPressure'), smoothing=Q.Store.meta('globalSmoothing');
     v.smudgeHardness=Q.sanitizeSmudgeHardness(Q.Store.meta('smudgeHardness'));
+    v.smudgePressure=Q.Store.meta('smudgePressure')===true;
     v.globalPressure=Number.isFinite(pressure) ? Q.clamp(pressure,0.5,2) : 1;
     v.globalSmoothing=Number.isFinite(smoothing) ? Q.clamp(smoothing,0,0.9) : 0;
     Q.restoreBrushSettings(Q.Store.meta('brushSettings'));

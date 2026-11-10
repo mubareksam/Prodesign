@@ -528,42 +528,83 @@
 
   Q.Stroke = Stroke;
 
-  // A simple pixel-drag smudge, limited to one cel. It samples a small tile
-  // before each dab and blends it under a circular, selection-clipped tip.
-  function SmudgeStroke(doc,size,strength,selection,hardness) {
-    this.doc=doc; this.size=Q.clamp(size,1,240); this.strength=Q.clamp(strength,0.01,1); this.selection=selection; this.hardness=Q.sanitizeSmudgeHardness(hardness);
-    this.cel=null; this.ctx=null; this.dirty=null; this.len=0; this.lx=0; this.ly=0;
+  // A single-cel pixel-drag smudge. Fixed-distance dabs make the result much
+  // less dependent on how often a device emits pointer events. Lazy 128px undo
+  // tiles avoid copying an entire large artwork at the beginning of each stroke.
+  function SmudgeStroke(doc,size,strength,selection,hardness,pressureStrength) {
+    this.doc=doc; this.size=Q.clamp(size,1,240); this.strength=Q.clamp(strength,0.01,1); this.selection=selection; this.hardness=Q.sanitizeSmudgeHardness(hardness); this.pressureStrength=!!pressureStrength;
+    this.cel=null; this.ctx=null; this.dirty=null; this.len=0; this.tiles=new Map(); this.tileBytes=0; this.failed=false;
+    this.spacing=Math.max(1,this.size*0.22); this.remaining=this.spacing;
   }
   SmudgeStroke.prototype.begin=function(pt) {
     this.cel=this.doc.activeCel(false); if(!this.cel) throw Error('empty cel'); this.ctx=this.cel.getContext('2d');
-    this.doc.history.beginPixels(this.cel); this.lx=pt.x; this.ly=pt.y;
-    const n=Math.ceil(this.size)+2; this.tile=Q.canvas(n,n); this.tileCtx=this.tile.getContext('2d');
-    if(this.hardness<1) { this.mask=Q.canvas(n,n); const m=this.mask.getContext('2d'), g=m.createRadialGradient(n/2,n/2,0,n/2,n/2,this.size/2); g.addColorStop(0,'rgba(255,255,255,1)'); if(this.hardness>0) g.addColorStop(this.hardness,'rgba(255,255,255,1)'); g.addColorStop(1,'rgba(255,255,255,0)'); m.fillStyle=g; m.fillRect(0,0,n,n); }
-
+    this.frame=this.doc.activeFrame; this.layer=this.doc.activeLayer;
+    this.lx=this.px=Q.clamp(pt.x,-this.size,this.doc.width+this.size); this.ly=this.py=Q.clamp(pt.y,-this.size,this.doc.height+this.size); this.pressure=Number.isFinite(pt.pressure) ? Q.clamp(pt.pressure,0.04,1) : 1;
+    const n=Math.ceil(this.size)+2; this.tile=Q.canvas(n,n); this.tileCtx=this.tile.getContext('2d'); this.mask=Q.canvas(n,n);
+    const m=this.mask.getContext('2d');
+    if(this.hardness>=1) { m.fillStyle='#fff'; m.beginPath(); m.arc(n/2,n/2,this.size/2,0,Math.PI*2); m.fill(); }
+    else { const g=m.createRadialGradient(n/2,n/2,0,n/2,n/2,this.size/2); g.addColorStop(0,'rgba(255,255,255,1)'); if(this.hardness>0) g.addColorStop(this.hardness,'rgba(255,255,255,1)'); g.addColorStop(1,'rgba(255,255,255,0)'); m.fillStyle=g; m.fillRect(0,0,n,n); }
   };
-  SmudgeStroke.prototype.add=function(pt) {
-    const d=this.doc, x=Q.clamp(pt.x,-this.size,d.width+this.size), y=Q.clamp(pt.y,-this.size,d.height+this.size);
-    const dx=x-this.lx,dy=y-this.ly, distance=Math.hypot(dx,dy); if(distance<0.5) return;
-    const n=Math.min(256,Math.ceil(distance/Math.max(1,this.size*0.22))), stepX=dx/n,stepY=dy/n, radius=this.size/2, tileSize=this.tile.width;
-    let px=this.lx,py=this.ly;
-    for(let i=0;i<n;i++) {
-      const nx=px+stepX,ny=py+stepY, left=Math.max(0,Math.floor(nx-radius-1)),top=Math.max(0,Math.floor(ny-radius-1)),right=Math.min(d.width,Math.ceil(nx+radius+1)),bottom=Math.min(d.height,Math.ceil(ny+radius+1));
-      if(right>left && bottom>top) {
-        const t=this.tileCtx; t.clearRect(0,0,tileSize,tileSize); t.drawImage(this.cel,px-tileSize/2,py-tileSize/2,tileSize,tileSize,0,0,tileSize,tileSize);
-        if(this.mask) { t.globalCompositeOperation='destination-in'; t.drawImage(this.mask,0,0); t.globalCompositeOperation='source-over'; }
-        const c=this.ctx; c.save(); if(this.selection) { Q.selectionPath(c,this.selection); c.clip(); } c.beginPath(); c.arc(nx,ny,radius,0,Math.PI*2); c.clip(); c.globalCompositeOperation='source-over'; c.globalAlpha=this.strength; c.drawImage(this.tile,nx-tileSize/2,ny-tileSize/2); c.restore();
-        if(!this.dirty) this.dirty={x:left,y:top,w:right-left,h:bottom-top};
-        else { const r=this.dirty, rx=Math.max(r.x+r.w,right),by=Math.max(r.y+r.h,bottom); r.x=Math.min(r.x,left); r.y=Math.min(r.y,top); r.w=rx-r.x; r.h=by-r.y; }
-      }
-      px=nx; py=ny;
+  SmudgeStroke.prototype._capture=function(left,top,right,bottom) {
+    const size=128, d=this.doc;
+    for(let y=Math.floor(top/size)*size;y<bottom;y+=size) for(let x=Math.floor(left/size)*size;x<right;x+=size) {
+      const key=x+','+y; if(this.tiles.has(key)) continue;
+      const w=Math.min(size,d.width-x), h=Math.min(size,d.height-y), bytes=w*h*4;
+      if(this.tileBytes+bytes>64*1024*1024) throw Error('smudge undo limit');
+      const cv=Q.canvas(w,h), ctx=cv.getContext('2d'); if(!ctx) throw Error('smudge allocation failed');
+      ctx.drawImage(this.cel,x,y,w,h,0,0,w,h); this.tiles.set(key,{x:x,y:y,w:w,h:h,canvas:cv,ctx:ctx}); this.tileBytes+=bytes;
     }
-    this.len+=distance; this.lx=x; this.ly=y;
+  };
+  SmudgeStroke.prototype._dab=function(nx,ny,pressure) {
+    const d=this.doc,radius=this.size/2,n=this.tile.width;
+    const left=Math.max(0,Math.floor(nx-radius-2)),top=Math.max(0,Math.floor(ny-radius-2)),right=Math.min(d.width,Math.ceil(nx+radius+2)),bottom=Math.min(d.height,Math.ceil(ny+radius+2));
+    if(right>left && bottom>top && (!this.selection || (right>this.selection.x && left<this.selection.x+this.selection.w && bottom>this.selection.y && top<this.selection.y+this.selection.h))) {
+      this._capture(left,top,right,bottom);
+      const t=this.tileCtx; t.globalCompositeOperation='source-over'; t.clearRect(0,0,n,n); t.drawImage(this.cel,this.px-n/2,this.py-n/2,n,n,0,0,n,n);
+      t.globalCompositeOperation='destination-in'; t.drawImage(this.mask,0,0); t.globalCompositeOperation='source-over';
+      const c=this.ctx, a=this.strength*(this.pressureStrength ? pressure : 1);
+      // Crossfade premultiplied source and destination; transparent source
+      // pixels can reduce alpha rather than only painting over the destination.
+      c.globalAlpha=a; c.globalCompositeOperation='destination-out'; c.drawImage(this.mask,nx-n/2,ny-n/2);
+      c.globalCompositeOperation='lighter'; c.drawImage(this.tile,nx-n/2,ny-n/2);
+      if(!this.dirty) this.dirty={x:left,y:top,w:right-left,h:bottom-top};
+      else { const r=this.dirty, rx=Math.max(r.x+r.w,right),by=Math.max(r.y+r.h,bottom); r.x=Math.min(r.x,left); r.y=Math.min(r.y,top); r.w=rx-r.x; r.h=by-r.y; }
+    }
+    this.px=nx; this.py=ny;
+  };
+  SmudgeStroke.prototype._withClip=function(fn) {
+    const c=this.ctx; c.save(); try { if(this.selection) { Q.selectionPath(c,this.selection); c.clip(); } fn(); } finally { c.restore(); }
+  };
+  SmudgeStroke.prototype._fail=function() { this.cancel(); this.failed=true; Q.toast('Smudge stopped; not enough memory for undo',4000); };
+  SmudgeStroke.prototype.add=function(pt) {
+    if(this.failed || !pt || !Number.isFinite(pt.x) || !Number.isFinite(pt.y)) return;
+    const x=Q.clamp(pt.x,-this.size,this.doc.width+this.size), y=Q.clamp(pt.y,-this.size,this.doc.height+this.size), pressure=Number.isFinite(pt.pressure) ? Q.clamp(pt.pressure,0.04,1) : this.pressure;
+    const dx=x-this.lx,dy=y-this.ly, distance=Math.hypot(dx,dy); if(distance<0.00001) { this.pressure=pressure; return; }
+    const startX=this.lx,startY=this.ly,startPressure=this.pressure, step=Math.max(this.spacing,distance/256); let traveled=0, remaining=step>this.spacing ? step : this.remaining;
+    try {
+      if(distance>=remaining) this._withClip(()=>{
+        while(distance-traveled+1e-8>=remaining) {
+          traveled+=remaining; const u=Math.min(1,traveled/distance);
+          this._dab(startX+dx*u,startY+dy*u,startPressure+(pressure-startPressure)*u); remaining=step;
+        }
+      });
+      this.remaining=Math.max(0.00001,remaining-(distance-traveled)); this.len+=distance; this.lx=x; this.ly=y; this.pressure=pressure;
+    } catch(e) { this._fail(); }
   };
   SmudgeStroke.prototype._flush=function() {};
-  SmudgeStroke.prototype.end=function() { if(!this.dirty) return; try { this.doc.history.endPixels(this.dirty); } catch(e) { this.cancel(); Q.toast('Not enough memory to save smudge undo',4000); } };
+  SmudgeStroke.prototype.end=function() {
+    if(this.failed) return;
+    try {
+      if(Math.hypot(this.lx-this.px,this.ly-this.py)>=0.5) this._withClip(()=>this._dab(this.lx,this.ly,this.pressure));
+      if(!this.dirty) return;
+      const tiles=[...this.tiles.values()].map(t=>({x:t.x,y:t.y,w:t.w,h:t.h,before:t.ctx.getImageData(0,0,t.w,t.h)}));
+      this.doc.history.push({type:'pixelTiles',f:this.frame,l:this.layer,tiles:tiles}); this.tiles.clear();
+    } catch(e) { this._fail(); }
+  };
   SmudgeStroke.prototype.cancel=function() {
-    if(!this.ctx || !this.dirty || !this.doc.history.snap) return;
-    const r=this.dirty,c=this.ctx; c.save(); c.setTransform(1,0,0,1,0,0); c.globalAlpha=1; c.globalCompositeOperation='source-over'; c.clearRect(r.x,r.y,r.w,r.h); c.drawImage(this.doc.history.snap,r.x,r.y,r.w,r.h,r.x,r.y,r.w,r.h); c.restore(); this.dirty=null;
+    if(!this.ctx) return;
+    const c=this.ctx; c.save(); c.setTransform(1,0,0,1,0,0); c.globalAlpha=1; c.globalCompositeOperation='source-over';
+    this.tiles.forEach(t=>{c.clearRect(t.x,t.y,t.w,t.h); c.drawImage(t.canvas,t.x,t.y);}); c.restore(); this.tiles.clear(); this.dirty=null;
   };
   Q.SmudgeStroke=SmudgeStroke;
 

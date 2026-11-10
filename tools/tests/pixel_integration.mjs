@@ -902,7 +902,7 @@ console.log('4.8 smudge, gradient and brush previews');
  const cancel=new Q.SmudgeStroke(d,6,1,null); cancel.begin({x:4,y:8}); cancel.add({x:10,y:8}); cancel.cancel(); ok(pixel(cel,10,8)[3]===0 && d.history.undoStack.length===0,'cancelled smudge restores original pixels without history');
  const tap=new Q.SmudgeStroke(d,6,1,null); tap.begin({x:4,y:8}); tap.end(); ok(d.history.undoStack.length===0,'smudge tap creates no undo step');
  const edge=new Q.SmudgeStroke(d,6,0.5,null); edge.begin({x:0,y:0}); edge.add({x:-4,y:-4}); edge.end(); ok(true,'smudge near canvas edges is safe');
- d.history.clear(); const fail=new Q.SmudgeStroke(d,6,1,null); fail.begin({x:4,y:8}); fail.add({x:10,y:8}); const oldGet=d.history.snapCtx.getImageData; d.history.snapCtx.getImageData=()=>{throw Error('memory');}; fail.end(); d.history.snapCtx.getImageData=oldGet;
+ d.history.clear(); const fail=new Q.SmudgeStroke(d,6,1,null); fail.begin({x:4,y:8}); fail.add({x:10,y:8}); const captured=[...fail.tiles.values()][0].ctx, oldGet=captured.getImageData; captured.getImageData=()=>{throw Error('memory');}; fail.end(); captured.getImageData=oldGet;
  ok(pixel(cel,10,8)[3]===0 && d.history.undoStack.length===0,'undo allocation failure rolls back smudge');
 
 }
@@ -1055,5 +1055,37 @@ console.log('5.6 animation range editing');
  const frames=[{group:'A'},{group:'B'},{group:'A',skipped:true},{group:''}];
  ok(Q.findLabeledFrame(frames,0,'A',1)===2 && Q.findLabeledFrame(frames,0,'A',-1)===2 && Q.findLabeledFrame(frames,2,'A',1)===0,'label navigation wraps in both directions and includes skipped frames');
  ok(Q.findLabeledFrame(frames,0,'B',1)===1 && Q.findLabeledFrame(frames,1,'B',1)===1 && Q.findLabeledFrame(frames,0,'missing',1)===-1 && Q.findLabeledFrame(frames,0,'A',0)===-1,'label navigation handles one or no match and invalid direction');
+}
+console.log('5.7 smudge accuracy and responsiveness');
+{
+ function make() { const d=new Q.Doc({width:128,height:64}), cel=d.activeCel(true), c=cel.getContext('2d'); c.fillStyle='#ff0000'; c.fillRect(0,0,55,64); c.fillStyle='#0044ff'; c.fillRect(55,0,50,64); d.history.clear(); return {d,cel}; }
+ function drag(segments,pressure,on) { const {d,cel}=make(), s=new Q.SmudgeStroke(d,24,0.7,null,0.3,on); let dabs=0, dab=s._dab; s._dab=function(...args){ dabs++; return dab.apply(this,args); }; s.begin({x:35,y:30,pressure}); for(let i=1;i<=segments;i++) s.add({x:35+50*i/segments,y:30,pressure}); s.end(); return {d,cel,dabs}; }
+ const sparse=drag(1,1,false), dense=drag(500,1,false), a=[...sparse.cel.getContext('2d').getImageData(0,0,128,64).data], b=[...dense.cel.getContext('2d').getImageData(0,0,128,64).data];
+ ok(a.every((v,i)=>v===b[i]) && sparse.dabs===dense.dabs,'fixed-distance smudge produces identical pixels for dense and sparse input along the same path');
+ ok(dense.dabs<=12,'high-frequency input does not produce hundreds of redundant dabs');
+ const low=drag(50,0.1,true), full=drag(50,1,true), initial=make().cel.getContext('2d').getImageData(0,0,128,64).data, lowPixels=low.cel.getContext('2d').getImageData(0,0,128,64).data, highPixels=full.cel.getContext('2d').getImageData(0,0,128,64).data;
+ const diff=arr=>arr.reduce((sum,v,i)=>sum+Math.abs(v-initial[i]),0); ok(diff(lowPixels)<diff(highPixels),'optional low stylus pressure reduces smudge strength');
+ const d=new Q.Doc({width:32,height:16}), cel=d.activeCel(true), c=cel.getContext('2d'); c.fillStyle='#ff0000'; c.fillRect(12,0,20,16); const stroke=new Q.SmudgeStroke(d,10,1,null,1); stroke.begin({x:7,y:8}); stroke.add({x:17,y:8}); stroke.end(); ok(pixel(cel,13,8)[3]<255,'transparent source pixels can reduce destination alpha while smudging');
+}
+{
+ const d=new Q.Doc({width:384,height:256}), cel=d.activeCel(true), ctx=cel.getContext('2d'); ctx.fillStyle='#e72114'; ctx.fillRect(0,0,180,256); ctx.fillStyle='#1b4fff'; ctx.fillRect(180,0,204,256);
+ const before=[...ctx.getImageData(0,0,384,256).data]; d.history.clear(); d.history.beginPixels=()=>{throw Error('full snapshot forbidden');};
+ const s=new Q.SmudgeStroke(d,36,0.8,null,0.5); s.begin({x:100,y:128}); s.add({x:250,y:128}); s.end(); const after=[...ctx.getImageData(0,0,384,256).data];
+ ok(d.history.undoStack.length===1 && d.history.undoStack[0].type==='pixelTiles' && d.history.snap===null && d.history.undoStack[0].tiles.length<=6,'smudge captures only touched undo tiles instead of full canvas');
+ ok(d.history.undo() && same([...ctx.getImageData(0,0,384,256).data],before),'multi-tile smudge undo exactly restores pixels'); ok(d.history.redo() && same([...ctx.getImageData(0,0,384,256).data],after),'multi-tile smudge redo exactly restores pixels'); d.history.undo(); d.history.clear();
+ const cancel=new Q.SmudgeStroke(d,36,0.8,null,0.5); cancel.begin({x:100,y:128}); cancel.add({x:250,y:128}); cancel.cancel(); ok(same([...ctx.getImageData(0,0,384,256).data],before) && !d.history.canUndo(),'multi-tile cancellation restores all pixels');
+ const failing=new Q.SmudgeStroke(d,36,0.8,null,0.5); failing.begin({x:90,y:128}); failing.add({x:110,y:128}); failing.tileBytes=64*1024*1024; failing.add({x:280,y:128}); ok(failing.failed && same([...ctx.getImageData(0,0,384,256).data],before) && !d.history.canUndo(),'undo memory limit rolls back the entire in-progress smudge');
+ const test=new Q.SmudgeStroke(d,36,0.8,null,1); test.begin({x:100,y:128}); test.add({x:250,y:128}); test.end(); const old=ctx.getImageData; ctx.getImageData=()=>{throw Error('memory');}; ok(!d.history.undo() && d.history.canUndo(),'undo readback failure retains history'); ctx.getImageData=old; ok(d.history.undo() && same([...ctx.getImageData(0,0,384,256).data],before),'undo can be retried after a readback failure');
+}
+{
+ const d=new Q.Doc({width:32,height:32}), cel=d.activeCel(true), ctx=cel.getContext('2d'); ctx.fillStyle='#f00';ctx.fillRect(0,0,16,32);ctx.fillStyle='#00f';ctx.fillRect(16,0,16,32);
+ const before=[...ctx.getImageData(0,0,32,32).data], sel={x:14,y:8,w:6,h:8,runs:[{x:14,y:8,w:6},{x:14,y:9,w:6},{x:14,y:10,w:6},{x:14,y:11,w:6},{x:14,y:12,w:6},{x:14,y:13,w:6},{x:14,y:14,w:6},{x:14,y:15,w:6}]};
+ const s=new Q.SmudgeStroke(d,12,1,sel,0.5);s.begin({x:8,y:12});s.add({x:22,y:12});s.end(); const after=[...ctx.getImageData(0,0,32,32).data];
+ let unchanged=true, changed=false; for(let y=0;y<32;y++) for(let x=0;x<32;x++){const i=(y*32+x)*4, different=before.slice(i,i+4).join()!==after.slice(i,i+4).join(); if(x>=14&&x<20&&y>=8&&y<16) changed ||= different; else if(different) unchanged=false;} ok(changed && unchanged,'run-mask selection precisely clips smudge destination'); d.history.undo(); ok(same([...ctx.getImageData(0,0,32,32).data],before),'masked smudge undo restores all pixels');
+}
+{
+ const d=new Q.Doc({width:64,height:64}), cel=d.activeCel(true), ctx=cel.getContext('2d'); ctx.fillStyle='rgba(255,0,0,0.37)';ctx.fillRect(0,0,32,64);ctx.fillStyle='rgba(0,0,255,0.65)';ctx.fillRect(32,0,32,64); const before=[...ctx.getImageData(0,0,64,64).data];
+ const sel=Q.ellipseSelection({x:20,y:16},{x:48,y:48},64,64), s=new Q.SmudgeStroke(d,14,0.7,sel,0.4); s.begin({x:22,y:32});s.add({x:43,y:32});s.end(); const after=[...ctx.getImageData(0,0,64,64).data];
+ ok(after.some((v,i)=>v!==before[i]),'smudge modifies semitransparent pixels inside an ellipse');d.history.undo();ok(same([...ctx.getImageData(0,0,64,64).data],before),'tiled undo restores semitransparent colours and alpha exactly');d.history.redo();ok(same([...ctx.getImageData(0,0,64,64).data],after),'tiled redo restores semitransparent smudge exactly');
 }
 console.log(`all ${n} raster integration checks passed`);
