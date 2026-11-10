@@ -53,6 +53,7 @@
     sparkle: '<path d="M12 3l1.8 5.2L19 10l-5.2 1.8L12 17l-1.8-5.2L5 10l5.2-1.8z"/>',
     swatch: '<rect x="4" y="4" width="16" height="16" rx="3"/><path d="M4 16l8-8 8 8"/>',
     gradient: '<rect x="4" y="4" width="16" height="16" rx="3"/><path d="M8 5v14M12 5v14M16 5v14"/>',
+    star: '<path d="M12 3l2.8 5.7 6.2.9-4.5 4.4 1.1 6.2-5.6-3-5.6 3 1.1-6.2L3 9.6l6.2-.9z"/>',
     palette: '<rect x="3" y="3" width="7" height="7" rx="1"/><rect x="14" y="3" width="7" height="7" rx="1"/><rect x="3" y="14" width="7" height="7" rx="1"/><rect x="14" y="14" width="7" height="7" rx="1"/>',
     harmony: '<circle cx="8" cy="8" r="3"/><circle cx="16" cy="8" r="3"/><circle cx="12" cy="16" r="3"/>',
     transparency: '<rect x="3" y="3" width="18" height="18" rx="2"/><path d="M3 9h18M3 15h18M9 3v18M15 3v18"/>',
@@ -455,11 +456,13 @@
     brushSlider('Brush opacity in tray','trayOpacity',Math.round(app().view.opacity*100),1,100,n=>app().setOpacity(n/100));
     const filterRow=Q.crel('div','brush-filter'), search=Q.crel('input','select'), categorySelect=Q.crel('select');
     search.type='search'; search.placeholder='Search brushes'; search.setAttribute('aria-label','Search brushes'); search.value=brushSearch;
-    categorySelect.setAttribute('aria-label','Brush category'); [['all','All brushes'],['INK','Ink'],['PENCIL','Pencil'],['PAINT','Paint'],['ERASER','Eraser'],['CUSTOM','Custom']].forEach(function(item){ const option=Q.crel('option'); option.value=item[0]; option.textContent=item[1]; categorySelect.appendChild(option); }); categorySelect.value=brushCategory; filterRow.appendChild(search); filterRow.appendChild(categorySelect); root.appendChild(filterRow);
+    categorySelect.setAttribute('aria-label','Brush category'); [['all','All brushes'],['INK','Ink'],['PENCIL','Pencil'],['PAINT','Paint'],['ERASER','Eraser'],['CUSTOM','Custom'],['FAVORITES','Favorites']].forEach(function(item){ const option=Q.crel('option'); option.value=item[0]; option.textContent=item[1]; categorySelect.appendChild(option); }); categorySelect.value=brushCategory; filterRow.appendChild(search); filterRow.appendChild(categorySelect); root.appendChild(filterRow);
     const resultCount=Q.crel('div','layer-sub'); resultCount.setAttribute('role','status'); root.appendChild(resultCount);
     const grid = Q.crel('div', 'brush-grid');
+    const favorites=Q.favoriteBrushes();
     Q.BRUSHES.forEach(function (b) {
       const card = Q.crel('button', 'brush-card' + (b.id === app().view.brush.id ? ' on' : ''));
+      card.setAttribute('aria-label',b.name+' brush'+(favorites.includes(b.id) ? ', favorite' : ''));
       const cv = Q.crel('canvas');
       cv.width = 180; cv.height = 52; cv.setAttribute('aria-label',b.name+' brush stroke preview');
       const badge = Q.crel('span', 'brush-kind');
@@ -468,8 +471,8 @@
         b.engine === 'grain' ? '<path d="M5 19l3-7L16 4l4 4-8 8zM5 19l7-3M14 6l4 4"/>' :
         b.engine === 'soft' ? '<path d="M16 3c1 5 5 7 5 11a6 6 0 01-12 0c0-4 4-6 7-11zM6 16c0 3-1 4-3 5"/>' :
         '<path d="M12 3l7 7-8 8-6 1 1-6zM12 3l-2 8 3 3 6-4M5 19l-2 2"/>';
-      card.dataset.brushName=b.name.toLowerCase(); card.dataset.brushCategory=category; card.dataset.custom=b.custom ? 'true' : 'false';
-      badge.innerHTML = icon(tip) + '<span>' + (b.custom ? 'CUSTOM · ' : '') + category + '</span>';
+      card.dataset.brushName=b.name.toLowerCase(); card.dataset.brushCategory=category; card.dataset.custom=b.custom ? 'true' : 'false'; card.dataset.favorite=favorites.includes(b.id) ? 'true' : 'false';
+      badge.innerHTML = icon(tip) + '<span>' + (b.custom ? 'CUSTOM · ' : '') + category + '</span>' + (favorites.includes(b.id) ? icon(ICON.star) : '');
       card.appendChild(badge);
       card.appendChild(cv);
       const brushName=Q.crel('span','brush-name'); brushName.textContent=b.name; card.appendChild(brushName);
@@ -485,7 +488,7 @@
     root.appendChild(grid);
     function filterBrushes() {
       brushSearch=search.value.slice(0,100); brushCategory=categorySelect.value; const term=brushSearch.trim().toLowerCase(); let count=0;
-      grid.querySelectorAll('.brush-card').forEach(function(card) { const match=(!term || card.dataset.brushName.includes(term)) && (brushCategory==='all' || (brushCategory==='CUSTOM' ? card.dataset.custom==='true' : card.dataset.brushCategory===brushCategory)); card.classList.toggle('hidden',!match); if(match) count++; });
+      grid.querySelectorAll('.brush-card').forEach(function(card) { const match=(!term || card.dataset.brushName.includes(term)) && (brushCategory==='all' || (brushCategory==='CUSTOM' ? card.dataset.custom==='true' : brushCategory==='FAVORITES' ? card.dataset.favorite==='true' : card.dataset.brushCategory===brushCategory)); card.classList.toggle('hidden',!match); if(match) count++; });
       resultCount.textContent=count ? count+' brush'+(count===1 ? '' : 'es') : 'No brushes match';
     }
     search.maxLength=100; search.addEventListener('input',filterBrushes); categorySelect.addEventListener('change',filterBrushes); filterBrushes();
@@ -549,6 +552,8 @@
       row.appendChild(slider); row.appendChild(value); card.appendChild(row);
     });
     const actions=Q.crel('div','brush-studio-actions');
+    const favorite=Q.crel('button','btn ghost'); function syncFavorite() { const on=Q.favoriteBrushes().includes(brush.id); favorite.innerHTML=icon(ICON.star); favorite.appendChild(document.createTextNode(on ? ' Remove favorite' : ' Add favorite')); favorite.setAttribute('aria-pressed',on ? 'true' : 'false'); } syncFavorite();
+    favorite.addEventListener('click',function(){ if(!Q.setBrushFavorite(brush,!Q.favoriteBrushes().includes(brush.id))) { Q.toast('Could not save favorite',3500); return; } syncFavorite(); }); actions.appendChild(favorite);
     const duplicate=Q.crel('button','btn ghost','Duplicate brush'); duplicate.addEventListener('click',function(){ const result=Q.createCustomBrush(brush); if(result.error) { Q.toast(result.error,4000); return; } app().setBrush(result.brush.id); UI.brushStudio(); Q.toast('Custom brush created'); }); actions.appendChild(duplicate);
     if(brush.custom) {
       const rename=Q.crel('button','btn ghost','Rename brush'); rename.addEventListener('click',function(){ UI.renameBrushDialog(brush); }); actions.appendChild(rename);
@@ -909,22 +914,43 @@
   }
 
   UI.savedPaletteDialog = function () {
-    let removing=false;
+    const target=app().doc; let mode='use', selected=null;
     const card=Q.crel('div'), heading=Q.crel('h2',null,'Saved palette'); card.appendChild(heading);
-    card.appendChild(Q.crel('p','sub','Save up to 24 colours on this device. Tap a swatch to use it; choose Remove mode to delete a swatch. This palette is not stored in projects or shared between devices.'));
+    card.appendChild(Q.crel('p','sub','Save up to 24 colours on this device. Use swatches, remove them, or swap two in reorder mode. Extract adds approximate frequent colours from the active layer on this frame. This palette is not stored in projects.'));
     const status=Q.crel('p','sub'), grid=Q.crel('div','saved-palette-grid'); card.appendChild(status); card.appendChild(grid);
-    const actions=Q.crel('div','palette-actions'), add=Q.crel('button','btn primary','Add current colour'), remove=Q.crel('button','btn ghost','Remove mode'), clear=Q.crel('button','btn ghost','Clear palette'), close=Q.crel('button','btn ghost','Close');
+    const actions=Q.crel('div','palette-actions'), add=Q.crel('button','btn primary','Add current colour'), extract=Q.crel('button','btn ghost','Extract layer colours'), remove=Q.crel('button','btn ghost','Remove mode'), reorder=Q.crel('button','btn ghost','Reorder mode'), sortHue=Q.crel('button','btn ghost','Sort by hue'), sortValue=Q.crel('button','btn ghost','Sort by brightness'), clear=Q.crel('button','btn ghost','Clear palette'), close=Q.crel('button','btn ghost','Close');
     function save(colors) { if(!Q.writeSavedPalette(colors)) { Q.toast('Could not save palette on this device',4000); return false; } return true; }
     function draw() {
-      const colors=Q.readSavedPalette(); status.textContent=colors.length+' / 24 colours'+(removing ? ' · tap a swatch to remove' : ''); grid.innerHTML=''; remove.setAttribute('aria-pressed',removing ? 'true' : 'false'); remove.classList.toggle('on',removing); clear.disabled=!colors.length;
-      colors.forEach(function(hex){ const button=Q.crel('button','saved-palette-swatch'); button.style.background=hex; button.setAttribute('aria-label',(removing ? 'Remove ' : 'Use ')+hex); button.title=hex;
-        button.addEventListener('click',function(){ if(removing) { if(save(Q.readSavedPalette().filter(c=>c!==hex))) draw(); } else { const rgb=Q.hexToRgb(hex); if(rgb && app().view) { app().setColor(rgb); UI.closeModal(); if(tray==='color') UI.openTray('color'); } } }); grid.appendChild(button);
+      const colors=Q.readSavedPalette(); if(selected && !colors.includes(selected)) selected=null;
+      status.textContent=colors.length+' / 24 colours'+(mode==='remove' ? ' · tap a swatch to remove' : mode==='reorder' ? (selected ? ' · tap a second swatch to swap' : ' · tap a swatch to move') : ''); grid.innerHTML='';
+      remove.setAttribute('aria-pressed',mode==='remove' ? 'true' : 'false'); remove.classList.toggle('on',mode==='remove'); reorder.setAttribute('aria-pressed',mode==='reorder' ? 'true' : 'false'); reorder.classList.toggle('on',mode==='reorder'); clear.disabled=!colors.length; sortHue.disabled=sortValue.disabled=colors.length<2;
+      colors.forEach(function(hex){ const button=Q.crel('button','saved-palette-swatch'); button.style.background=hex; button.setAttribute('aria-label',(mode==='remove' ? 'Remove ' : mode==='reorder' ? 'Reorder ' : 'Use ')+hex); button.title=hex;
+        if(mode==='reorder') { button.setAttribute('aria-pressed',selected===hex ? 'true' : 'false'); button.classList.toggle('selected',selected===hex); }
+        button.addEventListener('click',function(){
+          const current=Q.readSavedPalette();
+          if(mode==='remove') { if(save(current.filter(c=>c!==hex))) draw(); }
+          else if(mode==='reorder') { if(!selected) { selected=hex; draw(); } else if(selected===hex) { selected=null; draw(); } else { const a=current.indexOf(selected), b=current.indexOf(hex); if(a>=0 && b>=0) { [current[a],current[b]]=[current[b],current[a]]; if(!save(current)) return; } selected=null; draw(); } }
+          else { const rgb=Q.hexToRgb(hex); if(rgb && app().view) { app().setColor(rgb); UI.closeModal(); if(tray==='color') UI.openTray('color'); } }
+        }); grid.appendChild(button);
       });
     }
     add.addEventListener('click',function(){ const colors=Q.readSavedPalette(), hex=Q.rgbToHex(app().view.color); if(colors.includes(hex)) { Q.toast('Colour is already saved'); return; } if(colors.length>=24) { Q.toast('Palette is full'); return; } colors.push(hex); if(save(colors)) draw(); });
-    remove.addEventListener('click',function(){ removing=!removing; draw(); });
+    extract.addEventListener('click',function(){
+      if(!target || app().doc!==target) { Q.toast('Artwork changed; reopen the palette'); return; }
+      const colors=Q.readSavedPalette(), cel=target.activeCel(false);
+      if(colors.length>=24) { Q.toast('Palette is full'); return; }
+      if(!cel) { Q.toast('The active layer on this frame is empty'); return; }
+      let candidates; try { candidates=Q.extractCelColors(cel,24); } catch(e) { Q.toast('Could not read layer colours',4000); return; }
+      let added=0; for(const hex of candidates) if(!colors.includes(hex) && colors.length<24 && added<8) { colors.push(hex); added++; }
+      if(!added) { Q.toast(candidates.length ? 'No new colours found' : 'No visible colours found'); return; }
+      if(save(colors)) { draw(); Q.toast('Added '+added+' layer colour'+(added===1 ? '' : 's')); }
+    });
+    remove.addEventListener('click',function(){ mode=mode==='remove' ? 'use' : 'remove'; selected=null; draw(); });
+    reorder.addEventListener('click',function(){ mode=mode==='reorder' ? 'use' : 'reorder'; selected=null; draw(); });
+    sortHue.addEventListener('click',function(){ if(save(Q.sortPalette(Q.readSavedPalette(),'hue'))) { selected=null; draw(); } });
+    sortValue.addEventListener('click',function(){ if(save(Q.sortPalette(Q.readSavedPalette(),'brightness'))) { selected=null; draw(); } });
     clear.addEventListener('click',function(){ UI.confirm('Clear saved palette?', 'This removes all saved palette colours from this device. Artwork pixels will not change.',function(){ if(save([])) Q.toast('Palette cleared'); }); });
-    close.addEventListener('click',UI.closeModal); [add,remove,clear,close].forEach(b=>actions.appendChild(b)); card.appendChild(actions); UI.openModal(card); draw();
+    close.addEventListener('click',UI.closeModal); [add,extract,remove,reorder,sortHue,sortValue,clear,close].forEach(b=>actions.appendChild(b)); card.appendChild(actions); UI.openModal(card); Q.el('#modalBody').scrollTop=0; draw();
   };
 
   UI.harmonyDialog = function (applyColor) {
@@ -1996,7 +2022,7 @@
     card.appendChild(Q.crel('p', 'sub', 'A paint, sketch and frame-by-frame animation studio for Android. Artwork is stored on this device only — nothing is uploaded.'));
     card.appendChild(Q.crel('p', 'sub', 'Developed by Qmer'));
     card.appendChild(Q.crel('p', 'sub', 'ቀለም (qalam) means “pen” or “ink”.'));
-    card.appendChild(Q.crel('p', 'sub', 'Version 5.4'));
+    card.appendChild(Q.crel('p', 'sub', 'Version 5.5'));
     const actions = Q.crel('div', 'modal-actions');
     const close = Q.crel('button', 'btn primary', 'Close');
     close.addEventListener('click', function () { UI.closeModal(); });

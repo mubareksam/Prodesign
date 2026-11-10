@@ -127,6 +127,27 @@
     try { localStorage.setItem('qelem-palette',JSON.stringify(colors)); return true; } catch(e) { return false; }
   };
 
+  // Extract approximate frequent colours from a small downscaled copy of one cel.
+  // Alpha-weighting excludes transparent pixels and gives faint pixels less weight.
+  Q.extractCelColors = function (cel, limit) {
+    if(!cel || !cel.width || !cel.height || !Number.isFinite(limit) || limit<=0) return [];
+    const scale=Math.min(1,128/Math.max(cel.width,cel.height));
+    const sample=Q.canvas(Math.max(1,Math.round(cel.width*scale)),Math.max(1,Math.round(cel.height*scale)));
+    const ctx=sample.getContext('2d'); ctx.drawImage(cel,0,0,sample.width,sample.height);
+    const data=ctx.getImageData(0,0,sample.width,sample.height).data, bins=new Map();
+    for(let i=0;i<data.length;i+=4) {
+      const a=data[i+3]; if(a<16) continue;
+      const key=(data[i]>>4)*256+(data[i+1]>>4)*16+(data[i+2]>>4); let bin=bins.get(key);
+      if(!bin) { bin={key:key,weight:0,r:0,g:0,b:0}; bins.set(key,bin); }
+      bin.weight+=a; bin.r+=data[i]*a; bin.g+=data[i+1]*a; bin.b+=data[i+2]*a;
+    }
+    return [...bins.values()].sort((a,b)=>b.weight-a.weight || a.key-b.key).slice(0,Math.min(24,Math.floor(limit))).map(b=>Q.rgbToHex([b.r/b.weight,b.g/b.weight,b.b/b.weight]));
+  };
+  Q.sortPalette = function (colors, mode) {
+    if(mode!=='hue' && mode!=='brightness') return colors.slice();
+    return colors.map((hex,i)=>{ const rgb=Q.hexToRgb(hex), hsv=Q.rgbToHsv(rgb[0],rgb[1],rgb[2]); return {hex:hex,i:i,h:hsv[0],s:hsv[1],v:hsv[2]}; }).sort((a,b)=>mode==='brightness' ? a.v-b.v || a.h-b.h || a.i-b.i : (a.s<0.05)-(b.s<0.05) || a.h-b.h || a.v-b.v || a.i-b.i).map(x=>x.hex);
+  };
+
   Q.rgba = function (rgb, a) {
     return 'rgba(' + rgb[0] + ',' + rgb[1] + ',' + rgb[2] + ',' + (a == null ? 1 : a) + ')';
   };

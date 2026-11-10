@@ -4,20 +4,20 @@ Developed by **Qmer**. An offline painting and frame-animation studio for Androi
 brushes, layers, a colour wheel, a frame timeline with onion skin, Procreate's gesture
 vocabulary, and PNG/JPEG/GIF export. No account, no ads, no network permission.
 
-**Download:** [`Qelem-5.4.apk`](../artifacts/Qelem-5.4.apk) (~324 KB)
+**Download:** [`Qelem-5.5.apk`](../artifacts/Qelem-5.5.apk) (~325 KB)
 
 | | |
 |---|---|
 | Package | `com.qalam.studio` |
-| Version | 5.4 (versionCode 45) |
+| Version | 5.5 (versionCode 46) |
 | Requires | Android 8.0+ (minSdk 26), built for targetSdk 33 |
 | Permissions | `VIBRATE` only — no internet, no storage, no location |
 | Signing | APK Signature Scheme v1 + v2, self-signed with a public test key |
-| SHA-256 | `6237b901653399294f7f92f6670d80bce009226c70d34fa0c2ab865fcd31847e` |
+| SHA-256 | `7afab1bce384c07dd195789edf32be399c0f67429e70a1915fd817ad788a49e4` |
 
 ## Install
 
-1. Download `Qelem-5.4.apk` to the phone (or copy it over USB).
+1. Download `Qelem-5.5.apk` to the phone (or copy it over USB).
 2. Open it from the file manager. Android will ask you to allow installs from that
    app the first time ("Install unknown apps") — allow it, then install.
 3. Open **Qelem**.

@@ -450,7 +450,7 @@ async function run() {
 
   console.log('about');
   Q.UI.aboutSheet();
-  ok(doc.querySelector('#modalBody').textContent.includes('Developed by Qmer') && doc.querySelector('#modalBody').textContent.includes('Version 5.4'), 'About credits Qmer and shows current version');
+  ok(doc.querySelector('#modalBody').textContent.includes('Developed by Qmer') && doc.querySelector('#modalBody').textContent.includes('Version 5.5'), 'About credits Qmer and shows current version');
   Q.UI.closeModal();
 
   console.log('hardware back');
@@ -1494,6 +1494,32 @@ async function run() {
   Q.UI.brushStudio(); const builtIn=App.view.brush, oldJitter=builtIn.jitter; let jitter=doc.querySelector('[aria-label="Size jitter"]'); jitter.value='75'; jitter.dispatchEvent(new win.Event('input',{bubbles:true})); [...doc.querySelectorAll('#modalBody button')].find(b=>b.textContent==='Reset').click(); ok(builtIn.jitter===oldJitter,'reset removes dynamics absent from a built-in default'); Q.UI.closeModal();
   Q.UI.closeTray(); win.localStorage.setItem('qelem-custom-brushes','[{"id":"custom-bad","name":"Broken","base":{},"current":{}}]'); Q.restoreCustomBrushes(); ok(Q.BRUSHES.length===28,'invalid saved brush records are skipped'); win.localStorage.removeItem('qelem-custom-brushes'); Q.restoreCustomBrushes();
   Q.UI.openTray('brushes'); const cs=doc.querySelector('[aria-label="Brush category"]'); cs.value='all'; cs.dispatchEvent(new win.Event('change',{bubbles:true})); Q.UI.closeTray();
+  }
+
+  {
+  console.log('5.5 favorites and palette organization');
+  const button=label=>[...doc.querySelectorAll('#modalBody button')].find(b=>b.textContent.trim()===label);
+  win.localStorage.removeItem('qelem-favorite-brushes'); App.createDoc(64,64,'Palette tests'); const d=App.doc; d.history.clear(); App.setBrush('studio'); Q.UI.brushStudio();
+  button('Add favorite').click(); ok(Q.favoriteBrushes().includes('studio') && button('Remove favorite').getAttribute('aria-pressed')==='true','favorite brush is saved and toggled in Brush Studio');
+  Q.UI.closeModal(); Q.UI.openTray('brushes'); let category=doc.querySelector('[aria-label="Brush category"]'); category.value='FAVORITES'; category.dispatchEvent(new win.Event('change',{bubbles:true}));
+  ok([...doc.querySelectorAll('.brush-card')].filter(visible).length===1 && doc.querySelector('[aria-label="Studio pen brush, favorite"]'),'favorites filter and accessible marker identify the saved brush');
+  Q.UI.openTray('brushes'); ok(Q.favoriteBrushes().includes('studio') && [...doc.querySelectorAll('.brush-card')].filter(visible).length===1,'favorites persist after reopening the library');
+  const proto=Object.getPrototypeOf(win.localStorage), original=proto.setItem; proto.setItem=()=>{throw Error('quota');}; ok(!Q.setBrushFavorite(Q.brushById('technical'),true) && Q.favoriteBrushes().join()==='studio','failed favorite write preserves previous favorites'); proto.setItem=original;
+  win.localStorage.setItem('qelem-favorite-brushes',JSON.stringify(['studio','studio','missing',{},'technical'])); ok(Q.favoriteBrushes().join()==='studio,technical','favorite list ignores malformed, duplicate and missing IDs');
+  win.localStorage.setItem('qelem-favorite-brushes','bad'); ok(Q.favoriteBrushes().length===0,'corrupt favorites do not break the brush library'); win.localStorage.removeItem('qelem-favorite-brushes');
+  const custom=Q.createCustomBrush(Q.brushById('eraser')).brush; ok(Q.setBrushFavorite(custom,true) && Q.favoriteBrushes().includes(custom.id),'custom erasers can be favorited'); ok(Q.deleteCustomBrush(custom) && !Q.favoriteBrushes().includes(custom.id),'deleted custom brushes no longer appear as favorites');
+  Q.UI.brushStudio(); button('Add favorite').click(); button('Remove favorite').click(); ok(!Q.favoriteBrushes().includes('studio'),'favorite can be removed'); Q.UI.closeModal();
+  category=doc.querySelector('[aria-label="Brush category"]'); category.value='all'; category.dispatchEvent(new win.Event('change',{bubbles:true})); Q.UI.closeTray();
+  Q.writeSavedPalette(['#ff0000','#0000ff','#222222']); Q.UI.savedPaletteDialog(); button('Reorder mode').click(); click('[aria-label="Reorder #ff0000"]'); ok(doc.querySelector('[aria-label="Reorder #ff0000"]').getAttribute('aria-pressed')==='true','reorder mode marks the first swatch'); click('[aria-label="Reorder #0000ff"]'); ok(Q.readSavedPalette().join()==='#0000ff,#ff0000,#222222','two swatches can be swapped and saved');
+  button('Sort by hue').click(); ok(Q.readSavedPalette().join()==='#ff0000,#0000ff,#222222','hue sort orders saturated hues before neutrals'); button('Sort by brightness').click(); ok(Q.readSavedPalette()[0]==='#222222','brightness sort orders dark colours first');
+  const saved=Q.readSavedPalette().join(); proto.setItem=()=>{throw Error('quota');}; button('Sort by hue').click(); ok(Q.readSavedPalette().join()===saved,'failed palette reordering preserves saved data'); proto.setItem=original;
+  let cel=d.activeCel(false); button('Extract layer colours').click(); ok(!cel && Q.readSavedPalette().join()===saved,'extracting an empty layer leaves the palette unchanged');
+  cel=d.activeCel(true); const extract=Q.extractCelColors; Q.extractCelColors=()=>['#ff0000','#00ff00','#123456']; button('Extract layer colours').click(); ok(Q.readSavedPalette().includes('#00ff00') && Q.readSavedPalette().includes('#123456') && Q.readSavedPalette().filter(c=>c==='#ff0000').length===1 && d.history.undoStack.length===0,'extraction adds new unique colours without changing artwork'); Q.extractCelColors=extract;
+  Q.UI.closeModal(); Q.UI.savedPaletteDialog(); ok(Q.readSavedPalette().length===5 && !!doc.querySelector('[aria-label="Use #00ff00"]'),'palette organization persists after reopening');
+  const oldExtract=Q.extractCelColors; Q.extractCelColors=()=>Array.from({length:24},(_,i)=>'#'+(i+100).toString(16).padStart(6,'0')); button('Extract layer colours').click(); ok(Q.readSavedPalette().length===13,'extraction adds at most eight colours per action');
+  const prior=Q.readSavedPalette().join(); proto.setItem=()=>{throw Error('quota');}; button('Extract layer colours').click(); ok(Q.readSavedPalette().join()===prior,'failed palette extraction save is atomic'); proto.setItem=original;
+  Q.writeSavedPalette(Array.from({length:24},(_,i)=>'#'+i.toString(16).padStart(6,'0'))); button('Extract layer colours').click(); ok(Q.readSavedPalette().length===24,'extraction respects full palette capacity');
+  Q.writeSavedPalette([]); App.createDoc(64,64,'Different palette target'); button('Extract layer colours').click(); ok(Q.readSavedPalette().length===0 && doc.querySelector('#toast').textContent.includes('Artwork changed'),'stale palette does not extract from a different artwork'); Q.extractCelColors=oldExtract; Q.UI.closeModal();
   }
 
   await App.saveNow(false);

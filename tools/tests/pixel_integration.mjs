@@ -1020,4 +1020,15 @@ console.log('5.4 custom brush drawing');
  ok(Q.resetCustomBrush(Q.brushById(id)) && Q.brushById(id).scatter===before,'reset restores copied baseline');
  Q.deleteCustomBrush(Q.brushById(id)); delete globalThis.localStorage;
 }
+console.log('5.5 palette extraction');
+{
+ const cel=createCanvas(20,10), ctx=cel.getContext('2d'); ctx.fillStyle='#ff0000'; ctx.fillRect(0,0,10,10); ctx.fillStyle='#0000ff'; ctx.fillRect(10,0,5,10); ctx.fillStyle='rgba(0,255,0,0.03)'; ctx.fillRect(15,0,5,10);
+ const original=[...ctx.getImageData(0,0,20,10).data], out=Q.extractCelColors(cel,24);
+ ok(out.join()==='#ff0000,#0000ff','extract weights visible pixels and excludes nearly transparent pixels');
+ ok(Q.extractCelColors(cel,1).join()==='#ff0000' && Q.extractCelColors(null,24).length===0,'extract respects limits and empty sources');
+ ok([...ctx.getImageData(0,0,20,10).data].join()===original.join(),'extract does not modify layer pixels');
+ const large=createCanvas(1024,512), lc=large.getContext('2d'); lc.fillStyle='#124578'; lc.fillRect(0,0,1024,512); ok(Q.extractCelColors(large,24).join()==='#124578','large layer is sampled through a bounded canvas');
+ ok(Q.sortPalette(['#0000ff','#777777','#ff0000'],'hue').join()==='#ff0000,#0000ff,#777777','palette hue sort places neutral colours last');
+ ok(Q.sortPalette(['#ffffff','#111111','#888888'],'brightness').join()==='#111111,#888888,#ffffff','palette brightness sort orders by HSV value');
+}
 console.log(`all ${n} raster integration checks passed`);

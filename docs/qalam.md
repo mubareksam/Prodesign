@@ -8,11 +8,11 @@ brushes, layers with blend modes, a colour wheel, a frame timeline with onion sk
 Procreate's gesture vocabulary, PNG/GIF export and device-dependent MP4 export — all offline, with no account and
 no network permissions at all.
 
-- Package: `com.qalam.studio` · version 5.4 (versionCode 45)
+- Package: `com.qalam.studio` · version 5.5 (versionCode 46)
 - minSdk 26 (Android 8.0) · targetSdk 33 · armeabi-v7a/arm64/x86/x86_64 independent
   (everything is HTML/JS running inside the app's own `WebView`, so the APK has no
   native code)
-- APK: **`artifacts/Qelem-5.4.apk`** (~324 KB), signed with a v1+v2 scheme
+- APK: **`artifacts/Qelem-5.5.apk`** (~325 KB), signed with a v1+v2 scheme
 - The written analysis of Procreate that this app was specified from:
   [`docs/procreate-analysis.md`](procreate-analysis.md)
 
@@ -20,7 +20,7 @@ no network permissions at all.
 
 ## 1. Install
 
-1. Copy `artifacts/Qelem-5.4.apk` to the phone (USB, Drive, chat to yourself — anything).
+1. Copy `artifacts/Qelem-5.5.apk` to the phone (USB, Drive, chat to yourself — anything).
 2. Open it with the phone's file manager. Android will ask to allow installs from
    that app the first time ("Install unknown apps").
 3. Install and open **Qelem**. If an earlier Qalam version is already installed, Android should offer an update that preserves its data. Back up important artwork first. Android does not allow this app to silently uninstall itself; do not uninstall it unless you have backed up its local artwork.
@@ -87,7 +87,8 @@ Procreate-inspired design changes, not an exact replica or feature parity;
 Android WebView touch and physical-device layout still need testing.
 
 - **Brush tray** — 28 presets, with labelled ink, pencil, paint and eraser icons and sample stroke thumbnails. Thumbnails are generated using each preset’s brush engine; erasers are shown as painted marks. Search by brush name or choose an ink, pencil, paint or eraser category; both filters combine and remain until cleared or the app restarts.
-  Select a brush and open **Brush studio** to adjust spacing, flow, opacity, edge
+  Select a brush and open **Brush studio** to add or remove it from Favorites; the brush library Favorites filter shows starred brushes. Favorites stay on this device.
+  Use Brush studio to adjust spacing, flow, opacity, edge
   hardness, pressure response, stabilization, speed size, taper-in, size jitter,
   scatter and (for grain tips) grain. A live sample uses the actual brush engine,
   with erasers displayed as paint. Duplicate a preset into a custom profile, then
@@ -119,8 +120,14 @@ Android WebView touch and physical-device layout still need testing.
   swatch to remove it. Clear palette asks for confirmation. One palette of up to
   24 unique colours is stored on this device, independent of artworks; it is not
   included in project copies or exports and has no import/export or multiple sets.
-  If device storage is unavailable, saving reports failure; palette edits cannot
-  be undone through artwork history.
+  **Extract layer colours** adds up to eight approximate frequent colours from the
+  raw active layer on this frame. It downsamples to at most 128 pixels per side,
+  weights by alpha, ignores nearly transparent pixels and considers the top 24
+  quantized colour bins, so tiny details can be missed or blended. Other layers,
+  background, layer visibility and opacity, and the selection do not affect it.
+  **Reorder mode** swaps two tapped swatches; sort buttons arrange them by hue or
+  HSV brightness. These actions do not change art. If device storage is unavailable,
+  saving reports failure; palette edits cannot be undone through artwork history.
 - **Colour harmonies** — tap the three-circle icon in the Colour tray to see
   seven clickable hue suggestions: two analogous (±30°), a complement (180°),
   two triadic (±120°), and two split complementary (±150°). The suggestions use the current colour's hue, with
@@ -644,7 +651,7 @@ tools/
   tests/gif_roundtrip.mjs    encodes a GIF and decodes it with an independent decoder
   tests/ui_smoke.mjs         jsdom boot + full UI drive (gallery -> export)
   tests/ui_layout_browser.mjs optional Chromium layout and interaction checks
-artifacts/Qelem-5.4.apk           the signed, installable artefact
+artifacts/Qelem-5.5.apk           the signed, installable artefact
 docs/procreate-analysis.md   the Procreate study this app was built from
 docs/qalam.md                this file
 ```
@@ -674,7 +681,7 @@ Design notes worth knowing before changing code:
 
 ```bash
 bash tools/fetch-toolchain.sh     # once per machine: JVM, apktool, aapt2, jars, npm
-bash tools/build.sh               # -> artifacts/Qelem-5.4.apk (signed + verified)
+bash tools/build.sh               # -> artifacts/Qelem-5.5.apk (signed + verified)
 bash tools/check_reference.sh     # optional: javac-check the Java mirrors
 ```
 

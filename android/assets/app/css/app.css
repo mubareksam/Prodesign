@@ -757,3 +757,5 @@ button:focus-visible, input:focus-visible, select:focus-visible, summary:focus-v
 :root[data-theme="light"] .studio-preview { background:#e1e2e5; border-color:#b7bac2; }
 .brush-studio-actions { display:flex; flex-wrap:wrap; gap:8px; margin-top:14px; }
 .brush-studio-actions .btn { flex:1 1 120px; min-height:44px; }
+.saved-palette-swatch.selected { outline:3px solid var(--accent); outline-offset:2px; }
+.brush-studio-actions .btn svg { width:16px; height:16px; vertical-align:middle; }

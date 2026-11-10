@@ -171,6 +171,22 @@
     customRecords=next; const i=Q.BRUSHES.indexOf(brush); if(i>=0) Q.BRUSHES.splice(i,1); return true;
   };
 
+  // Favourites are device-local and only reference brushes that still exist.
+  Q.favoriteBrushes = function () {
+    try {
+      const list=JSON.parse(localStorage.getItem('qelem-favorite-brushes') || '[]');
+      if(!Array.isArray(list)) return [];
+      const valid=new Set(Q.BRUSHES.map(b=>b.id)), out=[];
+      for(const id of list.slice(0,104)) if(typeof id==='string' && valid.has(id) && !out.includes(id)) out.push(id);
+      return out;
+    } catch(e) { return []; }
+  };
+  Q.setBrushFavorite = function (brush, favorite) {
+    if(!brush || brush.syncedEraser || !Q.BRUSHES.includes(brush)) return false;
+    const list=Q.favoriteBrushes().filter(id=>id!==brush.id); if(favorite) list.push(brush.id);
+    try { localStorage.setItem('qelem-favorite-brushes',JSON.stringify(list)); return true; } catch(e) { return false; }
+  };
+
   Q.brushById = function (id) {
     for (const b of Q.BRUSHES) if (b.id === id) return b;
     return Q.BRUSHES[0];

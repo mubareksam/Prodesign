@@ -5,6 +5,20 @@ The supplied feature inventory is a roadmap, not a list of completed work.
 
 ## Available now
 
+- Favorite built-in or custom brushes in Brush Studio; a Favorites filter and
+  star marker identify them in the brush library. Favorites are device-local,
+  not saved in artwork, and deleted custom brushes no longer appear in the list.
+- The saved palette can extract up to eight approximate frequent colours at a
+  time from the raw active layer on the current frame. It samples a downscaled
+  128-pixel maximum side and alpha-weights pixels, ignoring nearly transparent
+  pixels; the result may miss small details or contain blended colours. It scans
+  the 24 most frequent colour bins, skips duplicates and never exceeds 24 saved
+  swatches. Background, other layers, layer visibility/opacity, selection and
+  effects from compositing are not included. Artwork pixels are not changed.
+- Palette swatches can be swapped in Reorder mode or sorted by hue or HSV
+  brightness, with saved order and explicit local-storage failure reporting.
+  Palette and favorites are not shared between devices or included in projects.
+
 - Duplicate, rename and delete up to 24 device-local custom brush profiles from
   existing brushes, including erasers. Reset returns to the copied settings. They
   use existing stamp engines and are not included in projects or exports; no
