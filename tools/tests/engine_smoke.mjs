@@ -1,0 +1,479 @@
+/* Headless smoke test for the drawing engine (doc.js + brushes.js + core.js).
+ * Stubs the 2D canvas API so the document model, stroke engine, undo history
+ * and layer/frame operations can be exercised without a browser.
+ * Run:  node tools/tests/engine_smoke.mjs
+ */
+import { readFileSync } from 'node:fs';
+import { fileURLToPath } from 'node:url';
+import path from 'node:path';
+
+const here = path.dirname(fileURLToPath(import.meta.url));
+const root = path.resolve(here, '../..');
+const JS = path.join(root, 'android/assets/app/js');
+
+const calls = { drawImage: 0, putImageData: 0, fill: 0, fillRect: 0 };
+
+function makeCtx(cv) {
+  const ctx = {
+    canvas: cv,
+    globalAlpha: 1,
+    globalCompositeOperation: 'source-over',
+    fillStyle: '#000',
+    strokeStyle: '#000',
+    lineWidth: 1,
+    lineCap: 'butt',
+    shadowColor: '',
+    shadowBlur: 0,
+    shadowOffsetY: 0,
+    save() {}, restore() {},
+    beginPath() {}, closePath() {}, arc() {}, moveTo() {}, lineTo() {}, fill() { calls.fill++; },
+    stroke() {}, rect() {}, clip() {}, ellipse() {},
+    clearRect() {}, fillRect() { calls.fillRect++; }, strokeRect() {},
+    drawImage() { calls.drawImage++; },
+    putImageData() { calls.putImageData++; },
+    getImageData(x, y, w, h) {
+      return { width: w, height: h, data: new Uint8ClampedArray(Math.max(0, w * h * 4)) };
+    },
+    createImageData(w, h) { return { width: w, height: h, data: new Uint8ClampedArray(w * h * 4) }; },
+    createLinearGradient() { return { addColorStop() {} }; },
+    createRadialGradient() { return { addColorStop() {} }; },
+    setTransform() {}, translate() {}, rotate() {}, scale() {}, resetTransform() {},
+    measureText() { return { width: 8 }; }, fillText() {}
+  };
+  return ctx;
+}
+
+globalThis.window = globalThis;
+globalThis.performance = { now: () => Date.now() };
+globalThis.document = {
+  createElement(tag) {
+    if (tag !== 'canvas') throw new Error('unexpected element ' + tag);
+    const cv = {
+      width: 1, height: 1,
+      getContext() { if (!this._c) this._c = makeCtx(this); return this._c; },
+      toDataURL() { return 'data:image/png;base64,AAAA'; }
+    };
+    return cv;
+  }
+};
+const navStub = { vibrate() {} };
+globalThis.window.addEventListener = () => {};
+
+function load(file) {
+  const code = readFileSync(path.join(JS, file), 'utf8');
+  new Function('window', 'document', 'navigator', 'performance', code)(
+    globalThis, globalThis.document, navStub, globalThis.performance);
+}
+
+load('core.js');
+load('doc.js');
+load('brushes.js');
+load('effects.js');
+load('fill.js');
+load('selection.js');
+load('spritesheet.js');
+
+const Q = globalThis.Q;
+let checks = 0;
+function ok(cond, label) {
+  checks++;
+  if (!cond) throw new Error('FAILED: ' + label);
+  console.log('  ✓ ' + label);
+}
+
+console.log('responsive brush rails');
+const rails0=Q.computeRailLayout(800,60,792,0), rails100=Q.computeRailLayout(800,60,792,100);
+ok(rails0.brushTop===60 && rails100.brushTop+rails100.brushHeight===792 && rails0.sliderHeight===156, 'rail position stays inside the portrait workspace');
+ok(rails0.toolsHeight===326 && rails0.toolsTop+rails0.toolsHeight<=792, 'six tool buttons fit the computed rail height');
+const compact=Q.computeRailLayout(320,60,312,50);
+ok(compact.sliderHeight===80 && compact.brushHeight<=compact.available && compact.toolsHeight<=compact.available, 'short screens compact the slider rail and constrain tool rails');
+const crowded=Q.computeRailLayout(320,60,140,50);
+ok(crowded.sliderHeight===80 && crowded.brushHeight===80 && crowded.toolsHeight===80, 'very short workspace constrains rails for scrolling');
+const sane=Q.sanitizeRailPreferences({side:'other',position:Infinity}), clamped=Q.sanitizeRailPreferences({side:'right',position:-10});
+ok(sane.side==='left' && sane.position===50 && clamped.side==='right' && clamped.position===0, 'saved rail preferences are sanitized');
+
+ok(Q.sanitizeSmudgeHardness(undefined)===1 && Q.sanitizeSmudgeHardness(NaN)===1 && Q.sanitizeSmudgeHardness(-1)===0 && Q.sanitizeSmudgeHardness(2)===1, 'smudge edge preferences are validated');
+
+console.log('colour harmony suggestions');
+const harmonies=Q.colorHarmonies(0,1,1), muted=Q.colorHarmonies(210,0,0);
+ok(harmonies.length===7 && harmonies[2].rgb.join(',')==='0,255,255' && harmonies[3].rgb.join(',')==='0,0,255' && harmonies[4].rgb.join(',')==='0,255,0','complement and triadic colours use the correct hue rotations');
+ok(harmonies[5].rgb.join(',')==='0,128,255' && harmonies[6].rgb.join(',')==='0,255,128', 'split complementary suggestions rotate hue by ±150°');
+ok(muted.every(c=>Math.max(...c.rgb)>=165 && Math.min(...c.rgb)<Math.max(...c.rgb)), 'neutral colours produce visible chromatic suggestions');
+
+console.log('gesture delay validation');
+const delays=Q.sanitizeGestureDelays(), badDelays=Q.sanitizeGestureDelays({shape:Infinity,eyedrop:'500'}), clampedDelays=Q.sanitizeGestureDelays({shape:181,eyedrop:2050}), roundedDelays=Q.sanitizeGestureDelays({shape:431,eyedrop:1510});
+ok(delays.shape===380 && delays.eyedrop===520 && badDelays.shape===380 && badDelays.eyedrop===520, 'gesture timing defaults survive missing or corrupt settings');
+ok(clampedDelays.shape===200 && clampedDelays.eyedrop===2000 && roundedDelays.shape===440 && roundedDelays.eyedrop===1520, 'gesture timings are clamped and aligned with slider steps');
+
+console.log('document + layers');
+const doc = new Q.Doc({ width: 128, height: 128, name: 'test' });
+ok(doc.layers.length === 1, 'starts with one layer');
+ok(doc.frames.length === 1, 'starts with one frame');
+ok(doc.activeCel(false) === null, 'cel is allocated lazily');
+doc.addLayer();
+ok(doc.layers.length === 2, 'addLayer inserts a layer');
+ok(doc.frames[0].cels.length === 2, 'cels stay in sync with layers');
+doc.addLayer(0);
+ok(doc.layers.length === 3, 'layer duplicate works');
+doc.moveLayer(2, -1);
+ok(doc.activeLayer === 1, 'moveLayer updates the active index');
+doc.deleteLayer(1);
+ok(doc.layers.length === 2, 'deleteLayer removes one');
+doc.history.undo();
+ok(doc.layers.length === 3, 'undo restores the deleted layer');
+
+console.log('frames');
+doc.addFrame(false);
+ok(doc.frames.length === 2, 'addFrame appends');
+doc.addFrame(true);
+ok(doc.frames.length === 3, 'duplicate frame appends');
+doc.moveFrame(2, -1);
+ok(doc.activeFrame === 1, 'moveFrame reselects');
+doc.deleteFrame(1);
+ok(doc.frames.length === 2, 'deleteFrame removes');
+doc.history.undo();
+ok(doc.frames.length === 3, 'undo restores deleted frame');
+
+console.log('strokes + undo history');
+doc.activeFrame = 0;
+doc.activeLayer = 0;
+const before = doc.history.undoStack.length;
+const brush = Q.brushById('studio');
+const stroke = new Q.Stroke(doc, brush, [10, 20, 30], 12, 1);
+stroke.begin({ x: 10, y: 10, pressure: 0.6, t: 0 });
+for (let i = 1; i <= 40; i++) stroke.add({ x: 10 + i * 2, y: 10 + Math.sin(i / 4) * 12, pressure: 0.5 + i / 100, t: i * 8 });
+const dirty = stroke.end();
+ok(calls.fill > 10, 'stroke stamped with the fill engine');
+ok(dirty && dirty.w > 0 && dirty.h > 0, 'stroke tracked a dirty rect');
+ok(doc.history.undoStack.length === before + 1, 'one history entry per stroke');
+ok(doc.activeCel(false) !== null, 'cel allocated on first paint');
+doc.history.undo();
+ok(calls.putImageData > 0, 'undo writes pixels back');
+ok(doc.history.canRedo(), 'redo becomes available');
+doc.history.redo();
+ok(!doc.history.canRedo(), 'redo stack drains');
+
+console.log('every brush preset draws');
+for (const b of Q.BRUSHES) {
+  const s = new Q.Stroke(doc, b, [200, 40, 40], Math.max(2, b.size * 0.4), 0.8);
+  s.begin({ x: 20, y: 20, pressure: 0.8, t: 0 });
+  for (let i = 1; i <= 25; i++) s.add({ x: 20 + i * 3, y: 20 + i * 1.5, pressure: 0.7, t: i * 9 });
+  const d = s.end();
+  ok(!!d, 'brush "' + b.name + '" produced a dirty rect');
+}
+
+console.log('bounded brush sprite cache');
+{
+ const b=Q.brushById('airbrush'), first=Q.brushSprite(b,[1,2,3]); ok(first===Q.brushSprite(b,[1,2,3]),'brush sprite cache reuses identical sprite');
+ for(let i=0;i<35;i++) Q.brushSprite(b,[i+10,20,30]); const newFirst=Q.brushSprite(b,[1,2,3]); ok(newFirst!==first,'least recently used brush sprites are evicted');
+ const recent=Q.brushSprite(b,[44,20,30]); ok(recent===Q.brushSprite(b,[44,20,30]),'recent sprites are retained after eviction');
+}
+
+console.log('custom brush storage validation');
+{
+ const entries=new Map(), storage={getItem:k=>entries.get(k)||null,setItem:(k,v)=>entries.set(k,String(v))}; globalThis.localStorage=storage; Q.restoreCustomBrushes();
+ const eraser=Q.createCustomBrush(Q.brushById('eraser')).brush; ok(eraser.eraser,'duplicated eraser preserves erasing behavior'); const id=eraser.id;
+ Q.restoreCustomBrushes(); ok(Q.brushById(id).eraser,'custom eraser remains an eraser after reload');
+ const obj=Q.brushById(id); storage.setItem=()=>{throw Error('full');}; ok(!Q.deleteCustomBrush(obj) && Q.brushById(id)===obj && !Q.renameCustomBrush(obj,'New name'),'quota failure leaves existing profile and name untouched');
+ ok(!!Q.createCustomBrush(Q.brushById('studio')).error,'quota failure prevents creation'); storage.setItem=(k,v)=>entries.set(k,String(v));
+ for(let i=1;i<24;i++) ok(!!Q.createCustomBrush(Q.brushById('studio')).brush,'custom profile '+(i+1)+' created');
+ ok(!!Q.createCustomBrush(Q.brushById('studio')).error && Q.BRUSHES.filter(b=>b.custom).length===24,'custom profile capacity is bounded');
+ Q.restoreCustomBrushes(); ok(Q.BRUSHES.filter(b=>b.custom).length===24,'all allowed profiles persist');
+ entries.set('qelem-custom-brushes','invalid json'); Q.restoreCustomBrushes(); ok(Q.BRUSHES.length===28,'corrupt custom storage does not affect built-ins'); delete globalThis.localStorage;
+}
+
+console.log('5.8 palette sets and migration');
+{
+ const entries=new Map(), storage={getItem:k=>entries.has(k)?entries.get(k):null,setItem:(k,v)=>entries.set(k,String(v))}; globalThis.localStorage=storage;
+ entries.set('qelem-palette',JSON.stringify(['#abc','#ff0000','bad'])); let state=Q.paletteSets(); ok(state.legacy && Q.readSavedPalette().join()==='#aabbcc,#ff0000','legacy palette is readable without migration');
+ const raw=entries.get('qelem-palette'); let r=Q.managePalette('create','default','Second'); state=Q.paletteSets(); const second=state.active;
+ ok(!r.error && state.palettes.length===2 && state.palettes[0].colors.join()==='#aabbcc,#ff0000' && Q.readSavedPalette().length===0 && entries.get('qelem-palette')===raw,'creating a palette migrates without overwriting the original key');
+ ok(Q.writeSavedPalette(['#123456'],second) && !Q.writeSavedPalette([], 'default'),'writes only affect the expected active palette');
+ ok(!Q.writeSavedPalette(Array(1),second) && Q.readSavedPalette().join()==='#123456','malformed sparse swatch arrays cannot corrupt stored data');
+ ok(!Q.selectPalette('default').error && Q.readSavedPalette().join()==='#aabbcc,#ff0000','switching palettes restores the original colours');
+ r=Q.managePalette('duplicate','default','Copy'); state=Q.paletteSets(); const copy=state.active; ok(!r.error && Q.readSavedPalette().join()==='#aabbcc,#ff0000','duplicate copies the selected colours');
+ Q.writeSavedPalette(['#ffffff']); Q.selectPalette('default'); ok(Q.readSavedPalette().join()==='#aabbcc,#ff0000','duplicate is independent of original');
+ ok(!!Q.managePalette('rename',copy,'Wrong').error && !Q.managePalette('rename','default','<img src=x>').error,'stale palette management is rejected and names remain data');
+ const uid=Q.uid; Q.uid=()=>second.slice('palette-'.length); const collisionState=entries.get('qelem-palettes-v1'); ok(!!Q.managePalette('create','default','Collision').error && entries.get('qelem-palettes-v1')===collisionState,'duplicate palette IDs are rejected without overwriting'); Q.uid=uid;
+ const before=entries.get('qelem-palettes-v1'), set=storage.setItem; storage.setItem=()=>{throw Error('quota');}; ok(!!Q.managePalette('delete','default').error && !!Q.selectPalette(copy).error && !Q.writeSavedPalette([]) && entries.get('qelem-palettes-v1')===before,'storage failure preserves all palette sets atomically'); storage.setItem=set;
+ ok(!Q.managePalette('delete','default').error && Q.paletteSets().active===second,'deleting active palette switches to another');
+ while(Q.paletteSets().palettes.length<8) {const s=Q.paletteSets();ok(!Q.managePalette('create',s.active,'Palette').error,'palette set created within limit');}
+ const full=entries.get('qelem-palettes-v1'), active=Q.paletteSets().active; ok(!!Q.managePalette('create',active,'Overflow').error && entries.get('qelem-palettes-v1')===full,'palette set count is capped at eight');
+ const prevUid=Q.uid; Q.uid=()=>second.slice('palette-'.length); ok(!!Q.managePalette('duplicate',active,'Overflow').error,'palette limit safely rejects duplicates'); Q.uid=prevUid;
+ entries.set('qelem-palettes-v1','{"version":2,"palettes":[]}'); state=Q.paletteSets(); ok(!!state.error && Q.readSavedPalette().join()==='#aabbcc,#ff0000' && !Q.writeSavedPalette(['#ffffff']) && entries.get('qelem-palettes-v1')==='{"version":2,"palettes":[]}','unrecognized palette data is read-only and never overwritten');
+ entries.set('qelem-palettes-v1','{bad'); ok(!!Q.paletteSets().error && !!Q.managePalette('create','default','X').error,'corrupt palette storage is protected');
+ for(const bad of [JSON.stringify({version:1,active:'missing',palettes:[{id:'default',name:'X',colors:[]}]}),JSON.stringify({version:1,active:'default',palettes:[{id:'default',name:'X',colors:['#ff0000','#ff0000']}]}),JSON.stringify({version:1,active:'default',palettes:[{id:'default',name:'X',colors:['#FF0000']}]}),JSON.stringify({version:1,active:'default',palettes:[{id:'default',name:'X',colors:[]},{id:'default',name:'Y',colors:[]}]} )]) { entries.set('qelem-palettes-v1',bad); ok(!!Q.paletteSets().error && !Q.writeSavedPalette([]) && entries.get('qelem-palettes-v1')===bad,'invalid palette schema remains unchanged'); }
+ entries.delete('qelem-palettes-v1'); storage.setItem=()=>{throw Error('quota');}; ok(!!Q.managePalette('create','default','New').error && !entries.has('qelem-palettes-v1') && entries.get('qelem-palette')===raw,'failed first migration retains legacy palette'); storage.setItem=set;
+ entries.set('qelem-palettes-v1',JSON.stringify({version:1,active:'default',palettes:[{id:'default',name:'Only',colors:[]}]})); ok(!!Q.managePalette('delete','default').error && Q.paletteSets().palettes.length===1,'last palette cannot be deleted');
+
+ ok(Q.parsePaletteHex('abc, #00ff00; Ff0000 #abc').colors.join()==='#aabbcc,#00ff00,#ff0000' && !!Q.parsePaletteHex('#ff0000 nope').error && !!Q.parsePaletteHex('').error && !!Q.parsePaletteHex('x'.repeat(2049)).error,'HEX list parser validates, normalizes and deduplicates');
+ delete globalThis.localStorage;
+}
+
+console.log('compositing + export');
+const flat = doc.flatten(0);
+ok(flat.width === 128 && flat.height === 128, 'flatten matches document size');
+const thumb = doc.thumbnail(0, 64);
+ok(thumb.width <= 64 || thumb.height <= 64, 'thumbnail is downscaled');
+ok(calls.drawImage > 0, 'composite used drawImage');
+ok(doc.memoryMB() >= 0, 'memory estimate available: ' + doc.memoryMB() + ' MB');
+
+console.log('merge down');
+const d2 = new Q.Doc({ width: 32, height: 32 });
+d2.addLayer();
+d2.activeCel(true);
+d2.mergeDown(1);
+ok(d2.layers.length === 1, 'mergeDown collapses two layers');
+
+console.log('structural history regression checks');
+const d3 = new Q.Doc({ width: 32, height: 32 });
+const original = d3.activeCel(true);
+d3.clearLayer(0);
+ok(d3.activeCel(false) === null, 'clear removes the cel');
+d3.history.undo();
+ok(d3.activeCel(false) === original, 'undo clear restores the original cel');
+d3.history.redo();
+ok(d3.activeCel(false) === null, 'redo clear removes the cel again');
+d3.history.undo();
+d3.addLayer();
+const upper = d3.activeCel(true);
+d3.mergeDown(1);
+ok(d3.cel(0, 0, false) !== original, 'merge uses a new canvas');
+d3.history.undo();
+ok(d3.cel(0, 0, false) === original && d3.cel(0, 1, false) === upper, 'undo merge restores both original cels');
+d3.history.redo();
+ok(d3.layers.length === 1, 'redo reapplies merge');
+const d4 = new Q.Doc({ width: 32, height: 32 });
+d4.history.beginPixels(d4.activeCel(true));
+d4.history.endPixels({ x: -4, y: -3, w: 10, h: 9 });
+ok(d4.history.undoStack[0].rect.x === 0 && d4.history.undoStack[0].rect.w === 6, 'pixel history clips dirty rectangles');
+
+console.log('smoothing and symmetry');
+const smoothing = new Q.Stroke(new Q.Doc({width:128,height:128}), Q.brushById('studio'), [0,0,0], 10, 1);
+smoothing.begin({x:0,y:0,pressure:1,t:1});
+const samples = [];
+const originalLine = smoothing._lineTo;
+smoothing._lineTo = (x,y) => samples.push({x,y});
+smoothing.curveAnchor = {x:0,y:0};
+smoothing._curveTo({x:10,y:0},{x:10,y:10});
+ok(samples.length > 2 && samples.some(p => p.x < 10 && p.y > 0), 'quadratic interpolation rounds corners');
+smoothing._lineTo = originalLine;
+const p = Q.symmetryPoints('quadrant', 10, 20, 100, 80);
+ok(p.length === 4 && p[3].x === 90 && p[3].y === 60, 'quadrant symmetry mirrors both axes');
+ok(Q.symmetryPoints('radial', 10, 20, 100, 80).length === 8, 'radial symmetry produces eight copies');
+const symDoc = new Q.Doc({width:100,height:80});
+symDoc.guide.symmetry = 'quadrant'; symDoc.layer().assisted = true;
+const beforeSym = calls.fill;
+const symStroke = new Q.Stroke(symDoc, Q.brushById('monoline'), [0,0,0], 10, 1);
+symStroke.begin({x:10,y:20,pressure:1,t:1}); symStroke.end();
+ok(calls.fill - beforeSym >= 4 && symDoc.history.undoStack.length === 1, 'mirrored stamps share one undo step');
+
+smoothing.dirty = null; smoothing.pending = null;
+smoothing._grow(5,5,2); smoothing._grow(30,5,2);
+smoothing.pending = null; smoothing._grow(70,5,2);
+ok(smoothing.pending.x > 60 && smoothing.dirty.x < 5, 'wet flush bounds stay independent from overall stroke bounds');
+
+console.log('frame timing and effects');
+const timing = new Q.Doc({width:4,height:4});
+timing.setFrameDuration(0, 4);
+ok(timing.frames[0].duration === 4, 'frame hold set');
+timing.history.undo();
+ok(timing.frames[0].duration === 1, 'frame hold undo');
+timing.history.redo();
+timing.addFrame(true);
+ok(timing.frames[1].duration === 4, 'duplicating a frame copies its hold');
+const image = {width:1,height:1,data:new Uint8ClampedArray([10,20,30,127])};
+Q.applyPixelEffect(image,'invert',1);
+ok(image.data[0] === 245 && image.data[1] === 235 && image.data[2] === 225 && image.data[3] === 127, 'invert preserves alpha');
+const blur = {width:3,height:1,data:new Uint8ClampedArray([0,0,0,255, 255,255,255,255, 0,0,0,255])};
+Q.applyPixelEffect(blur,'blur',0.01);
+ok(blur.data[0] === blur.data[8] && blur.data[0] > 0 && blur.data[4] > 0 && blur.data[4] < 255, 'Gaussian-like blur averages neighbours symmetrically at image edges');
+const alphaBlur = {width:2,height:1,data:new Uint8ClampedArray([255,0,0,255, 0,0,0,0])};
+Q.applyPixelEffect(alphaBlur,'blur',0.01);
+ok(alphaBlur.data[0] >= 250 && alphaBlur.data[4] >= 250 && alphaBlur.data[3] > 0, 'blur preserves colours across transparent edges');
+const line = {width:3,height:1,data:new Uint8ClampedArray([0,0,0,255, 255,255,255,255, 0,0,0,255])};
+Q.applyPixelEffect(line, 'motion', 0.01);
+ok(line.data[0] === 128 && line.data[4] === 85, 'horizontal motion blur averages nearby pixels');
+const sharp = {width:3,height:1,data:new Uint8ClampedArray([100,100,100,255, 150,150,150,255, 100,100,100,255])};
+Q.applyPixelEffect(sharp, 'sharpen', 1);
+ok(sharp.data[4] > 150 && sharp.data[3] === 255, 'sharpen increases local contrast without changing alpha');
+const glow = {width:3,height:1,data:new Uint8ClampedArray([255,255,255,255, 0,0,0,0, 0,0,0,0])};
+Q.applyPixelEffect(glow, 'bloom', 0.2);
+ok(glow.data[7] > 0 && glow.data[4] > 0, 'bloom extends highlights into transparent neighbours');
+const glitch = {width:3,height:1,data:new Uint8ClampedArray([10,0,0,255, 20,0,0,255, 30,0,0,255])};
+Q.applyPixelEffect(glitch, 'glitch', 0.04);
+ok(glitch.data[4] === 10, 'glitch displaces pixels in bands');
+const scene = new Q.Doc({width:4,height:4});
+scene.setFrameGroup(0, 'Scene A'); scene.addFrame(true);
+ok(scene.frames[1].group === 'Scene A', 'duplicating frame keeps group label');
+scene.history.undo(); scene.history.undo();
+ok(scene.frames[0].group === '', 'frame group assignment is undoable');
+scene.history.redo();
+ok(scene.frames[0].group === 'Scene A', 'frame group assignment can be redone');
+
+
+console.log('scanline flood fill');
+const pixels = new Uint8ClampedArray(5 * 3 * 4);
+for (let y=0; y<3; y++) { const i=(y*5+2)*4; pixels[i]=pixels[i+1]=pixels[i+2]=0; pixels[i+3]=255; }
+const region = {width:5,height:3,data:pixels};
+const rect=Q.floodFill(region,0,1,[220,30,40],0);
+ok(rect.x===0 && rect.y===0 && rect.w===2 && rect.h===3, 'fill stops at an opaque boundary and reports dirty bounds');
+ok(pixels[0]===220 && pixels[3]===255 && pixels[(4*4)+3]===0, 'fill changes only connected pixels');
+ok(Q.floodFill(region,0,0,[220,30,40],0)===null, 'fill skips an identical colour');
+const shades={width:3,height:1,data:new Uint8ClampedArray([100,100,100,255, 105,105,105,255, 140,140,140,255])};
+Q.floodFill(shades,0,0,[0,0,0],10);
+ok(shades.data[4]===0 && shades.data[8]===140, 'fill tolerance includes similar colours only');
+
+
+console.log('rectangular editing');
+const bounds=Q.selectionRect({x:6.2,y:5.2},{x:-3,y:1.3},5,6);
+ok(bounds.x===0 && bounds.y===1 && bounds.w===5 && bounds.h===5, 'selection normalizes reverse drag and clips to canvas');
+ok(Q.selectionRect({x:-9,y:0},{x:-2,y:5},5,6)===null, 'selection outside canvas is rejected');
+function sample() { return {width:3,height:2,data:new Uint8ClampedArray([1,11,21,31, 2,12,22,32, 3,13,23,33, 4,14,24,34, 5,15,25,35, 6,16,26,36])}; }
+function ids(img) { return Array.from(img.data).filter((_,i)=>i%4===0).join(','); }
+const hor=sample(); Q.flipImage(hor,true,false);
+ok(ids(hor)==='3,2,1,6,5,4' && hor.data[3]===33, 'horizontal flip preserves complete RGBA pixels');
+const ver=sample(); Q.flipImage(ver,false,true);
+ok(ids(ver)==='4,5,6,1,2,3', 'vertical flip handles non-square images');
+const rot=sample(); Q.flipImage(rot,true,true);
+ok(ids(rot)==='6,5,4,3,2,1', '180 degree rotation swaps opposite pixels');
+Q.flipImage(rot,true,true);
+ok(ids(rot)==='1,2,3,4,5,6', 'rotating twice restores image');
+
+
+console.log('layer protection');
+Q.toast = () => {};
+const protectedDoc = new Q.Doc({width:16,height:16});
+protectedDoc.addLayer(); const protectedCel=protectedDoc.activeCel(true);
+protectedDoc.setLayerProp(1,'locked',true); const lockCount=protectedDoc.history.undoStack.length;
+protectedDoc.clearLayer(1); protectedDoc.deleteLayer(1); protectedDoc.mergeDown(1);
+ok(protectedDoc.layers.length===2 && protectedDoc.activeCel(false)===protectedCel && protectedDoc.history.undoStack.length===lockCount, 'locked layer cannot be cleared, deleted or merged');
+protectedDoc.history.undo(); ok(!protectedDoc.layers[1].locked, 'lock toggle is undoable');
+protectedDoc.history.redo(); ok(protectedDoc.layers[1].locked, 'lock toggle is redoable');
+protectedDoc.setLayerProp(1,'locked',false); protectedDoc.setLayerProp(0,'locked',true); protectedDoc.mergeDown(1);
+ok(protectedDoc.layers.length===2, 'cannot merge into a locked lower layer');
+const intersection=Q.intersectRect({x:0,y:0,w:5,h:5},{x:3,y:2,w:5,h:3});
+ok(intersection.x===3 && intersection.y===2 && intersection.w===2 && intersection.h===3, 'selection intersection bounds dirty regions');
+ok(Q.intersectRect({x:0,y:0,w:1,h:1},{x:1,y:1,w:2,h:2})===null, 'disjoint selection intersection is empty');
+
+
+console.log('background and alpha-lock history');
+const themed=new Q.Doc({width:16,height:16}); themed.setBackground('#123456');
+ok(themed.bg==='#123456', 'canvas background colour changes');
+themed.history.undo(); ok(themed.bg==='#ffffff', 'background change can be undone');
+themed.history.redo(); ok(themed.bg==='#123456', 'background change can be redone');
+themed.setLayerProp(0,'alphaLocked',true); themed.addLayer(0);
+ok(themed.layer().alphaLocked, 'duplicating a layer preserves its alpha-lock setting');
+const alphaCount=themed.history.undoStack.length; themed.mergeDown(1); themed.clearLayer(1);
+ok(themed.layers.length===2 && themed.history.undoStack.length===alphaCount, 'alpha-locked layers cannot be cleared or merged');
+themed.setLayerProp(1,'alphaLocked',false); themed.mergeDown(1);
+ok(themed.layers.length===2, 'merge also protects an alpha-locked lower layer');
+
+
+console.log('batch animation editing');
+const batch=new Q.Doc({width:16,height:16}); batch.addFrame(false); batch.addFrame(false); batch.addFrame(false); batch.activeFrame=1;
+ok(batch.setPlayRange(1,2) && batch.playRange.start===1, 'playback range can be set');
+batch.history.undo(); ok(batch.playRange===null, 'playback range change is undoable'); batch.history.redo();
+ok(!batch.setPlayRange(3,1) && batch.playRange.end===2, 'invalid playback range is rejected');
+batch.batchFrames(1,3,'label','Scene A'); batch.batchFrames(1,2,'hold',4);
+ok(batch.frames[1].group==='Scene A' && batch.frames[3].group==='Scene A' && batch.frames[1].duration===4, 'batch label and hold update only the requested frames');
+batch.history.undo(); ok(batch.frames[1].duration===1 && batch.frames[1].group==='Scene A', 'batch hold is undone in one step');
+batch.history.redo(); batch.batchFrames(1,3,'reverse');
+ok(batch.frames[1].duration===1 && batch.frames[3].duration===4 && batch.activeFrame===3, 'batch reverse preserves frame data and tracks active frame');
+batch.history.undo(); ok(batch.frames[1].duration===4 && batch.activeFrame===1, 'batch reverse is undoable');
+const source=batch.cel(1,0,true); batch.batchFrames(1,2,'duplicate');
+ok(batch.frames.length===6 && batch.cel(3,0,false)!==source && batch.frames[3].duration===4, 'batch duplicate copies cels and timing into new frames');
+batch.history.undo(); ok(batch.frames.length===4 && batch.playRange.start===1 && batch.playRange.end===2, 'batch duplication undo restores frames and range');
+batch.history.redo(); ok(batch.frames.length===6, 'batch duplication redo restores frames');
+const rangeDoc=new Q.Doc({width:2,height:2}); rangeDoc.addFrame(false); rangeDoc.addFrame(false); rangeDoc.setPlayRange(1,2);
+rangeDoc.deleteFrame(2); ok(rangeDoc.playRange.start===1 && rangeDoc.playRange.end===1, 'deleting a frame clamps playback range to the timeline');
+rangeDoc.history.undo(); ok(rangeDoc.playRange.end===2 && rangeDoc.frames.length===3, 'undo deletion restores original playback range');
+const full=new Q.Doc({width:2,height:2}); for (let i=0;i<59;i++) full.addFrame(false);
+const h=full.history.undoStack.length; ok(!full.batchFrames(0,0,'duplicate') && full.frames.length===60 && full.history.undoStack.length===h, 'batch duplicate respects frame limit');
+const sheet=Q.spriteSheetLayout({width:64,height:32,frames:[1,2,3]},2,0.5);
+ok(sheet.width===64 && sheet.height===32 && sheet.rows===2, 'sprite sheet layout handles partial rows and scale');
+ok(Q.spriteSheetLayout({width:4096,height:4096,frames:[1,2,3,4]},2,1)===null, 'sprite sheet rejects oversized output');
+
+
+console.log('animation assist');
+const old=new Q.Doc({width:8,height:8,onionFrames:3});
+ok(old.onionPrevFrames===3 && old.onionNextFrames===3, 'legacy onion count migrates to both directions');
+const anim=new Q.Doc({width:8,height:8}); for(let i=0;i<4;i++) anim.addFrame(false);
+anim.activeFrame=2; anim.onionPrevFrames=2; anim.onionNextFrames=1; anim.setFrameSkipped(1,true);
+let neighbors=Q.onionNeighbors(anim);
+ok(neighbors.previous.join(',')==='0' && neighbors.next.join(',')==='3', 'onion neighbours skip excluded frames by default');
+anim.onionIncludeSkipped=true; neighbors=Q.onionNeighbors(anim);
+ok(neighbors.previous.join(',')==='1,0' && neighbors.next.join(',')==='3', 'onion assist can include skipped frames');
+anim.onionPrevFrames=0; ok(Q.onionNeighbors(anim).previous.length===0, 'previous onion count can be set to zero');
+anim.history.undo(); ok(!anim.frames[1].skipped, 'frame skip is undoable'); anim.history.redo();
+anim.activeFrame=1; anim.addFrame(true);
+ok(anim.frames[2].skipped, 'duplicating a skipped frame keeps its skip setting'); anim.history.undo();
+anim.batchFrames(0,2,'skip'); ok(anim.frames.slice(0,3).every(f=>f.skipped), 'batch skip excludes chosen frames');
+anim.history.undo(); ok(!anim.frames[0].skipped && anim.frames[1].skipped, 'batch skip undo restores individual frame flags');
+anim.batchFrames(0,2,'include'); ok(anim.frames.slice(0,3).every(f=>!f.skipped), 'batch include re-enables frames');
+anim.setFrameSkipped(0,true); anim.batchFrames(0,2,'reverse');
+ok(anim.frames[2].skipped && !anim.frames[0].skipped, 'batch reverse moves frame skip flags with their frames');
+anim.batchFrames(0,2,'duplicate'); ok(anim.frames[5].skipped && !anim.frames[3].skipped, 'batch duplicate preserves each skip flag');
+anim.history.undo(); anim.history.undo(); ok(anim.frames[0].skipped && !anim.frames[2].skipped && anim.frames.length===5, 'undo restores original skipped frames after batch edits');
+anim.setFrameDuration(0,60); ok(anim.frames[0].duration===60, 'frame holds support up to sixty ticks');
+anim.setFrameDuration(0,200); ok(anim.frames[0].duration===60, 'frame hold is capped at sixty ticks');
+
+
+console.log('additional effects');
+const poster={width:1,height:1,data:new Uint8ClampedArray([10,100,220,127])}; Q.applyPixelEffect(poster,'posterize',1);
+ok(poster.data.join(',')==='0,85,255,127', 'posterize quantizes colour while preserving alpha');
+const solar={width:1,height:1,data:new Uint8ClampedArray([64,128,240,255])}; Q.applyPixelEffect(solar,'solarize',1);
+ok(solar.data.join(',')==='64,127,15,255', 'solarize inverts bright channels');
+const block={width:3,height:1,data:new Uint8ClampedArray([255,0,0,255,0,0,0,0,0,255,0,255])}; Q.applyPixelEffect(block,'pixelate',0.01);
+ok(block.data[0]===255 && block.data[3]===128 && block.data[4]===255 && block.data[7]===128 && block.data[9]===255, 'pixelate averages premultiplied colour and handles partial blocks');
+
+
+console.log('2.1 batch cel and frame operations');
+const celDoc=new Q.Doc({width:4096,height:4096}); celDoc.activeCel(true); celDoc.addFrame(false); celDoc.addFrame(false);
+const beforeHistory=celDoc.history.undoStack.length;
+ok(celDoc.copyCelToRange(0,1,2).includes('Too many pixels') && celDoc.history.undoStack.length===beforeHistory && !celDoc.cel(1,0,false), 'oversized cel copy is rejected without edits or history');
+ok(celDoc.copyCelToRange(1,0,0).includes('empty'), 'empty source cel is rejected');
+ok(celDoc.copyCelToRange(0,0,0).includes('destination'), 'source-only cel copy is rejected');
+ok(celDoc.copyCelToRange(-1,0,1).includes('Invalid'), 'invalid source is rejected');
+ok(!celDoc.deleteFrameRange(0,2) && !celDoc.deleteFrameRange(-1,1), 'invalid or all-frame deletion is rejected');
+
+
+console.log('2.3 animation guide and image layer');
+const guided=new Q.Doc({width:100,height:100});
+ok(guided.motionGuide.length===0 && guided.motionGuideVisible, 'legacy document defaults to an empty visible animation guide');
+ok(!guided.setMotionGuide([{x:1,y:2}]) && !guided.setMotionGuide([{x:0,y:0},{x:NaN,y:2}]), 'invalid paths are rejected');
+guided.setMotionGuideVisible(false); guided.setMotionGuide([{x:-5,y:20},{x:120,y:80}]);
+ok(guided.motionGuide[0].x===0 && guided.motionGuide[1].x===100 && guided.motionGuideVisible, 'guide is clamped and shown when drawn');
+guided.history.undo(); ok(guided.motionGuide.length===0 && !guided.motionGuideVisible, 'one undo restores previous guide and visibility');
+guided.history.redo(); ok(guided.motionGuide.length===2 && guided.motionGuideVisible, 'guide redraw is redoable');
+const imported=Q.canvas(100,100); guided.addFrame(false); ok(guided.insertImageLayer(imported,'Imported') && guided.layers.length===2 && guided.cel(1,1,false)===imported && !guided.cel(0,1,false), 'import inserts image in current frame only');
+guided.history.undo(); ok(guided.layers.length===1 && guided.motionGuide.length===2, 'undo import removes image layer without deleting guide');
+guided.history.redo(); ok(guided.cel(1,1,false)===imported, 'redo restores imported cel');
+
+
+console.log('2.4 layer clipping');
+const clips=new Q.Doc({width:16,height:16});
+ok(!clips.setLayerClipped(0,true) && !clips.history.canUndo(), 'bottom layer cannot be clipped');
+clips.addLayer(); clips.setLayerClipped(1,true); ok(clips.layers[1].clipped && clips.clipBase(1)===0, 'clipped layer targets the nearest base below');
+clips.history.undo(); ok(!clips.layers[1].clipped, 'clipping toggle can be undone'); clips.history.redo();
+clips.addLayer(1); ok(clips.layers[2].clipped && clips.clipBase(2)===0, 'duplicate keeps clipping and joins same stack');
+const oldCount=clips.layers.length, oldUndo=clips.history.undoStack.length; clips.mergeDown(2);
+ok(clips.layers.length===oldCount && clips.history.undoStack.length===oldUndo, 'merge is refused while clipping is enabled');
+clips.moveLayer(0,1); ok(clips.layers[0].clipped && clips.clipBase(0)===-1 && clips.clipBase(2)===1, 'reorder can orphan and rebind clipped layers');
+ok(clips.setLayerClipped(0,false) && !clips.layers[0].clipped, 'orphan clipped layer can be released');
+clips.history.undo(); ok(clips.layers[0].clipped, 'undo restores orphan state');
+
+
+console.log('2.5 audio track');
+const soundDoc=new Q.Doc({width:16,height:16});
+ok(soundDoc.audioTrack===null, 'legacy projects start without an audio track');
+ok(!soundDoc.setAudioTrack({name:'remote',data:'https://example.com/a.mp3'}), 'audio track rejects remote URLs');
+ok(!soundDoc.setAudioTrack({name:'bad',data:'data:text/html;base64,AAAA'}), 'audio track rejects non-audio data URLs');
+ok(!soundDoc.setAudioTrack({name:'empty',data:'data:audio/wav;base64,'}), 'audio track rejects empty audio data');
+const audioTrack={name:'beat.mp3',data:'data:audio/mpeg;base64,AAAA',muted:false};
+ok(soundDoc.setAudioTrack(audioTrack) && soundDoc.audioTrack.name==='beat.mp3', 'audio track is added');
+soundDoc.setAudioMuted(true); ok(soundDoc.audioTrack.muted, 'audio track can be muted'); soundDoc.history.undo(); ok(!soundDoc.audioTrack.muted, 'mute is undoable');
+soundDoc.history.undo(); ok(soundDoc.audioTrack===null, 'import undo removes track'); soundDoc.history.redo(); ok(soundDoc.audioTrack.name==='beat.mp3', 'import redo restores track');
+soundDoc.addLayer(); soundDoc.history.undo(); ok(soundDoc.audioTrack.name==='beat.mp3', 'unrelated structural undo preserves the track');
+
+console.log(`\nall ${checks} engine checks passed`);

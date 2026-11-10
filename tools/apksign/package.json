@@ -1,0 +1,6 @@
+{
+  "name": "qalam-sign",
+  "private": true,
+  "type": "module",
+  "dependencies": { "apk_sign_ts": "1.0.1" }
+}

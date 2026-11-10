@@ -1,0 +1,1620 @@
+/* Integration test: boots the real Qalam web app inside jsdom with a stubbed
+ * 2D canvas, then drives the actual UI — new canvas, brushes, layers, colour,
+ * strokes, undo, animation frames, timeline, save + reopen — so wiring bugs
+ * show up here instead of on a phone.
+ *
+ * Run:  cd tools/tests && npm install && node ui_smoke.mjs
+ */
+import { readFileSync } from 'node:fs';
+import { fileURLToPath } from 'node:url';
+import path from 'node:path';
+import { JSDOM } from 'jsdom';
+
+const here = path.dirname(fileURLToPath(import.meta.url));
+const root = path.resolve(here, '../..');
+const APP = path.join(root, 'android/assets/app');
+
+let failures = 0;
+function ok(cond, label) {
+  if (cond) { console.log('  ✓ ' + label); }
+  else { failures++; console.log('  ✗ ' + label); }
+}
+
+/* ── 2D context stub ─────────────────────────────────────── */
+
+const counts = { drawImage: 0, fill: 0, putImageData: 0, getImageData: 0 };
+
+function makeCtx(cv) {
+  return {
+    canvas: cv,
+    globalAlpha: 1, globalCompositeOperation: 'source-over',
+    fillStyle: '#000', strokeStyle: '#000', lineWidth: 1, lineCap: 'butt',
+    shadowColor: '', shadowBlur: 0, shadowOffsetX: 0, shadowOffsetY: 0, filter: 'none',
+    save() {}, restore() {},
+    beginPath() {}, closePath() {}, arc() {}, moveTo() {}, lineTo() {},
+    fill() { counts.fill++; }, stroke() {},
+    rect() {}, clip() {}, ellipse() {}, quadraticCurveTo() {}, bezierCurveTo() {},
+    clearRect() {}, fillRect() {}, strokeRect() {},
+    drawImage() { counts.drawImage++; },
+    putImageData() { counts.putImageData++; },
+    getImageData(x, y, w, h) {
+      counts.getImageData++;
+      return { width: w, height: h, data: new Uint8ClampedArray(Math.max(4, w * h * 4)) };
+    },
+    createImageData(w, h) { return { width: w, height: h, data: new Uint8ClampedArray(Math.max(4, w * h * 4)) }; },
+    createLinearGradient() { return { addColorStop() {} }; },
+    createRadialGradient() { return { addColorStop() {} }; },
+    createPattern() { return null; },
+    setTransform() {}, resetTransform() {}, translate() {}, rotate() {}, scale() {},
+    measureText() { return { width: 8 }; }, fillText() {}, strokeText() {}, setLineDash() {}
+  };
+}
+
+const html = readFileSync(path.join(APP, 'index.html'), 'utf8');
+const dom = new JSDOM(html, {
+  url: 'https://qalam.local/',
+  runScripts: 'outside-only',
+  pretendToBeVisual: true
+});
+const win = dom.window;
+const doc = win.document;
+// Include production CSS: checking only the modal's own class missed a hidden ancestor.
+const style = doc.createElement('style');
+style.textContent = readFileSync(path.join(APP, 'css', 'app.css'), 'utf8');
+doc.head.appendChild(style);
+function visible(el) {
+  for (let node = el; node && node.nodeType === 1; node = node.parentElement) {
+    const css = win.getComputedStyle(node);
+    if (node.classList.contains('hidden') || css.display === 'none' || css.visibility === 'hidden') return false;
+  }
+  return true;
+}
+
+// ctx stub for every canvas
+win.HTMLCanvasElement.prototype.getContext = function (type) {
+  if (!this._ctx) this._ctx = makeCtx(this);
+  return this._ctx;
+};
+win.HTMLCanvasElement.prototype.toDataURL = function () {
+  return 'data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mP8z8BQDwAEhQGAhKmMIQAAAABJRU5ErkJggg==';
+};
+win.HTMLCanvasElement.prototype.setPointerCapture = function () {};
+win.HTMLCanvasElement.prototype.releasePointerCapture = function () {};
+win.HTMLCanvasElement.prototype.hasPointerCapture = function () { return false; };
+// give every element a sensible box so hit tests / layout maths work
+win.Element.prototype.getBoundingClientRect = function () {
+  const w = this.width && this.width > 1 ? this.width : 1024;
+  const h = this.height && this.height > 1 ? this.height : 768;
+  return { left: 0, top: 0, right: w, bottom: h, width: w, height: h, x: 0, y: 0 };
+};
+// jsdom never decodes images; emulate a loader that resolves on the next tick
+win.Image = class {
+  set src(value) { this._src = value; setTimeout(() => { if (this.onload) this.onload(); }, 0); }
+  get src() { return this._src; }
+};
+// no indexedDB: exercises the localStorage fallback
+delete win.indexedDB;
+win.URL.createObjectURL = () => 'blob:stub';
+win.URL.revokeObjectURL = () => {};
+win.navigator.vibrate = () => true;
+
+/* ── load the app scripts in page order ─────────────────── */
+
+const files = ['core.js', 'doc.js', 'brushes.js', 'gif.js', 'effects.js', 'fill.js', 'selection.js', 'spritesheet.js', 'view.js', 'storage.js', 'ui.js', 'app.js'];
+for (const f of files) {
+  const code = readFileSync(path.join(APP, 'js', f), 'utf8');
+  win.eval(code);
+}
+
+const nativeFileReader = win.FileReader;
+const Q = win.Q;
+const App = Q.App;
+
+function pointer(target, type, x, y, opts = {}) {
+  const e = new win.Event(type, { bubbles: true, cancelable: true });
+  Object.assign(e, {
+    clientX: x, clientY: y,
+    pointerId: opts.id || 1,
+    pointerType: opts.pointerType || 'touch',
+    pressure: opts.pressure == null ? 1 : opts.pressure,
+    isPrimary: true,
+    getCoalescedEvents: () => [],
+    preventDefault() {}, stopPropagation() {}
+  });
+  target.dispatchEvent(e);
+  return e;
+}
+
+function click(sel) {
+  const el = doc.querySelector(sel);
+  if (!el) throw new Error('missing element ' + sel);
+  el.dispatchEvent(new win.Event('click', { bubbles: true }));
+  return el;
+}
+
+const wait = (ms) => new Promise((r) => setTimeout(r, ms));
+const tick = () => new Promise((r) => setTimeout(r, 0));
+
+async function run() {
+  await tick(); await tick();
+  ok(visible(doc.querySelector('#splash')) && doc.querySelector('#splash img').getAttribute('src') === 'img/icon.png', 'launch screen displays app icon');
+  await wait(450);
+  ok(!visible(doc.querySelector('#splash')), 'launch screen clears');
+
+  // jsdom leaves a canvas at its default 300x150 box; give the viewport a
+  // phone-sized box so screen coordinates map onto the document the way they
+  // do on a device (otherwise "in the middle of the canvas" is off-paper).
+  const viewCv = doc.querySelector('#view');
+  viewCv.width = 960;
+  viewCv.height = 720;
+  App.view.resize();
+
+  console.log('boot');
+  ok(!!App.view, 'viewport created');
+  ok(doc.querySelector('#gallery') && !doc.querySelector('#gallery').classList.contains('hidden'), 'gallery visible on launch');
+  ok(Q.Store.mode() === 'local', 'storage fell back to localStorage: ' + Q.Store.mode());
+
+  console.log('new canvas');
+  ok(!!doc.querySelector('main #btnNew'), 'new canvas action is in the main gallery');
+  click('#btnNew');
+  ok(visible(doc.querySelector('#modal')), 'new-canvas dialog is actually visible over the gallery');
+  const presets = doc.querySelectorAll('#modalBody .preset');
+  ok(presets.length >= 4, 'presets rendered (' + presets.length + ')');
+  presets[4].dispatchEvent(new win.Event('click', { bubbles: true }));   // animation 1280x1280
+  const nameInput = doc.querySelector('#modalBody input');
+  nameInput.value = 'Test artwork';
+  click('#modalBody .btn.primary');
+  await tick();
+  ok(!!App.doc, 'document created');
+  ok(App.doc.name === 'Test artwork', 'name applied');
+  ok(doc.querySelector('#gallery').classList.contains('hidden'), 'studio shown');
+  ok(App.doc.width === 1280 && App.doc.height === 1280, 'preset size applied');
+
+  console.log('brushes');
+  click('#btnBrush');
+  ok(!doc.querySelector('#tray').classList.contains('hidden'), 'brush tray opens');
+  const cards = doc.querySelectorAll('#trayBody .brush-card');
+  ok(cards.length === Q.BRUSHES.length, 'all ' + cards.length + ' brushes listed');
+  cards[5].dispatchEvent(new win.Event('click', { bubbles: true }));
+  await tick();
+  ok(App.view.brush.id === Q.BRUSHES[5].id, 'brush selection applied: ' + App.view.brush.name);
+  ok(doc.querySelectorAll('#trayBody .brush-kind svg').length === Q.BRUSHES.length, 'brushes have identifiable category icons');
+  Q.UI.brushStudio();
+  const flow = doc.querySelector('#modalBody input[aria-label="Flow"]');
+  flow.value = '63'; flow.dispatchEvent(new win.Event('input', {bubbles:true}));
+  ok(App.view.brush.flow === 0.63 && Q.Store.meta('brushSettings').marker.flow === 0.63, 'brush studio saves brush settings');
+  click('#modalBody .btn.primary');
+
+  const sizeBefore = App.view.size;
+  const slider = doc.querySelector('#sizeSlider');
+  slider.value = '48';
+  slider.dispatchEvent(new win.Event('input', { bubbles: true }));
+  ok(App.view.size === 48, 'size slider drives the brush');
+
+  console.log('drawing');
+  const view = doc.querySelector('#view');
+  const before = App.doc.history.undoStack.length;
+  pointer(view, 'pointerdown', 120, 140, { pointerType: 'pen', pressure: 0.5 });
+  for (let i = 1; i <= 12; i++) pointer(view, 'pointermove', 120 + i * 12, 140 + Math.sin(i / 2) * 20);
+  pointer(view, 'pointerup', 264, 140);
+  await tick();
+  ok(App.doc.history.undoStack.length === before + 1, 'stroke created one undo step');
+  ok(App.doc.activeCel(false) !== null, 'cel allocated by the stroke');
+  ok(counts.fill + counts.drawImage > 20, 'stamps were painted');
+
+  console.log('undo / redo');
+  click('#btnUndo');
+  ok(App.doc.history.canRedo(), 'undo works from the toolbar');
+  click('#btnRedo');
+  ok(!App.doc.history.canRedo(), 'redo works from the toolbar');
+
+  console.log('layers');
+  click('#btnLayers');
+  ok(doc.querySelectorAll('#trayBody .layer-row').length === 1, 'one layer row');
+  click('#trayBody [aria-label="Add layer or image"]');
+  ok(doc.querySelector('#modalBody').textContent.includes('Blank layer') && doc.querySelector('#modalBody').textContent.includes('Import image') && doc.querySelector('#modalBody').textContent.includes('Gradient'), 'add menu offers blank, image and gradient layers');
+  Array.from(doc.querySelectorAll('#modalBody button')).find(x=>x.textContent==='Blank layer').click();
+  ok(App.doc.layers.length === 2, 'add layer from the tray');
+  ok(doc.querySelectorAll('#trayBody .layer-row').length === 2, 'layer list refreshed');
+  const more = doc.querySelector('#trayBody .layer-row [aria-label^="Layer options:"]');
+  more.dispatchEvent(new win.Event('click', { bubbles: true }));
+  ok(!doc.querySelector('#modal').classList.contains('hidden'), 'layer action sheet opens');
+  Q.UI.closeModal();
+  const blendSel = doc.querySelectorAll('#trayBody .layer-row select');
+  ok(blendSel.length >= 0, 'layer rows built without errors');
+  const mergeChip=doc.querySelector('#trayBody [aria-label="Merge layer down"]');
+  mergeChip.click(); ok(App.doc.layers.length===1, 'layer tray merge action works');
+  App.undo(); ok(App.doc.layers.length===2, 'layer tray merge can be undone');
+  Q.UI.closeTray();
+
+  console.log('colour');
+  click('#btnColor');
+  ok(!!doc.querySelector('#trayBody #wheel'), 'colour wheel rendered');
+  const swatch = doc.querySelector('#trayBody .swatches button');
+  swatch.dispatchEvent(new win.Event('click', { bubbles: true }));
+  ok(Q.rgbToHex(App.view.color).startsWith('#'), 'palette swatch applied: ' + Q.rgbToHex(App.view.color));
+  const hex = doc.querySelector('#trayBody .hexrow input');
+  hex.value = '#22b8cf';
+  hex.dispatchEvent(new win.Event('change', { bubbles: true }));
+  ok(Q.rgbToHex(App.view.color) === '#22b8cf', 'hex field applied');
+  const pure=doc.querySelector('#trayBody [aria-label="Pure hue"]');
+  ok(pure && pure.querySelector('svg'), 'pure hue has an accessible icon button');
+  pure.click(); ok(Q.rgbToHex(App.view.color)==='#00ddff' && hex.value==='#00ddff', 'pure hue button sets full saturation and value and updates hex');
+  ok(Q.rgbToHex(App.previousColor)==='#22b8cf', 'pure hue participates in previous colour swap');
+  hex.value='#000000'; hex.dispatchEvent(new win.Event('change',{bubbles:true}));
+  let wheel=doc.querySelector('#wheel'); wheel.getBoundingClientRect=()=>({left:0,top:0,width:200,height:200,right:200,bottom:200});
+  pointer(wheel,'pointerdown',100,190,{id:801}); pointer(wheel,'pointerup',100,190,{id:801});
+  ok(Q.rgbToHex(App.view.color)==='#000000', 'choosing a hue while black leaves colour black');
+  Q.UI.closeTray(); Q.UI.openTray('color'); wheel=doc.querySelector('#wheel'); wheel.getBoundingClientRect=()=>({left:0,top:0,width:200,height:200,right:200,bottom:200});
+  click('#trayBody [aria-label="Pure hue"]'); ok(Q.rgbToHex(App.view.color)==='#80ff00', 'hue selected on black survives closing and reopening the tray');
+  App.setColor([80,40,20]); Q.UI.openTray('color'); wheel=doc.querySelector('#wheel'); wheel.getBoundingClientRect=()=>({left:0,top:0,width:200,height:200,right:200,bottom:200});
+  pointer(wheel,'pointerdown',130,70,{id:802}); pointer(wheel,'pointerup',130,70,{id:802});
+  ok(Q.rgbToHex(App.view.color)!=='#ff5500', 'single corner tap remains a normal colour pick');
+  pointer(wheel,'pointerdown',130,70,{id:803}); pointer(wheel,'pointerup',130,70,{id:803});
+  ok(Q.rgbToHex(App.view.color)==='#ff5500' && doc.querySelector('#trayBody .hexrow input').value==='#ff5500', 'double tapping square corner selects pure hue');
+  App.setColor([80,40,20]); Q.UI.openTray('color'); wheel=doc.querySelector('#wheel'); wheel.getBoundingClientRect=()=>({left:0,top:0,width:200,height:200,right:200,bottom:200});
+  pointer(wheel,'pointerdown',130,70,{id:804}); pointer(wheel,'pointermove',110,80,{id:804}); pointer(wheel,'pointerup',130,70,{id:804});
+  pointer(wheel,'pointerdown',130,70,{id:805}); pointer(wheel,'pointerup',130,70,{id:805}); ok(Q.rgbToHex(App.view.color)!=='#ff5500','drag does not count as the first double tap');
+  win.dispatchEvent(new win.Event('resize')); ok(doc.querySelectorAll('#trayBody #wheel').length===1 && doc.querySelector('#trayBody [aria-label="Pure hue"]'), 'resizing the colour tray rebuilds it without duplicates');
+  Q.UI.closeTray();
+
+  console.log('drawing guides');
+  Q.UI.guideDialog();
+  const symmetry = doc.querySelector('#modalBody select[aria-label="Symmetry"]');
+  symmetry.value = 'quadrant'; symmetry.dispatchEvent(new win.Event('change', {bubbles:true}));
+  const assist = doc.querySelector('#modalBody select[aria-label="Layer assist"]');
+  assist.value = 'on'; assist.dispatchEvent(new win.Event('change', {bubbles:true}));
+  ok(App.doc.guide.symmetry === 'quadrant' && App.doc.layer().assisted, 'symmetry assist enabled on selected layer');
+  const guideSelect = doc.querySelector('#modalBody select[aria-label="Guide"]');
+  guideSelect.value = 'perspective2'; guideSelect.dispatchEvent(new win.Event('change',{bubbles:true}));
+  const horizon = doc.querySelector('#modalBody input[aria-label="Horizon"]');
+  horizon.value = '65'; horizon.dispatchEvent(new win.Event('input',{bubbles:true}));
+  ok(App.doc.guide.type === 'perspective2' && App.doc.guide.horizon === 0.65, 'perspective guide and horizon can be adjusted');
+
+  click('#modalBody .btn.primary');
+
+  console.log('animation + timeline');
+  click('#btnTimeline');
+  ok(!doc.querySelector('#timeline').classList.contains('hidden'), 'timeline opens');
+  ok(doc.querySelectorAll('#timeline .tl-frame').length === 1, 'one frame thumbnail');
+  ok(!!doc.querySelector('#timeline .tl-head') && !!doc.querySelector('#timeline .tl-more [aria-label="Batch frames"]'), 'timeline separates main and secondary controls');
+  ok(doc.querySelectorAll('#timeline .tl-categories .icon-chip').length===3 && !!doc.querySelector('#timeline .tl-more [aria-label="Frame options"] svg'), 'timeline uses accessible, distinct icon categories and tools');
+  click('#timeline [aria-label="Animation settings tools"]'); ok(!!doc.querySelector('#timeline .tl-more [aria-label="Animation settings"]'), 'timeline category reveals settings');
+  click('#timeline [aria-label="Frame tools"]');
+  click('#timeline .tl-add');
+  ok(App.doc.frames.length === 2, 'frame added');
+  ok(App.doc.onion === true, 'onion skin switched on automatically');
+  Q.UI.animationSettings();
+  const mode = doc.querySelector('#modalBody select[aria-label="Playback"]');
+  mode.value = 'pingpong'; mode.dispatchEvent(new win.Event('change', {bubbles:true}));
+  const opacity = doc.querySelector('#modalBody input[aria-label="Onion opacity"]');
+  opacity.value = '40'; opacity.dispatchEvent(new win.Event('input', {bubbles:true}));
+  ok(App.doc.playMode === 'pingpong' && App.doc.onionAlpha === 0.4, 'animation settings control mode and onion opacity');
+  const onionCount = doc.querySelector('#modalBody input[aria-label="Previous frames"]');
+  onionCount.value = '3'; onionCount.dispatchEvent(new win.Event('input', {bubbles:true}));
+  const prevColor = doc.querySelector('#modalBody input[aria-label="Previous colour"]');
+  prevColor.value = '#bb4488'; prevColor.dispatchEvent(new win.Event('input', {bubbles:true}));
+  ok(App.doc.onionPrevFrames === 3 && App.doc.onionPrevColor === '#bb4488', 'onion count and tint are configurable');
+  click('#modalBody .btn.primary');
+
+  await tick();
+  ok(doc.querySelectorAll('#timeline .tl-frame').length === 2, 'timeline refreshed');
+  App.togglePlay();
+  ok(App.playing === true, 'playback started');
+  await wait(120);
+  App.togglePlay();
+  ok(App.playing === false, 'playback stopped');
+  App.doc.playMode = 'once'; App.doc.fps = 30; App.selectFrame(0);
+  App.togglePlay(); await wait(100);
+  ok(!App.playing && App.doc.activeFrame === 1, 'one-shot playback stops at the last frame');
+  App.doc.playMode = 'pingpong'; App.doc.fps = 12;
+
+  App.selectFrame(0);
+  ok(App.doc.activeFrame === 0, 'frame selection works');
+
+  Q.UI.frameSheet(0);
+  const hold = doc.querySelector('#modalBody input[aria-label="Frame hold"]');
+  hold.value = '3'; hold.dispatchEvent(new win.Event('change', {bubbles:true}));
+  ok(App.doc.frames[0].duration === 3 && Math.round(Q.frameDelayMs(App.doc,0)) === 250, 'frame hold changes playback timing');
+  const groupInput = doc.querySelector('#modalBody input[aria-label="Group label"]');
+  groupInput.value = 'Scene A';
+  [...doc.querySelectorAll('#modalBody button')].find(b => b.textContent === 'Save group label').click();
+  ok(App.doc.frames[0].group === 'Scene A', 'frame group label is saved');
+  ok(doc.querySelector('#timeline .frame-group').textContent === 'Scene A', 'frame group label appears in timeline');
+
+  Q.UI.closeModal();
+  ok(Q.animationOrder(4, 'pingpong').join(',') === '0,1,2,3,2,1', 'ping-pong export order excludes duplicate endpoints');
+
+  console.log('menu + save');
+  click('#btnMenu');
+  ok(doc.querySelectorAll('#trayBody .menu-item').length >= 6, 'action menu populated');
+  ok([...doc.querySelectorAll('#trayBody .action-heading')].map(x=>x.textContent).join(',')==='Create & edit,Canvas & view,Animation,Export,Preferences,File & help', 'actions are organized into labelled groups');
+  ok(Array.from(doc.querySelectorAll('#trayBody .menu-item')).some(x=>x.textContent.includes('Transparent PNG')), 'transparent export is available in actions');
+  ok(Array.from(doc.querySelectorAll('#trayBody .menu-item')).some(x=>x.textContent.includes('Canvas background')), 'background settings are available in actions');
+  const selectionMenu=Array.from(doc.querySelectorAll('#trayBody .menu-item')).find(el=>el.textContent.includes('Selection & transform'));
+  ok(!!selectionMenu, 'selection and transform is accessible from the menu');
+  if (selectionMenu) selectionMenu.click();
+  ok(visible(doc.querySelector('#modal')) && doc.querySelector('#modalBody').textContent.includes('Draw rectangle'), 'selection menu opens the edit dialog');
+  Q.UI.closeModal(); Q.UI.closeTray();
+  const savedId = App.doc.id;
+  await App.saveNow(false);
+  const list = await Q.Store.list();
+  ok(list.length === 1 && list[0].id === savedId, 'artwork saved to storage');
+  ok(!!list[0].thumb, 'thumbnail stored');
+
+  console.log('reopen from gallery');
+  App.backToGallery();
+  await tick(); await tick();
+  ok(!doc.querySelector('#gallery').classList.contains('hidden'), 'back to gallery');
+  const cardsG = doc.querySelectorAll('#galGrid .g-card');
+  ok(cardsG.length === 1, 'gallery lists the artwork');
+  { const originalDoc=App.doc, hist=App.doc.history.undoStack.length, storedBefore=win.localStorage.getItem('qalam-projects');
+  const originalOpen=App.openDoc; let opens=0; App.openDoc=function(){ opens++; return originalOpen.apply(App,arguments); };
+  const previewButton=doc.querySelector('#galGrid .g-preview'), openButton=doc.querySelector('#galGrid .g-open'), deleteButton=doc.querySelector('#galGrid .g-del');
+  ok(previewButton && previewButton.querySelector('svg') && previewButton.getAttribute('aria-label').includes('Preview artwork') && openButton.tagName==='BUTTON' && deleteButton.getAttribute('aria-label').includes('Delete artwork'), 'gallery has separate accessible preview, open and delete buttons');
+  previewButton.click(); ok(visible(doc.querySelector('#modal')) && visible(doc.querySelector('.gallery-preview-image img')) && doc.querySelector('#modalBody h2').textContent==='Test artwork' && doc.querySelector('#modalBody').textContent.includes('not a full-resolution or animated preview'), 'preview displays saved thumbnail and explains its limitations');
+  ok(!opens && App.doc===originalDoc && App.doc.history.undoStack.length===hist && win.localStorage.getItem('qalam-projects')===storedBefore && visible(doc.querySelector('#gallery')), 'preview does not open or change artwork');
+  ok(win.qalamBack()===0 && !visible(doc.querySelector('#modal')) && !doc.querySelector('#modalBody').classList.contains('gallery-preview-modal'),'Android Back closes preview and restores modal sizing');
+  Q.UI.previewGalleryItem({name:'<img src=x onerror=alert(1)>',w:64,h:32,frames:1,thumb:null});
+  ok(doc.querySelector('#modalBody h2').textContent==='<img src=x onerror=alert(1)>' && !doc.querySelector('#modalBody h2 img') && doc.querySelector('.gallery-preview-empty') && doc.querySelector('#modalBody').textContent.includes('1 frame'), 'missing thumbnail has safe fallback and plain-text metadata'); Q.UI.closeModal();
+  Q.UI.previewGalleryItem({name:'Bad thumbnail',thumb:'https://example.com/image.png'}); ok(!doc.querySelector('.gallery-preview-image img') && doc.querySelector('.gallery-preview-empty'), 'remote thumbnail URLs are not loaded'); Q.UI.closeModal();
+  Q.UI.previewGalleryItem({name:'Broken thumbnail',thumb:'data:image/png;base64,bad'}); doc.querySelector('.gallery-preview-image img').dispatchEvent(new win.Event('error')); ok(!!doc.querySelector('.gallery-preview-empty'),'failed thumbnail decode shows fallback'); Q.UI.closeModal(); App.openDoc=originalOpen; }
+  click('#galGrid .g-del');
+  ok(visible(doc.querySelector('#modal')), 'gallery delete confirmation is visible');
+  click('#modalBody .btn.ghost');
+  ok(!visible(doc.querySelector('#modal')), 'gallery confirmation closes');
+  cardsG[0].querySelector('.g-open').dispatchEvent(new win.Event('click', { bubbles: true }));
+  await wait(60);
+  ok(!!App.doc && App.doc.id === savedId, 'artwork reopened');
+  ok(!doc.querySelector('#studio').classList.contains('hidden'), 'studio re-entered after opening');
+  ok(App.doc.frames.length === 2, 'frames survived the round trip');
+  ok(App.doc.frames[0].duration === 3, 'frame hold survives the round trip');
+  ok(App.doc.frames[0].group === 'Scene A', 'frame group label survives the round trip');
+  ok(App.doc.layers.length === 2, 'layers survived the round trip');
+  ok(App.doc.guide.symmetry === 'quadrant' && App.doc.layer().assisted && App.doc.playMode === 'pingpong' && App.doc.onionAlpha === 0.4, 'guide, assist and animation settings survive the round trip');
+  ok(App.doc.onionPrevFrames === 3 && App.doc.onionPrevColor === '#bb4488', 'onion frame count and colours survive the round trip');
+  ok(App.doc.guide.type === 'perspective2' && App.doc.guide.horizon === 0.65, 'perspective guide survives the round trip');
+
+  console.log('gestures');
+  App.view.fit();
+  const scaleBefore = App.view.scale;
+  pointer(view, 'pointerdown', 300, 300, { id: 1, pointerType: 'touch' });
+  pointer(view, 'pointerdown', 500, 300, { id: 2, pointerType: 'touch' });
+  pointer(view, 'pointermove', 260, 300, { id: 1, pointerType: 'touch' });
+  pointer(view, 'pointermove', 560, 300, { id: 2, pointerType: 'touch' });
+  ok(App.view.scale > scaleBefore, 'pinch zoom changes the viewport scale');
+  pointer(view, 'pointerup', 260, 300, { id: 1, pointerType: 'touch' });
+  pointer(view, 'pointerup', 560, 300, { id: 2, pointerType: 'touch' });
+  ok(App.view.g === null, 'gesture state cleared');
+  App.view.scale=24; App.view.zoomAt(2); ok(App.view.scale===48, 'zoom can exceed the old 24-times limit'); App.view.zoomAt(4); ok(App.view.scale===64, 'zoom is capped at 64 times');
+
+  console.log('gesture shortcuts');
+  App.view.fit();
+  // a freshly opened artwork starts with an empty history, so lay down one
+  // stroke first — undo/redo shortcuts need something to act on
+  pointer(view, 'pointerdown', 300, 300, { id: 30, pointerType: 'pen', pressure: 0.6 });
+  for (let i = 1; i <= 8; i++) pointer(view, 'pointermove', 300 + i * 8, 300 + i * 3, { id: 30, pointerType: 'pen' });
+  pointer(view, 'pointerup', 364, 324, { id: 30, pointerType: 'pen' });
+  await tick();
+  const undoLen = App.doc.history.undoStack.length;
+  ok(undoLen >= 1, 'a stroke to undo exists (' + undoLen + ')');
+
+  // Two-finger taps and pinches must never undo.
+  pointer(view, 'pointerdown', 400, 400, { id: 11, pointerType: 'touch' });
+  pointer(view, 'pointerdown', 460, 400, { id: 12, pointerType: 'touch' });
+  pointer(view, 'pointerup', 400, 400, { id: 11, pointerType: 'touch' });
+  pointer(view, 'pointerup', 460, 400, { id: 12, pointerType: 'touch' });
+  ok(App.doc.history.undoStack.length === undoLen, 'two-finger tap does not undo');
+  pointer(view, 'pointerdown', 400, 380, { id: 21, pointerType: 'touch' });
+  pointer(view, 'pointerdown', 460, 380, { id: 22, pointerType: 'touch' });
+  pointer(view, 'pointerdown', 520, 380, { id: 23, pointerType: 'touch' });
+  pointer(view, 'pointerup', 400, 380, { id: 21, pointerType: 'touch' });
+  pointer(view, 'pointerup', 460, 380, { id: 22, pointerType: 'touch' });
+  pointer(view, 'pointerup', 520, 380, { id: 23, pointerType: 'touch' });
+  ok(App.doc.history.undoStack.length === undoLen - 1, 'three-finger tap undoes a step');
+  for (let i=0;i<4;i++) pointer(view,'pointerdown',400+i*40,380,{id:51+i,pointerType:'touch'});
+  for (let i=0;i<4;i++) pointer(view,'pointerup',400+i*40,380,{id:51+i,pointerType:'touch'});
+  ok(App.doc.history.undoStack.length === undoLen, 'four-finger tap redoes a step');
+  for (let i=0;i<3;i++) pointer(view,'pointerdown',400+i*40,380,{id:61+i,pointerType:'touch'});
+  pointer(view,'pointermove',450,380,{id:61,pointerType:'touch'});
+  for (let i=0;i<3;i++) pointer(view,'pointerup',400+i*40,380,{id:61+i,pointerType:'touch'});
+  ok(App.doc.history.undoStack.length === undoLen, 'moving a three-finger gesture never undoes after a finger lifts');
+  for (let i=0;i<3;i++) pointer(view,'pointerdown',400+i*40,380,{id:65+i,pointerType:'touch'});
+  pointer(view,'pointercancel',400,380,{id:65,pointerType:'touch'});
+  for (let i=1;i<3;i++) pointer(view,'pointerup',400+i*40,380,{id:65+i,pointerType:'touch'});
+  ok(App.doc.history.undoStack.length === undoLen, 'cancelled three-finger gesture never undoes');
+
+  console.log('long-press eyedropper');
+  const histBefore = App.doc.history.undoStack.length;
+  pointer(view, 'pointerdown', 480, 420, { id: 31, pointerType: 'pen', pressure: 0.4 });
+  await wait(800);
+  pointer(view, 'pointerup', 480, 420, { id: 31, pointerType: 'pen' });
+  ok(App.doc.history.undoStack.length === histBefore, 'long press did not paint');
+  ok(Q.rgbToHex(App.view.color) === '#ffffff', 'long press picked the canvas colour: ' + Q.rgbToHex(App.view.color));
+
+  console.log('quickshape');
+  const qsBefore = App.doc.history.undoStack.length;
+  pointer(view, 'pointerdown', 200, 300, { id: 41, pointerType: 'pen', pressure: 0.6 });
+  for (let i = 1; i <= 10; i++) pointer(view, 'pointermove', 200 + i * 10, 300 + i * 2, { id: 41, pointerType: 'pen' });
+  await wait(700);
+  pointer(view, 'pointerup', 300, 320, { id: 41, pointerType: 'pen' });
+  await tick();
+  ok(App.doc.history.undoStack.length === qsBefore + 1, 'quickshape committed exactly one stroke');
+
+  console.log('canvas reference');
+  Q.UI.openReference(); await wait(160);
+  ok(visible(doc.querySelector('#referenceWindow')) && doc.querySelector('#referenceCanvas').width > 0, 'canvas reference is displayed');
+  const zoom=doc.querySelector('#referenceZoom'); zoom.value='200'; zoom.dispatchEvent(new win.Event('input',{bubbles:true}));
+  ok(doc.querySelector('#referenceCanvas').style.width === '200%', 'canvas reference zoom works');
+  click('#referenceClose'); ok(!visible(doc.querySelector('#referenceWindow')), 'reference closes');
+
+  console.log('about');
+  Q.UI.aboutSheet();
+  ok(doc.querySelector('#modalBody').textContent.includes('Developed by Qmer') && doc.querySelector('#modalBody').textContent.includes('Version 6.3'), 'About credits Qmer and shows current version');
+  Q.UI.closeModal();
+
+  console.log('hardware back');
+  ok(App.qalamBackSafe === undefined, 'no stray globals');
+  ok(win.qalamBack() === 0, 'back from studio is handled in-app');
+  ok(win.qalamBack() === 1, 'back from gallery exits to the launcher');
+
+  console.log('effects');
+  Q.UI.effectsDialog();
+  ok(doc.querySelectorAll('#modalBody .effect-card').length===19, 'effects dialog shows visual thumbnails');
+  ok(!!doc.querySelector('#modalBody .effect-card[data-effect="motion"] canvas') && !!doc.querySelector('#modalBody .effect-card[data-effect="bloom"] canvas'), 'advanced effects have rendered previews');
+  ok(!!doc.querySelector('#modalBody .effect-card[data-effect="pixelate"]') && !!doc.querySelector('#modalBody .effect-card[data-effect="posterize"]') && !!doc.querySelector('#modalBody .effect-card[data-effect="solarize"]'), 'new effects appear in the visual list');
+  click('#modalBody .effect-card[data-effect="invert"]'); ok(doc.querySelector('#modalBody .effect-card[data-effect="invert"]').getAttribute('aria-pressed')==='true' && doc.querySelector('.effect-selected').textContent.includes('Invert'), 'effect thumbnail can be selected accessibly');
+  const effectHistory = App.doc.history.undoStack.length;
+  App.doc.activeCel(true);
+  const originalApply=App.applyEffect; let applied=null; App.applyEffect=function (type,amount) { applied=[type,amount]; return originalApply(type,amount); };
+  click('#modalBody .btn.primary'); App.applyEffect=originalApply; await wait(70);
+  ok(applied && applied[0]==='invert' && applied[1]===0.5, 'apply uses the selected visual effect and strength');
+  ok(App.doc.history.undoStack.length === effectHistory + 1, 'effect creates one undoable edit');
+  App.undo();
+
+  console.log('export paths');
+  let saved = null;
+  Q.saveBytes = (dataUrl, mime, name) => { saved = { mime, name }; return true; };
+  App.exportPng();
+  ok(saved && saved.mime === 'image/png', 'PNG export routed to the native bridge');
+  App.exportPng(true); ok(saved.name.endsWith('-transparent.png'), 'transparent PNG export is routed and labelled');
+  const sequence = [];
+  Q.saveBytes = (dataUrl, mime, name) => { sequence.push({mime,name}); return true; };
+  App.exportPngSequence(); await wait(100);
+  ok(sequence.length === App.doc.frames.length && sequence[0].name.includes('frame-001'), 'PNG sequence exports numbered frames');
+  sequence.length=0; App.exportPngSequence(true); await wait(100);
+  ok(sequence.length === App.doc.frames.length && sequence[0].name.endsWith('-transparent.png'), 'transparent PNG sequence exports numbered frames');
+  Q.saveBytes = (dataUrl, mime, name) => { saved = { mime, name }; return true; };
+  // Simulate both unsupported devices and a recorder that produces MP4 data.
+  delete win.MediaRecorder;
+  App.exportMp4();
+  ok(doc.querySelector('#toast').textContent.includes('not supported'), 'unsupported MP4 encoding is reported');
+  let stopped = false;
+  win.HTMLCanvasElement.prototype.captureStream = () => ({getTracks: () => [{stop: () => { stopped = true; }}]});
+  win.MediaRecorder = class {
+    static isTypeSupported(mime) { return mime.startsWith('video/mp4'); }
+    constructor(stream, opts) { this.state = 'inactive'; this.mime = opts.mimeType; }
+    start() { this.state = 'recording'; }
+    stop() { this.state = 'inactive'; this.ondataavailable({data:new win.Blob(['fake'])}); this.onstop(); }
+  };
+  win.FileReader = class { readAsDataURL() { this.result='data:video/mp4;base64,AAAA'; this.onload(); } };
+  saved = null; App.doc.fps = 30; App.exportMp4(); await wait(250);
+  ok(saved && saved.mime === 'video/mp4' && saved.name.endsWith('.mp4') && stopped, 'supported MP4 recorder exports and releases stream');
+
+
+  // Validate custom canvas dimensions and drive a small real fill through the UI.
+  const priorId = App.doc.id; App.doc.name = 'Saved before switching';
+  click('#btnNew');
+  const width=doc.querySelector('#modalBody input[aria-label="Canvas width"]');
+  const height=doc.querySelector('#modalBody input[aria-label="Canvas height"]');
+  width.value='9999'; height.value='64'; click('#modalBody .btn.primary');
+  ok(visible(doc.querySelector('#modal')) && doc.querySelector('.canvas-error').textContent, 'invalid custom dimensions are rejected');
+  width.value='64'; height.value='96'; click('#modalBody .btn.primary'); await tick();
+  ok(App.doc.width===64 && App.doc.height===96, 'custom canvas dimensions create a document');
+  const previous = await Q.Store.load(priorId);
+  ok(previous && previous.name === 'Saved before switching', 'switching artworks saves the previous document first');
+  click('#btnFill');
+  let fillCalls=0; const originalFill=App.view.onFill; App.view.onFill=()=>{ fillCalls++; };
+  pointer(view,'pointerdown',400,300,{id:71}); pointer(view,'pointerdown',500,300,{id:72});
+  pointer(view,'pointerup',400,300,{id:71}); pointer(view,'pointerup',500,300,{id:72});
+  ok(fillCalls===0, 'two-finger gestures do not trigger fill');
+  pointer(view,'pointerdown',400,300,{id:73}); pointer(view,'pointercancel',400,300,{id:73});
+  ok(fillCalls===0, 'cancelled pointer does not trigger fill'); App.view.onFill=originalFill;
+  const beforeFill=App.doc.history.undoStack.length, point=App.view.toScreen(20,20);
+  pointer(view,'pointerdown',point.x,point.y,{id:70}); pointer(view,'pointerup',point.x,point.y,{id:70}); await wait(100);
+  ok(App.doc.history.undoStack.length===beforeFill+1, 'fill tool commits one undoable fill');
+  App.undo(); ok(App.doc.history.canRedo(), 'fill can be undone');
+
+
+  click('#btnEffects'); ok(visible(doc.querySelector('#modal')) && doc.querySelector('#modalBody h2').textContent.includes('Effects'), 'effects open from direct toolbar shortcut'); Q.UI.closeModal();
+  console.log('selection and transforms');
+  Q.UI.selectionDialog();
+  ok(doc.querySelector('#modalBody').textContent.includes('clips brushes, erasers, flood fill and effects'), 'selection dialog explains scope');
+  ok(doc.querySelector('#modalBody').textContent.includes('Draw lasso'), 'lasso tool is offered in selection panel');
+  function selectionAction(label) {
+    const b=Array.from(doc.querySelectorAll('#modalBody button')).find(x=>x.textContent===label);
+    if (!b) throw new Error('missing selection action '+label); b.click();
+  }
+  selectionAction('Draw lasso');
+  const l1=App.view.toScreen(5,5), l2=App.view.toScreen(30,5), l3=App.view.toScreen(5,30);
+  pointer(view,'pointerdown',l1.x,l1.y,{id:79}); pointer(view,'pointermove',l2.x,l2.y,{id:79}); pointer(view,'pointermove',l3.x,l3.y,{id:79}); pointer(view,'pointerup',l3.x,l3.y,{id:79});
+  ok(App.view.selection && App.view.selection.points && App.view.selection.points.length===3 && App.view.tool==='brush', 'lasso gesture creates polygon and returns to painting');
+  const lassoHistory=App.doc.history.undoStack.length; App.editSelection('flipH'); ok(App.doc.history.undoStack.length===lassoHistory, 'lasso transform is refused rather than applying to its bounds');
+  Q.UI.selectionDialog(); selectionAction('Deselect');
+  Q.UI.selectionDialog();
+  selectionAction('Draw rectangle');
+  const a=App.view.toScreen(5,10), b=App.view.toScreen(30,40);
+  pointer(view,'pointerdown',a.x,a.y,{id:80}); pointer(view,'pointermove',b.x,b.y,{id:80}); pointer(view,'pointerup',b.x,b.y,{id:80});
+  ok(App.view.selection && Math.abs(App.view.selection.x-5)<=1 && App.view.selection.w>=25 && App.view.tool==='brush', 'drag creates a canvas rectangle then returns to brush');
+  const rectHistory=App.doc.history.undoStack.length;
+  Q.UI.selectionDialog(); selectionAction('Fill rectangle');
+  ok(App.doc.history.undoStack.length===rectHistory+1, 'rectangle fill is one undoable edit');
+  App.undo(); ok(App.doc.history.canRedo(), 'rectangle fill can be undone');
+  const flipHistory=App.doc.history.undoStack.length;
+  Q.UI.selectionDialog(); selectionAction('Flip horizontal');
+  ok(App.doc.history.undoStack.length===flipHistory+1, 'flip is one undoable pixel edit');
+  Q.UI.selectionDialog(); selectionAction('Deselect');
+  ok(App.view.selection===null, 'deselect clears the overlay');
+  const wholeHistory=App.doc.history.undoStack.length;
+  Q.UI.selectionDialog(); selectionAction('Rotate 180°');
+  ok(App.doc.history.undoStack.length===wholeHistory+1 && App.doc.history.undoStack.at(-1).rect.w===64, 'rotation without a selection targets the whole current cel');
+  Q.UI.selectionDialog(); selectionAction('Draw rectangle');
+  pointer(view,'pointerdown',a.x,a.y,{id:81}); pointer(view,'pointermove',b.x,b.y,{id:81}); pointer(view,'pointercancel',b.x,b.y,{id:81});
+  ok(App.view.selection===null, 'cancelled selection is discarded');
+  Q.UI.selectionDialog(); selectionAction('Select all');
+  const id=App.doc.id; App.createDoc(64,64,'next');
+  ok(App.doc.id!==id && App.view.selection===null, 'selection is cleared when switching documents');
+
+  console.log('layer lock and transform dialog');
+  Q.UI.layerSheet(0);
+  const lockButton=Array.from(doc.querySelectorAll('#modalBody button')).find(x=>x.textContent==='Lock layer');
+  ok(!!lockButton, 'layer sheet offers locking'); lockButton.click();
+  ok(App.doc.layer().locked===true, 'layer can be locked');
+  const lockedHistory=App.doc.history.undoStack.length, lockedPoint=App.view.toScreen(20,20);
+  pointer(view,'pointerdown',lockedPoint.x,lockedPoint.y,{id:91}); pointer(view,'pointerup',lockedPoint.x,lockedPoint.y,{id:91});
+  App.fillAt(20,20); App.applyEffect('invert',1); App.editSelection('flipH');
+  ok(App.doc.history.undoStack.length===lockedHistory && !App.doc.activeCel(false), 'locked layer blocks painting, fill and effects');
+  await App.saveNow(false); const loaded=await Q.Store.load(App.doc.id);
+  ok(loaded.layer().locked, 'layer lock persists in saved artwork');
+  Q.UI.layerSheet(0); Array.from(doc.querySelectorAll('#modalBody button')).find(x=>x.textContent==='Unlock layer').click();
+  ok(!App.doc.layer().locked, 'layer can be unlocked');
+  App.doc.activeCel(true); App.view.selection={x:5,y:5,w:10,h:10};
+  Q.UI.selectionDialog(); selectionAction('Move / scale');
+  const xInput=doc.querySelector('input[aria-label="Move X (px)"]'), yInput=doc.querySelector('input[aria-label="Move Y (px)"]'), sInput=doc.querySelector('input[aria-label="Scale (%)"]');
+  sInput.value='500'; click('#modalBody .btn.primary');
+  ok(visible(doc.querySelector('#modal')) && doc.querySelector('.canvas-error').textContent, 'invalid scale is rejected');
+  xInput.value='3'; yInput.value='-2'; sInput.value='200'; const beforeMove=App.doc.history.undoStack.length;
+  click('#modalBody .btn.primary');
+  ok(App.doc.history.undoStack.length===beforeMove+1 && App.view.selection.x===8 && App.view.selection.y===3 && App.view.selection.w===20, 'move and scale updates selection and creates one undo step');
+
+  Q.UI.selectionDialog(); selectionAction('Copy to layer');
+  ok(App.doc.layers.length===2 && App.doc.layer().name==='Selection copy', 'copy selection adds a new layer');
+  App.undo(); ok(App.doc.layers.length===1, 'copy to layer can be undone');
+  App.redo(); ok(App.doc.layers.length===2, 'copy to layer can be redone');
+
+  console.log('alpha lock and backgrounds');
+  Q.UI.layerSheet(App.doc.activeLayer);
+  const alphaBtn=Array.from(doc.querySelectorAll('#modalBody button')).find(x=>x.textContent==='Alpha lock');
+  ok(!!alphaBtn, 'layer sheet offers alpha lock'); alphaBtn.click();
+  ok(App.doc.layer().alphaLocked, 'alpha lock enabled');
+  await App.saveNow(false); const alphaLoaded=await Q.Store.load(App.doc.id);
+  ok(alphaLoaded.layer().alphaLocked, 'alpha lock persists across save and reopen');
+  App.setBrush('eraser'); const alphaHistory=App.doc.history.undoStack.length, pt=App.view.toScreen(20,20);
+  pointer(view,'pointerdown',pt.x,pt.y,{id:99}); pointer(view,'pointerup',pt.x,pt.y,{id:99});
+  ok(App.doc.history.undoStack.length===alphaHistory && doc.querySelector('#toast').textContent.includes('alpha lock'), 'eraser is blocked while alpha lock is enabled');
+  Q.UI.layerSheet(App.doc.activeLayer); Array.from(doc.querySelectorAll('#modalBody button')).find(x=>x.textContent==='Unlock alpha').click();
+  ok(!App.doc.layer().alphaLocked, 'alpha lock can be turned off');
+  Q.UI.backgroundDialog(); const bg=doc.querySelector('input[aria-label="Background hex colour"]');
+  bg.value='wrong'; click('#modalBody .btn.primary');
+  ok(visible(doc.querySelector('#modal')) && doc.querySelector('.canvas-error').textContent, 'invalid background colour is rejected');
+  bg.value='#369'; click('#modalBody .btn.primary');
+  ok(App.doc.bg==='#336699', 'background accepts and expands hex colour');
+  App.undo(); ok(App.doc.bg==='#ffffff', 'background colour undo restores previous colour');
+  App.redo(); ok(App.doc.bg==='#336699', 'background colour redo reapplies colour');
+  await App.saveNow(false); const bgLoaded=await Q.Store.load(App.doc.id);
+  ok(bgLoaded.bg==='#336699', 'background colour persists');
+
+
+
+
+
+  console.log('animation range, batches and sprite export');
+  App.createDoc(64,64,'Animation test'); App.addFrame(false); App.addFrame(false); App.addFrame(false); App.selectFrame(0);
+  Q.UI.animationSettings();
+  const startRange=doc.querySelector('input[aria-label="Playback start"]'), endRange=doc.querySelector('input[aria-label="Playback end"]');
+  const setRange=Array.from(doc.querySelectorAll('#modalBody button')).find(x=>x.textContent==='Set range');
+  startRange.value='4'; endRange.value='2'; setRange.click();
+  ok(doc.querySelector('.canvas-error').textContent && App.doc.playRange===null, 'invalid playback range is rejected');
+  startRange.value='2'; endRange.value='3'; setRange.click();
+  ok(App.doc.playRange.start===1 && App.doc.playRange.end===2, 'custom playback range is saved');
+  click('#modalBody .btn.primary'); await App.saveNow(false); const rangeLoaded=await Q.Store.load(App.doc.id);
+  ok(rangeLoaded.playRange.start===1 && rangeLoaded.playRange.end===2, 'playback range survives save and reopen');
+  App.doc.playMode='once'; App.doc.fps=30; App.selectFrame(0); App.togglePlay();
+  ok(App.doc.activeFrame===1, 'playback starts at range beginning when current frame is outside range');
+  await wait(120); ok(!App.playing && App.doc.activeFrame===2, 'one-shot playback ends at range end');
+  App.selectFrame(0); App.togglePlay(); App.selectFrame(3);
+  ok(!App.playing && App.doc.activeFrame===3, 'selecting a frame stops playback safely');
+  Q.UI.batchFramesDialog();
+  let first=doc.querySelector('input[aria-label="First frame"]'), last=doc.querySelector('input[aria-label="Last frame"]'), batchHold=doc.querySelector('input[aria-label="Batch hold"]');
+  let action=label=>Array.from(doc.querySelectorAll('#modalBody button')).find(x=>x.textContent===label).click();
+  first.value='3'; last.value='2'; action('Apply hold'); ok(doc.querySelector('.canvas-error').textContent, 'batch operation rejects invalid range');
+  first.value='2'; last.value='3'; batchHold.value='4'; action('Apply hold');
+  ok(App.doc.frames[1].duration===4 && App.doc.frames[2].duration===4 && App.doc.frames[0].duration===1, 'batch hold changes only chosen frames');
+  App.undo(); ok(App.doc.frames[1].duration===1, 'batch hold undoes in one step');
+  Q.UI.batchFramesDialog(); first=doc.querySelector('input[aria-label="First frame"]'); last=doc.querySelector('input[aria-label="Last frame"]'); first.value='2'; last.value='3'; action('Duplicate range');
+  ok(App.doc.frames.length===6 && App.doc.activeFrame===3, 'batch duplication inserts frames after range');
+  App.undo(); ok(App.doc.frames.length===4, 'batch duplicate is undoable');
+  Q.UI.spriteSheetDialog();
+  const columns=doc.querySelector('input[aria-label="Sprite columns"]'); columns.value='9'; click('#modalBody .btn.primary');
+  ok(doc.querySelector('.canvas-error').textContent, 'sprite sheet rejects invalid columns');
+  columns.value='2'; let spriteSaved=null; Q.saveBytes=(url,mime,name)=>{spriteSaved={mime,name};return true;}; click('#modalBody .btn.primary'); await wait(100);
+  ok(spriteSaved && spriteSaved.mime==='image/png' && spriteSaved.name.endsWith('-spritesheet.png'), 'sprite sheet exports through native bridge');
+  if (!doc.querySelector('#timeline').classList.contains('hidden')) Q.UI.toggleTimeline();
+  App.doc.playMode='loop'; App.doc.fps=30; App.doc.frames.forEach(f=>{f.duration=1;});
+  const painted=[], composite=App.doc.composite; App.doc.composite=function(ctx,index,opts) { painted.push(index); return composite.call(this,ctx,index,opts); };
+  Q.saveBytes=()=>true; App.exportMp4(); await wait(140); App.doc.composite=composite;
+  ok(painted.join(',')==='1,2', 'MP4 recorder paints only playback-range frames');
+
+
+  console.log('2.0 animation assist');
+  App.createDoc(64,64,'Animation assist'); for(let i=1;i<5;i++) App.addFrame(false);
+  if (doc.querySelector('#timeline').classList.contains('hidden')) Q.UI.toggleTimeline();
+  App.selectFrame(1); Q.UI.frameSheet(1);
+  const skipButton=Array.from(doc.querySelectorAll('#modalBody button')).find(x=>x.textContent==='Skip in playback');
+  ok(!!skipButton, 'frame options expose skip control'); skipButton.click();
+  ok(App.doc.frames[1].skipped && doc.querySelectorAll('#timeline .frame-skipped').length===1, 'skipped frame is marked on timeline');
+  App.undo(); ok(!App.doc.frames[1].skipped, 'skip can be undone'); App.redo(); ok(App.doc.frames[1].skipped, 'skip can be redone');
+  Q.UI.frameSheet(2); const longHold=doc.querySelector('input[aria-label="Frame hold"]');
+  longHold.value='60'; longHold.dispatchEvent(new win.Event('change',{bubbles:true})); Q.UI.closeModal();
+  ok(App.doc.frames[2].duration===60, 'UI accepts 60-tick frame hold');
+  Q.UI.animationSettings();
+  const prev=doc.querySelector('input[aria-label="Previous frames"]'), next=doc.querySelector('input[aria-label="Next frames"]');
+  prev.value='0'; prev.dispatchEvent(new win.Event('input',{bubbles:true})); next.value='2'; next.dispatchEvent(new win.Event('input',{bubbles:true}));
+  for (const label of ['Skipped onions','Onion layers','Onion colours','Onion position']) { const sel=doc.querySelector('select[aria-label="'+label+'"]'); sel.value='yes'; sel.dispatchEvent(new win.Event('change',{bubbles:true})); }
+  click('#modalBody .btn.primary');
+  ok(App.doc.onionPrevFrames===0 && App.doc.onionNextFrames===2 && App.doc.onionIncludeSkipped && App.doc.onionLayerOnly && App.doc.onionOriginalColor && App.doc.onionAbove, 'independent onion controls update document');
+  await App.saveNow(false); const assistReload=await Q.Store.load(App.doc.id);
+  ok(assistReload.frames[1].skipped && assistReload.frames[2].duration===60 && assistReload.onionPrevFrames===0 && assistReload.onionNextFrames===2 && assistReload.onionIncludeSkipped && assistReload.onionLayerOnly && assistReload.onionOriginalColor && assistReload.onionAbove, 'animation assist settings and long holds survive saving');
+  const raw=JSON.parse(win.localStorage.getItem('qalam-projects')), legacy=raw[App.doc.id];
+  legacy.onionFrames=3; delete legacy.onionPrevFrames; delete legacy.onionNextFrames; delete legacy.onionIncludeSkipped; delete legacy.onionLayerOnly; delete legacy.onionOriginalColor; delete legacy.onionAbove; delete legacy.frameSkipped;
+  win.localStorage.setItem('qalam-projects',JSON.stringify(raw)); const legacyReload=await Q.Store.load(App.doc.id);
+  ok(legacyReload.onionPrevFrames===3 && legacyReload.onionNextFrames===3 && legacyReload.frames.every(f=>!f.skipped), 'older saved projects migrate to both onion directions and included frames');
+  const scrub=doc.querySelector('input[aria-label="Scrub frames"]'); scrub.value='4'; scrub.dispatchEvent(new win.Event('input',{bubbles:true}));
+  ok(App.doc.activeFrame===3 && doc.querySelector('input[aria-label="Scrub frames"]')===scrub && doc.querySelector('#timeline .tl-position').textContent==='4 / 5', 'timeline scrub updates frame without replacing the active slider');
+  scrub.dispatchEvent(new win.Event('change',{bubbles:true})); ok(App.doc.activeFrame===3, 'scrub release commits frame selection');
+  Q.UI.batchFramesDialog();
+  const firstSkip=doc.querySelector('input[aria-label="First frame"]'), lastSkip=doc.querySelector('input[aria-label="Last frame"]'); firstSkip.value='4'; lastSkip.value='4';
+  Array.from(doc.querySelectorAll('#modalBody button')).find(x=>x.textContent==='Skip range').click();
+  ok(App.doc.frames[3].skipped, 'batch skip excludes a frame');
+  App.doc.frames[2].duration=1; App.doc.fps=30; App.doc.playMode='once'; App.selectFrame(1); App.togglePlay();
+  ok(App.doc.activeFrame===0, 'playback starts at first included frame when selected frame is skipped');
+  await wait(140); ok(!App.playing && App.doc.activeFrame===4, 'one-shot playback skips excluded frames');
+  if (!doc.querySelector('#timeline').classList.contains('hidden')) Q.UI.toggleTimeline();
+  const seen=[], orig=App.doc.composite; App.doc.composite=function(ctx,index,opts) { seen.push(index); return orig.call(this,ctx,index,opts); };
+  App.doc.playMode='pingpong'; Q.saveBytes=()=>true; App.exportMp4(); await wait(180); App.doc.composite=orig;
+  ok(seen.join(',')==='0,2,4,2', 'MP4 mock skips excluded frames and follows ping-pong order');
+  App.batchFrames(0,4,'skip'); App.togglePlay(); ok(!App.playing && doc.querySelector('#toast').textContent.includes('No included frames'), 'playback rejects an all-skipped range');
+  App.exportGif({}); ok(doc.querySelector('#toast').textContent.includes('No included frames'), 'GIF export rejects an all-skipped range');
+  App.exportMp4(); ok(doc.querySelector('#toast').textContent.includes('No included frames'), 'MP4 export rejects an all-skipped range');
+  App.batchFrames(1,2,'include'); ok(!App.doc.frames[1].skipped && !App.doc.frames[2].skipped && App.doc.frames[0].skipped, 'batch include re-enables selected frames only');
+
+
+  console.log('2.1 cel and timeline tools');
+  App.createDoc(64,64,'Cel tools'); for(let i=1;i<4;i++) App.addFrame(false); App.selectFrame(0); App.doc.activeCel(true);
+  if (doc.querySelector('#timeline').classList.contains('hidden')) Q.UI.toggleTimeline();
+  ok(doc.querySelector('#timeline .tl-timing').textContent.includes('4 included'), 'timeline shows playback timing');
+  App.doc.frames[1].duration=3; App.doc.frames[2].skipped=true; App.doc.playMode='pingpong'; App.doc.fps=10; Q.UI.refreshTimeline();
+  ok(doc.querySelector('#timeline .tl-timing').textContent.includes('8 ticks') && doc.querySelector('#timeline .tl-timing').textContent.includes('0.80 s'), 'timeline timing respects holds, skips and ping-pong');
+  Q.UI.copyCelDialog(); let src=doc.querySelector('input[aria-label="Source frame"]'), dst1=doc.querySelector('input[aria-label="First destination"]'), dst2=doc.querySelector('input[aria-label="Last destination"]');
+  dst1.value='1'; dst2.value='1'; click('#modalBody .btn.primary'); ok(doc.querySelector('.canvas-error').textContent.includes('different destination'), 'cel copy rejects source-only range');
+  dst1.value='2'; dst2.value='3'; click('#modalBody .btn.primary'); ok(doc.querySelector('#modalBody h2').textContent.includes('Replace 2 cels'), 'cel replacement asks for confirmation');
+  click('#modalBody .btn.ghost'); ok(!App.doc.cel(1,0,false), 'cancel leaves destination unchanged');
+  Q.UI.copyCelDialog(); dst1=doc.querySelector('input[aria-label="First destination"]'); dst2=doc.querySelector('input[aria-label="Last destination"]'); dst1.value='2'; dst2.value='3'; click('#modalBody .btn.primary'); click('#modalBody .btn.danger');
+  ok(!!App.doc.cel(1,0,false) && !!App.doc.cel(2,0,false), 'confirmed cel copy populates the destination range');
+  App.undo(); ok(!App.doc.cel(1,0,false), 'cel copy undo restores empty destination'); App.redo(); ok(!!App.doc.cel(1,0,false), 'cel copy redo restores destination');
+  await App.saveNow(false); const copiedReload=await Q.Store.load(App.doc.id); ok(!!copiedReload.cel(1,0,false) && !!copiedReload.cel(2,0,false), 'copied cels survive save and reopen');
+  Q.UI.batchFramesDialog(); click('#modalBody .btn.danger'); ok(doc.querySelector('.canvas-error').textContent.includes('leaves at least one'), 'delete range refuses all frames');
+  doc.querySelector('input[aria-label="First frame"]').value='2'; doc.querySelector('input[aria-label="Last frame"]').value='3'; click('#modalBody .btn.danger');
+  ok(doc.querySelector('#modalBody h2').textContent.includes('Delete frames'), 'range deletion asks for confirmation'); click('#modalBody .btn.danger');
+  ok(App.doc.frames.length===2, 'confirmed range deletion removes frames'); App.undo(); ok(App.doc.frames.length===4 && !!App.doc.cel(1,0,false), 'undo restores deleted frames and cels');
+
+
+  console.log('2.3 motion guide and image import');
+  App.createDoc(64,64,'Motion guide'); App.addFrame(false);
+  if (doc.querySelector('#timeline').classList.contains('hidden')) Q.UI.toggleTimeline();
+  click('#timeline [aria-label="Animation guides and audio"]'); ok(!!doc.querySelector('#timeline .tl-more [aria-label="Motion guide"]'), 'motion guide is accessible in timeline');
+  Q.UI.motionGuideDialog(); let guideAction=label=>Array.from(doc.querySelectorAll('#modalBody button')).find(x=>x.textContent===label).click();
+  guideAction('Draw or replace guide'); const gp1=App.view.toScreen(10,10), gp2=App.view.toScreen(40,40);
+  pointer(view,'pointerdown',gp1.x,gp1.y,{id:210}); pointer(view,'pointermove',gp2.x,gp2.y,{id:210}); pointer(view,'pointerup',gp2.x,gp2.y,{id:210});
+  ok(App.doc.motionGuide.length===2 && App.view.tool==='brush', 'drawing guide stores path and returns to brush');
+  App.undo(); ok(App.doc.motionGuide.length===0, 'guide drawing is undoable'); App.redo(); ok(App.doc.motionGuide.length===2, 'guide drawing is redoable');
+  Q.UI.motionGuideDialog(); guideAction('Hide guide'); ok(!App.doc.motionGuideVisible, 'guide can be hidden');
+  Q.UI.motionGuideDialog(); guideAction('Draw or replace guide'); pointer(view,'pointerdown',gp1.x,gp1.y,{id:211}); pointer(view,'pointermove',gp2.x,gp2.y,{id:211}); pointer(view,'pointerup',gp2.x,gp2.y,{id:211});
+  App.undo(); ok(!App.doc.motionGuideVisible && App.doc.motionGuide.length===2, 'one undo restores hidden previous path after replacement'); App.redo();
+  await App.saveNow(false); const guideReload=await Q.Store.load(App.doc.id); ok(guideReload.motionGuideVisible && guideReload.motionGuide.length===2, 'motion guide survives save and reopen');
+  Q.UI.motionGuideDialog(); guideAction('Draw or replace guide'); pointer(view,'pointerdown',gp1.x,gp1.y,{id:212}); pointer(view,'pointermove',gp2.x,gp2.y,{id:212}); pointer(view,'pointercancel',gp2.x,gp2.y,{id:212});
+  ok(App.doc.motionGuide.length===2 && !App.view.motionDraft, 'cancelled guide leaves previous guide unchanged');
+  click('#btnLayers'); click('#trayBody [aria-label="Add layer or image"]'); ok(doc.querySelector('#modalBody').textContent.includes('Import image'), 'image import is accessible from layers'); Q.UI.closeModal();
+  const input=doc.querySelector('#imageImport'), oldClick=input.click, oldReader=win.FileReader, oldImage=win.Image; let picked=0;
+  input.click=()=>{picked++;}; Q.UI.pickImage(); ok(picked===1 && Q.UI.imageTarget.frame===App.doc.frames[App.doc.activeFrame], 'image import opens file picker for current frame');
+  win.FileReader=class { readAsDataURL() { this.result='data:image/png;base64,AAAA'; setTimeout(()=>this.onload(),0); } };
+  win.Image=class { constructor() {this.width=4;this.height=2;} set src(value) {setTimeout(()=>this.onload(),0);} };
+  Object.defineProperty(input,'files',{value:[{name:'test.png',type:'image/png',size:100}],configurable:true}); input.dispatchEvent(new win.Event('change',{bubbles:true})); await wait(40);
+  ok(App.doc.layers.length===2 && App.doc.layer().name==='test' && !!App.doc.activeCel(false), 'image picker imports as a new layer');
+  App.undo(); ok(App.doc.layers.length===1, 'image import from picker is undoable'); App.redo();
+  await App.saveNow(false); const imageReload=await Q.Store.load(App.doc.id); ok(imageReload.layers.length===2 && !!imageReload.activeCel(false), 'imported layer survives save and reopen');
+  input.click=oldClick; win.FileReader=oldReader; win.Image=oldImage;
+
+
+  console.log('2.4 clipping masks');
+  App.createDoc(64,64,'Clipping'); App.addLayer();
+  Q.UI.layerSheet(0); let chooseClip=Array.from(doc.querySelectorAll('#modalBody button')).find(x=>x.textContent==='Clipping mask'); chooseClip.click();
+  ok(!App.doc.layers[0].clipped && doc.querySelector('#toast').textContent.includes('layer below'), 'bottom layer refuses clipping with an explanation');
+  Q.UI.layerSheet(1); chooseClip=Array.from(doc.querySelectorAll('#modalBody button')).find(x=>x.textContent==='Clipping mask'); chooseClip.click();
+  ok(App.doc.layers[1].clipped, 'layer sheet enables clipping');
+  App.undo(); ok(!App.doc.layers[1].clipped, 'undo removes clipping'); App.redo(); ok(App.doc.layers[1].clipped, 'redo restores clipping');
+  Q.UI.layerSheet(1); ok(doc.querySelector('select[aria-label="Blend unavailable while clipped"]').disabled && doc.querySelector('#modalBody').textContent.includes('Release clipping mask'), 'clipped layer explains Normal-only blend and offers release'); Q.UI.closeModal();
+  await App.saveNow(false); const clipsReload=await Q.Store.load(App.doc.id); ok(clipsReload.layers[1].clipped && !clipsReload.layers[0].clipped, 'clipping survives save and reopen');
+  const oldRaw=JSON.parse(win.localStorage.getItem('qalam-projects')); for(const layer of oldRaw[App.doc.id].layers) delete layer.clipped; win.localStorage.setItem('qalam-projects',JSON.stringify(oldRaw));
+  const oldReload=await Q.Store.load(App.doc.id); ok(oldReload.layers.every(l=>!l.clipped), 'older projects load with clipping off');
+  App.duplicateLayer(1); ok(App.doc.layers[2].clipped && App.doc.clipBase(2)===0, 'layer duplication preserves clipping');
+  const num=App.doc.layers.length; App.mergeDownLayer(2); ok(App.doc.layers.length===num && doc.querySelector('#toast').textContent.includes('clipping'), 'merge is safely blocked while clipping is enabled');
+  Q.UI.layerSheet(2); Array.from(doc.querySelectorAll('#modalBody button')).find(x=>x.textContent==='Release clipping mask').click();
+  ok(!App.doc.layers[2].clipped, 'clipping can be released without destroying layer');
+
+
+  console.log('2.5 animation audio');
+  App.createDoc(64,64,'Audio test'); for(let i=1;i<4;i++) App.addFrame(false);
+  if (doc.querySelector('#timeline').classList.contains('hidden')) Q.UI.toggleTimeline();
+  ok(doc.querySelector('#timeline .tl-audio').textContent.includes('Add track'), 'timeline shows an audio track control');
+  click('#timeline .tl-audio'); ok(doc.querySelector('#modalBody').textContent.includes('AAC') && doc.querySelector('#modalBody').textContent.includes('PNG and GIF are silent'), 'audio dialog explains conditional MP4 audio and silent PNG/GIF');
+  const audioInput=doc.querySelector('#audioImport'), originalAudioClick=audioInput.click, oldReader2=win.FileReader, oldAudio=win.Audio; let audioPicked=0;
+  audioInput.click=()=>audioPicked++; Array.from(doc.querySelectorAll('#modalBody button')).find(x=>x.textContent==='Choose audio').click();
+  ok(audioPicked===1 && Q.UI.audioTarget.doc===App.doc, 'audio file picker is opened from the timeline');
+  win.FileReader=class {readAsDataURL() {this.result='data:audio/wav;base64,AAAA'; setTimeout(()=>this.onload(),0);}};
+  Object.defineProperty(audioInput,'files',{value:[{name:'beat.wav',type:'audio/wav',size:4}],configurable:true}); audioInput.dispatchEvent(new win.Event('change',{bubbles:true})); await wait(40);
+  ok(App.doc.audioTrack && App.doc.audioTrack.name==='beat.wav' && doc.querySelector('#timeline .tl-audio').textContent.includes('beat.wav'), 'chosen audio is stored and displayed');
+  await App.saveNow(false); let savedAudio=await Q.Store.load(App.doc.id); ok(savedAudio.audioTrack && savedAudio.audioTrack.data==='data:audio/wav;base64,AAAA', 'audio survives save and reopen');
+  App.undo(); ok(!App.doc.audioTrack, 'undo removes imported audio'); App.redo(); ok(!!App.doc.audioTrack, 'redo restores audio');
+  click('#timeline .tl-audio'); Array.from(doc.querySelectorAll('#modalBody button')).find(x=>x.textContent==='Mute audio').click(); ok(App.doc.audioTrack.muted, 'mute is available on the audio track');
+  App.undo(); ok(!App.doc.audioTrack.muted, 'audio mute can be undone');
+  App.doc.fps=30; App.doc.playMode='loop'; App.doc.frames[0].duration=2; App.doc.frames[1].skipped=true; App.doc.frames[2].duration=1; App.doc.frames[3].duration=1; App.selectFrame(2);
+  ok(Math.abs(Q.audioFrameTime(App.doc,2)-2/30)<0.001 && Math.abs(Q.audioFrameTime(App.doc,3)-3/30)<0.001, 'audio offset accounts for holds and skipped frames');
+  const players=[]; win.Audio=class { constructor(){this.duration=5;this.currentTime=0;this.plays=0;this.pauses=0;this.events={};players.push(this);} addEventListener(k,f){this.events[k]=f;} play(){this.plays++;return Promise.resolve();} pause(){this.pauses++;} removeAttribute(){} load(){} };
+  App.togglePlay(); ok(players.length===1 && Math.abs(players[0].currentTime-2/30)<0.001 && players[0].plays===1, 'forward playback starts audio at the selected frame offset');
+  await wait(125); ok(players[0].plays>=2, 'audio restarts at loop boundary'); App.stopPlay(); ok(players[0].pauses>0 && !App.previewAudio, 'stopping playback releases the audio player');
+  App.doc.setPlayRange(2,3); App.selectFrame(3); App.togglePlay();
+  ok(Math.abs(players.at(-1).currentTime-3/30)<0.001, 'audio uses absolute timeline offset inside a custom playback range'); App.stopPlay(); App.doc.setPlayRange(null,null);
+  App.doc.playMode='loop'; App.selectFrame(2); App.togglePlay(); const metadataAudio=players.at(-1); metadataAudio.currentTime=0; metadataAudio.events.loadedmetadata();
+  ok(Math.abs(metadataAudio.currentTime-2/30)<0.001, 'audio retries synchronization when metadata loads');
+  metadataAudio.duration=0.01; App.syncPreviewAudio(App.doc,App.doc.activeFrame,false); ok(metadataAudio.pauses>0, 'short audio stops once the animation is beyond its duration'); App.stopPlay();
+  App.doc.playMode='pingpong'; const countPlayers=players.length; App.togglePlay(); ok(players.length===countPlayers && doc.querySelector('#toast').textContent.includes('audio muted'), 'ping-pong playback explicitly mutes audio'); App.stopPlay();
+  App.doc.playMode='once'; App.selectFrame(2); App.togglePlay(); const onceAudio=players.at(-1); await wait(85); ok(!App.playing && onceAudio.pauses>0, 'one-shot completion stops audio');
+  click('#timeline .tl-audio'); Array.from(doc.querySelectorAll('#modalBody button')).find(x=>x.textContent==='Remove audio').click(); ok(doc.querySelector('#modalBody h2').textContent==='Remove audio?', 'removing audio asks for confirmation'); click('#modalBody .btn.danger');
+  ok(!App.doc.audioTrack, 'confirmed remove deletes the audio track'); App.undo(); ok(!!App.doc.audioTrack, 'undo restores removed audio');
+  win.Audio=class {constructor(){this.duration=5;this.currentTime=0;} addEventListener(){} play(){return Promise.reject(new Error('blocked'));} pause(){} removeAttribute(){} load(){} };
+  App.doc.playMode='loop'; App.togglePlay(); await wait(10); ok(doc.querySelector('#toast').textContent.includes('Audio playback is unavailable'), 'playback rejection reports audio failure'); App.stopPlay();
+  const beforeName=App.doc.audioTrack.name; App.importAudioFile({name:'wrong.pdf',type:'application/pdf',size:40},{doc:App.doc,track:App.doc.audioTrack}); ok(App.doc.audioTrack.name===beforeName, 'audio import rejects unsupported types');
+  App.importAudioFile({name:'large.mp3',type:'audio/mpeg',size:3*1024*1024},{doc:App.doc,track:App.doc.audioTrack}); ok(App.doc.audioTrack.name===beforeName, 'audio import rejects files over size limit');
+  const originalDoc=App.doc, targetOld={doc:originalDoc,track:originalDoc.audioTrack}; win.FileReader=class {readAsDataURL(){this.result='data:audio/wav;base64,AAAA'; setTimeout(()=>this.onload(),25);}};
+  App.importAudioFile({name:'late.wav',type:'audio/wav',size:4},targetOld); App.createDoc(64,64,'New project'); await wait(50);
+  ok(!App.doc.audioTrack && originalDoc.audioTrack.name===beforeName, 'switching projects cancels an in-flight audio import');
+  const migrated=JSON.parse(win.localStorage.getItem('qalam-projects')); delete migrated[originalDoc.id].audioTrack; win.localStorage.setItem('qalam-projects',JSON.stringify(migrated));
+  const withoutAudio=await Q.Store.load(originalDoc.id); ok(withoutAudio && withoutAudio.audioTrack===null, 'older saved projects open without an audio track');
+  audioInput.click=originalAudioClick; win.FileReader=oldReader2; win.Audio=oldAudio;
+
+
+  console.log('2.6 compact controls and fill layers');
+  App.createDoc(64,64,'Fill layers'); App.addFrame(false);
+  if (doc.querySelector('#timeline').classList.contains('hidden')) Q.UI.toggleTimeline();
+  click('#timeline [aria-label="Frame tools"]'); ok(!!doc.querySelector('#timeline [aria-label="Blank frame"] svg') && !!doc.querySelector('#timeline [aria-label="Next frame"] svg'), 'frame controls use labelled SVG icons');
+  click('#timeline [aria-label="Animation guides and audio"]'); ok(!!doc.querySelector('#timeline [aria-label="Motion guide"]') && !!doc.querySelector('#timeline [aria-label="Manage audio"]'), 'assist category reveals guide and audio tools');
+  click('#timeline [aria-label="Animation settings tools"]'); ok(!!doc.querySelector('#timeline [aria-label="Toggle onion skin"]'), 'settings category reveals onion tool');
+  if (!doc.querySelector('#tray').classList.contains('hidden')) Q.UI.closeTray(); click('#btnLayers');
+  let pickerOpened=false; const picker=doc.querySelector('#imageImport'), originalPickerClick=picker.click; picker.click=()=>{pickerOpened=true;};
+  click('#trayBody [aria-label="Add layer or image"]'); Array.from(doc.querySelectorAll('#modalBody button')).find(x=>x.textContent==='Import image').click(); picker.click=originalPickerClick;
+  ok(pickerOpened && Q.UI.imageTarget.doc===App.doc, 'layer add menu opens the image picker with the current document target');
+  click('#trayBody [aria-label="Add layer or image"]'); Array.from(doc.querySelectorAll('#modalBody button')).find(x=>x.textContent==='Gradient').click();
+  const start=doc.querySelector('input[aria-label="Start colour"]'), end=doc.querySelector('input[aria-label="End colour"]'); start.value='not-a-colour'; click('#modalBody .btn.primary');
+  ok(!!doc.querySelector('.canvas-error').textContent && App.doc.layers.length===1, 'gradient dialog rejects invalid hex without adding layer');
+  start.value='#f00'; end.value='#00f'; doc.querySelector('select[aria-label="Gradient direction"]').value='vertical'; click('#modalBody .btn.primary');
+  ok(App.doc.layers.length===2 && App.doc.layer().name==='Gradient' && App.doc.cel(1,1,false) && !App.doc.cel(0,1,false), 'gradient dialog creates a layer only in the current frame');
+  App.undo(); ok(App.doc.layers.length===1, 'gradient layer creation can be undone'); App.redo();
+  await App.saveNow(false); const gradReload=await Q.Store.load(App.doc.id); ok(gradReload.layers.length===2 && gradReload.layer().name==='Gradient' && !!gradReload.activeCel(false), 'gradient layer survives save and reopen');
+  click('#trayBody [aria-label="Add layer or image"]'); Array.from(doc.querySelectorAll('#modalBody button')).find(x=>x.textContent==='Solid colour').click();
+  doc.querySelector('input[aria-label="Colour"]').value='#336699'; click('#modalBody .btn.primary'); ok(App.doc.layer().name==='Solid colour' && App.doc.layers.length===3, 'solid colour option creates a layer');
+  Q.UI.closeTray(); click('#btnMenu'); const sections=[...doc.querySelectorAll('#trayBody details.action-group')];
+  ok(sections.length===6 && sections[0].open && !sections[3].open, 'actions use expandable categories'); sections[3].open=true;
+  ok(sections[3].open && sections[3].textContent.includes('Export GIF'), 'export category expands to reveal export actions'); Q.UI.closeTray();
+
+  console.log('2.7 motion path generation');
+  App.createDoc(64,64,'Motion bake'); App.doc.activeCel(true); App.addFrame(false); App.addFrame(false);
+  App.doc.setMotionGuide([{x:4,y:4},{x:20,y:4}]); App.doc.history.clear();
+  Q.UI.motionGuideDialog(); ok(doc.querySelector('#modalBody').textContent.includes('Generate motion along guide'), 'motion generation is accessible from guide controls');
+  Array.from(doc.querySelectorAll('#modalBody button')).find(x=>x.textContent==='Generate motion along guide').click();
+  click('#modalBody .btn.primary'); ok(doc.querySelector('.canvas-error').textContent.includes('empty'), 'empty motion source is rejected');
+  doc.querySelector('[aria-label="Motion source frame"]').value='1'; doc.querySelector('[aria-label="Motion last frame"]').value='1'; click('#modalBody .btn.primary');
+  ok(doc.querySelector('.canvas-error').textContent.includes('two destination'), 'invalid motion range is rejected');
+  doc.querySelector('[aria-label="Motion last frame"]').value='3'; doc.querySelector('[aria-label="Motion easing"]').value='inout'; click('#modalBody .btn.primary');
+  ok(doc.querySelector('#modalBody').textContent.includes('Replace 3 cels') && App.doc.history.undoStack.length===0, 'motion replacement requires confirmation');
+  click('#modalBody .btn.ghost'); ok(!App.doc.cel(1,0,false), 'cancelling motion does not change cels');
+  Q.UI.motionBakeDialog(); doc.querySelector('[aria-label="Motion source frame"]').value='1'; doc.querySelector('[aria-label="Motion direction"]').value='reverse'; click('#modalBody .btn.primary'); click('#modalBody .btn.danger');
+  ok(!!App.doc.cel(1,0,false) && !!App.doc.cel(2,0,false) && App.doc.history.undoStack.length===1, 'confirmed motion generates cels in one step');
+  App.undo(); ok(!App.doc.cel(1,0,false), 'motion generation undo restores cels'); App.redo();
+  await App.saveNow(false); const motionReload=await Q.Store.load(App.doc.id); ok(!!motionReload.cel(1,0,false) && !!motionReload.cel(2,0,false) && motionReload.motionGuide.length===2, 'generated motion and path survive save and reopen');
+  Q.UI.motionBakeDialog(); doc.querySelector('[aria-label="Motion source frame"]').value='1'; click('#modalBody .btn.primary'); App.doc.setMotionGuide([{x:1,y:1},{x:2,y:2}]); const hist=App.doc.history.undoStack.length; click('#modalBody .btn.danger');
+  ok(App.doc.history.undoStack.length===hist && doc.querySelector('#toast').textContent.includes('cancelled'), 'motion confirmation cancels if guide changes');
+
+  console.log('2.8 transform pose animation');
+  App.createDoc(64,64,'Transform animation'); App.doc.activeCel(true); App.addFrame(false); App.addFrame(false); App.doc.history.clear();
+  if (doc.querySelector('#timeline').classList.contains('hidden')) Q.UI.toggleTimeline();
+  click('#timeline [aria-label="Animation guides and audio"]');
+  ok(!!doc.querySelector('#timeline [aria-label="Generate transform frames"] svg'), 'transform animation is accessible from timeline assist tools');
+  click('#timeline [aria-label="Generate transform frames"]'); click('#modalBody .btn.primary');
+  ok(doc.querySelector('.canvas-error').textContent.includes('empty'), 'empty transform source is rejected');
+  const get=label=>doc.querySelector('#modalBody [aria-label="'+label+'"]'); get('Source frame').value='1'; get('End scale (%)').value='0'; click('#modalBody .btn.primary');
+  ok(doc.querySelector('.canvas-error').textContent.includes('scale'), 'out-of-range transform scale is rejected');
+  get('End scale (%)').value='100'; get('Pivot X').value='-1'; click('#modalBody .btn.primary'); ok(doc.querySelector('.canvas-error').textContent.includes('Pivot'), 'invalid pivot is rejected in the dialog');
+  get('Pivot X').value='32'; get('Start X offset').value=''; click('#modalBody .btn.primary'); ok(doc.querySelector('.canvas-error').textContent.includes('every field'), 'blank transform values are rejected');
+  get('Start X offset').value='0'; click('#modalBody .btn.primary'); ok(doc.querySelector('#modalBody').textContent.includes('Replace 3 cels'), 'transform shows destructive confirmation');
+  click('#modalBody .btn.ghost'); ok(!App.doc.cel(1,0,false) && App.doc.history.undoStack.length===0, 'cancelling transform leaves cels untouched');
+  Q.UI.transformBakeDialog(); get('Source frame').value='1'; get('End X offset').value='12'; get('End Y offset').value='-4'; get('End scale (%)').value='150'; get('End rotation (°)').value='360'; get('Pivot X').value='20'; get('Pivot Y').value='10'; get('Transform easing').value='out';
+  click('#modalBody .btn.primary'); const originalBake=App.bakeTransform; let args=null; App.bakeTransform=function (...values) { args=values; return originalBake(...values); }; click('#modalBody .btn.danger'); App.bakeTransform=originalBake;
+  ok(args && args[0]===0 && args[1]===0 && args[2]===2 && args[3]==='out' && args[5].x===12 && args[5].y===-4 && args[5].scale===1.5 && args[5].angle===360 && args[6].x===20 && args[6].y===10, 'transform dialog passes poses, pivot and easing to engine');
+  ok(!!App.doc.cel(1,0,false) && !!App.doc.cel(2,0,false) && App.doc.history.undoStack.length===1, 'confirmed transform generates one undoable operation');
+  App.undo(); ok(!App.doc.cel(1,0,false) && !App.doc.cel(2,0,false), 'transform undo restores prior destination cels'); App.redo();
+  await App.saveNow(false); const transformReload=await Q.Store.load(App.doc.id); ok(!!transformReload.cel(1,0,false) && !!transformReload.cel(2,0,false), 'generated transform frames survive save and reopen');
+  Q.UI.transformBakeDialog(); get('Source frame').value='1'; click('#modalBody .btn.primary'); App.doc.moveFrame(0,1); const currentHistory=App.doc.history.undoStack.length; click('#modalBody .btn.danger');
+  ok(App.doc.history.undoStack.length===currentHistory && doc.querySelector('#toast').textContent.includes('cancelled'), 'transform confirmation cancels if frames change');
+
+  {
+  console.log('2.9 optional MP4 audio export');
+  App.createDoc(64,64,'MP4 audio'); for(let i=1;i<4;i++) App.addFrame(false);
+  App.doc.fps=30; App.doc.frames[0].duration=2; App.doc.frames[1].skipped=true; App.doc.frames[2].duration=2; App.doc.setPlayRange(2,3); App.doc.playMode='loop';
+  const oldAudioCtx=win.AudioContext, oldRecorder=win.MediaRecorder, oldCapture=win.HTMLCanvasElement.prototype.captureStream, oldSave=Q.saveBytes, oldFileReader=win.FileReader;
+  let savedAudio=null, startedOffsets=[], stoppedTracks=0, closedContexts=0, recorderTracks=[], paintedAudio=[], exportCtx=null, mode='ok', duration=20, audioSupport=true, decodeWait=0;
+  const originalComposite=App.doc.composite; App.doc.composite=function(ctx,index,opts) { paintedAudio.push({ctx,index}); if (mode==='paintError' && ctx===exportCtx) throw Error('paint'); return originalComposite.call(this,ctx,index,opts); };
+  function fakeTrack(kind) { return {kind,readyState:'live',stop(){if (this.readyState!=='ended') stoppedTracks++; this.readyState='ended';}}; }
+  win.HTMLCanvasElement.prototype.captureStream=function () { exportCtx=this.getContext('2d'); const tracks=[fakeTrack('video')]; return {getTracks(){return tracks;},getVideoTracks(){return tracks.filter(t=>t.kind==='video');},addTrack(t){tracks.push(t);}}; };
+  win.AudioContext=class {
+    constructor(){this.state='running';}
+    resume(){return mode==='resumeError' ? Promise.reject(new Error('resume')) : Promise.resolve();}
+    close(){this.state='closed';closedContexts++;return Promise.resolve();}
+    decodeAudioData(data,yes,no){setTimeout(()=>mode==='decodeError' ? no(new Error('decode')) : yes({duration}),decodeWait);}
+    createMediaStreamDestination(){const tracks=[fakeTrack('audio')];return {stream:{getTracks:()=>tracks,getAudioTracks:()=>tracks}};}
+    createBufferSource(){return {connect(){},disconnect(){},start(when,offset){startedOffsets.push(offset);},stop(){}};}
+  };
+  function box(type,...contents) {
+    const len=8+contents.reduce((sum,part)=>sum+part.length,0), bytes=new Uint8Array(len), dv=new DataView(bytes.buffer);
+    dv.setUint32(0,len); for(let i=0;i<4;i++) bytes[4+i]=type.charCodeAt(i); let at=8;
+    for (const part of contents) { bytes.set(part,at); at+=part.length; } return bytes;
+  }
+  function handler(kind) { const payload=new Uint8Array(12); for(let i=0;i<4;i++) payload[8+i]=kind.charCodeAt(i); return box('trak',box('mdia',box('hdlr',payload))); }
+  const ftyp=box('ftyp',new Uint8Array([105,115,111,109,0,0,0,0]));
+  const muxedMp4=new win.Blob([ftyp,box('mdat',new Uint8Array(12)),box('moov',handler('vide'),handler('soun'))],{type:'video/mp4'});
+  const noAudioMp4=new win.Blob([ftyp,box('moov',handler('vide'))],{type:'video/mp4'});
+  win.MediaRecorder=class {
+    static isTypeSupported(mime){return audioSupport && mime.includes('mp4a.40.2');}
+    constructor(stream,opts){this.state='inactive';this.mimeType=mode==='wrongMime'?'video/webm':opts.mimeType;recorderTracks=stream.getTracks().map(t=>t.kind);}
+    start(){this.state='recording';setTimeout(()=>{if(this.state==='recording' && this.onstart) {this.onstart(); if(mode==='early') this.stop(); if(mode==='error') this.onerror();}},0);}
+    stop(){this.state='inactive';if(this.ondataavailable)this.ondataavailable({data:mode==='noAudio' ? noAudioMp4 : muxedMp4});if(this.onstop)this.onstop();}
+  };
+  win.FileReader=class {
+    readAsDataURL(){this.result='data:video/mp4;base64,AAAA'; this.onload();}
+    readAsArrayBuffer(blob){const r=new nativeFileReader(); r.onload=()=>{this.result=r.result;this.onload();}; r.onerror=()=>this.onerror(); r.readAsArrayBuffer(blob);}
+  };
+  ok(await Q.mp4HasAudioAndVideo(muxedMp4), 'MP4 verifier finds both tracks even after a media payload');
+  ok(!await Q.mp4HasAudioAndVideo(noAudioMp4), 'MP4 verifier rejects a container without audio');
+  const extendedMdat=new Uint8Array(20), extView=new DataView(extendedMdat.buffer); extView.setUint32(0,1); extendedMdat.set([109,100,97,116],4); extView.setUint32(12,20);
+  ok(await Q.mp4HasAudioAndVideo(new win.Blob([ftyp,extendedMdat,box('moov',handler('vide'),handler('soun'))])), 'MP4 verifier handles extended 64-bit box sizes');
+  ok(!await Q.mp4HasAudioAndVideo(new win.Blob([box('moov',handler('vide'),handler('soun'))])), 'MP4 verifier requires file type metadata');
+  let malformed=false; try { await Q.mp4HasAudioAndVideo(new win.Blob([new Uint8Array([0,0,0,100,102,116,121,112])])); } catch(e) { malformed=true; } ok(malformed, 'MP4 verifier rejects truncated or invalid box sizes');
+  Q.saveBytes=(data,mime,name)=>{savedAudio={mime,name};return true;};
+  if (!doc.querySelector('#tray').classList.contains('hidden')) Q.UI.closeTray(); click('#btnMenu');
+  const mp4Item=[...doc.querySelectorAll('#trayBody .menu-item')].find(x=>x.textContent.includes('Export MP4')); mp4Item.click();
+  ok(doc.querySelector('#modalBody').textContent.includes('Export silent MP4') && doc.querySelector('#modalBody').textContent.includes('Export MP4 with audio'), 'Actions export opens dialog with distinct silent and audio choices');
+  Array.from(doc.querySelectorAll('#modalBody button')).find(x=>x.textContent==='Export MP4 with audio').click();
+  ok(doc.querySelector('#toast').textContent.includes('unmute') && !savedAudio, 'audio export requires an unmuted track');
+  App.doc.setAudioTrack({name:'test.wav',data:'data:audio/wav;base64,AAAA',muted:false});
+  App.doc.setAudioMuted(true); App.exportMp4WithAudio(); ok(!savedAudio && doc.querySelector('#toast').textContent.includes('unmute'), 'muted audio must be unmuted before exporting'); App.doc.setAudioMuted(false);
+  App.doc.playMode='pingpong'; App.exportMp4WithAudio(); ok(doc.querySelector('#toast').textContent.includes('ping-pong') && !App.cancelAudioExport, 'audio MP4 rejects ping-pong instead of silently dropping sound');
+  App.doc.playMode='loop'; audioSupport=false; App.exportMp4WithAudio(); ok(doc.querySelector('#toast').textContent.includes('not supported') && !savedAudio, 'audio MP4 requires explicit AAC codec support'); audioSupport=true;
+  App.doc.setCameraKey({frame:0,x:32,y:32,zoom:1,angle:0,easing:'linear'}); App.doc.setLayerMotionKey(0,{frame:0,x:3,y:0,scale:1,angle:0,easing:'linear'}); let audioCameraCalls=[]; const originalAudioCamera=App.doc.compositeCamera;
+  App.doc.compositeCamera=function(ctx,index) { audioCameraCalls.push(index); return originalAudioCamera.call(this,ctx,index); };
+  paintedAudio=[]; App.exportMp4WithAudio(); await wait(210);
+  ok(audioCameraCalls.join(',')==='2,3', 'MP4 with audio renders through camera and layer animation'); App.doc.compositeCamera=originalAudioCamera;
+  ok(savedAudio && savedAudio.mime==='video/mp4' && savedAudio.name.endsWith('-audio.mp4') && recorderTracks.join(',')==='video,audio', 'audio MP4 connects video and audio tracks and saves MP4');
+  ok(startedOffsets.length===1 && Math.abs(startedOffsets[0]-2/30)<0.00001 && paintedAudio.filter(p=>p.ctx===exportCtx).map(p=>p.index).join(',')==='2,3', 'audio MP4 follows playback range, skips, holds and absolute audio offset');
+  ok(stoppedTracks>=2 && closedContexts===1 && !App.cancelAudioExport && !doc.querySelector('#progressCard'), 'completed audio MP4 releases streams and context');
+  savedAudio=null; mode='decodeError'; App.exportMp4WithAudio(); await wait(30); ok(!savedAudio && doc.querySelector('#toast').textContent.includes('decode') && !App.cancelAudioExport, 'audio decode failure is explicit and releases export');
+  mode='ok'; duration=0.01; App.exportMp4WithAudio(); await wait(30); ok(!savedAudio && doc.querySelector('#toast').textContent.includes('ends before') && !App.cancelAudioExport, 'range beyond audio duration does not export silent video'); duration=20;
+  mode='early'; App.exportMp4WithAudio(); await wait(35); ok(!savedAudio && doc.querySelector('#toast').textContent.includes('unexpectedly') && !App.cancelAudioExport, 'premature recorder stop does not save a partial file');
+  mode='wrongMime'; App.exportMp4WithAudio(); await wait(180); ok(!savedAudio && doc.querySelector('#toast').textContent.includes('unexpectedly'), 'non-MP4 recorder output is never labelled MP4');
+  mode='noAudio'; App.exportMp4WithAudio(); await wait(180); ok(!savedAudio && doc.querySelector('#toast').textContent.includes('no video or audio track'), 'encoder output missing an audio track is rejected');
+  mode='error'; App.exportMp4WithAudio(); await wait(35); ok(!savedAudio && doc.querySelector('#toast').textContent.includes('encoding failed'), 'recorder errors never save a file');
+  mode='paintError'; App.exportMp4WithAudio(); await wait(110); ok(!savedAudio && !App.cancelAudioExport && doc.querySelector('#toast').textContent.includes('render'), 'frame rendering failure cancels and releases the audio export');
+  mode='resumeError'; App.exportMp4WithAudio(); await wait(20); ok(!savedAudio && !App.cancelAudioExport && doc.querySelector('#toast').textContent.includes('audio export'), 'audio context start failure is reported');
+  mode='ok'; App.doc.fps=1; App.doc.frames[2].duration=60; App.doc.frames[3].duration=60; App.doc.setPlayRange(0,3); App.exportMp4WithAudio(); ok(!App.cancelAudioExport && doc.querySelector('#toast').textContent.includes('120 seconds'), 'long audio exports are rejected before allocation'); App.doc.fps=30; App.doc.frames[2].duration=2; App.doc.frames[3].duration=1; App.doc.setPlayRange(2,3);
+  mode='ok'; decodeWait=40; App.exportMp4WithAudio(); ok(!!doc.querySelector('#progressCard button'), 'audio export has a cancel button'); click('#progressCard button'); await wait(70); ok(!savedAudio && !App.cancelAudioExport && !doc.querySelector('#progressCard'), 'cancelling while decoding releases resources and ignores late results');
+  App.exportMp4WithAudio(); win.qalamBack(); await wait(70); ok(!savedAudio && !App.cancelAudioExport, 'Android back cancels a pending audio export');
+  App.exportMp4WithAudio(); Object.defineProperty(doc,'visibilityState',{value:'hidden',configurable:true}); doc.dispatchEvent(new win.Event('visibilitychange')); await wait(70); ok(!savedAudio && !App.cancelAudioExport, 'backgrounding cancels an audio export'); Object.defineProperty(doc,'visibilityState',{value:'visible',configurable:true});
+  App.exportMp4WithAudio(); App.createDoc(64,64,'Switched during export'); await wait(70); ok(!savedAudio && !App.cancelAudioExport, 'switching projects cancels a pending audio export');
+  win.AudioContext=oldAudioCtx; win.MediaRecorder=oldRecorder; win.HTMLCanvasElement.prototype.captureStream=oldCapture; Q.saveBytes=oldSave; win.FileReader=oldFileReader;
+  }
+
+  {
+  console.log('3.0 editable camera animation');
+  App.createDoc(64,64,'Camera project'); App.doc.activeCel(true); App.addFrame(true); App.addFrame(true); App.selectFrame(0); App.doc.history.clear();
+  if (doc.querySelector('#timeline').classList.contains('hidden')) Q.UI.toggleTimeline();
+  click('#timeline [aria-label="Animation guides and audio"]'); ok(!!doc.querySelector('#timeline [aria-label="Camera keyframes"] svg'), 'camera track is accessible from animation controls');
+  click('#timeline [aria-label="Camera keyframes"]');
+  const get=label=>doc.querySelector('#modalBody [aria-label="'+label+'"]'), action=label=>Array.from(doc.querySelectorAll('#modalBody button')).find(x=>x.textContent===label).click();
+  ok(!!doc.querySelector('#modalBody canvas[aria-label="Saved camera preview for current frame"]') && doc.querySelector('#modalBody').textContent.includes('not unsaved field changes'), 'camera dialog shows a saved-settings preview');
+  get('Camera zoom (%)').value='0'; action('Add camera key'); ok(doc.querySelector('.canvas-error').textContent.includes('zoom') && !App.doc.cameraKeys.length, 'invalid camera key is rejected');
+  get('Camera zoom (%)').value='100'; get('Camera center X').value=''; action('Add camera key'); ok(doc.querySelector('.canvas-error').textContent.includes('every camera field'), 'blank camera values are rejected');
+  get('Camera center X').value='32'; get('Camera easing').value='in'; action('Add camera key');
+  ok(App.doc.cameraEnabled && App.doc.cameraKeys.length===1 && App.doc.cameraKeys[0].easing==='in' && !!doc.querySelector('#timeline .camera-badge'), 'camera key is saved, enabled and marked in timeline');
+  Q.UI.closeModal(); App.selectFrame(2); Q.UI.cameraDialog(); get('Camera center X').value='48'; get('Camera zoom (%)').value='200'; get('Camera rotation (°)').value='90'; action('Add camera key');
+  ok(App.doc.cameraKeys.length===2 && App.doc.cameraKeys[1].frame===2 && Q.cameraPose(App.doc,1).x===36, 'second key drives eased intermediate camera pose');
+  action('Disable camera'); ok(!App.doc.cameraEnabled && App.doc.cameraKeys.length===2, 'camera can be disabled without losing keys'); action('Enable camera'); ok(App.doc.cameraEnabled, 'camera can be re-enabled');
+  get('Camera center X').value='40'; action('Update camera key'); ok(App.doc.cameraKeys[1].x===40, 'camera key can be edited without baking pixels');
+  Q.UI.closeModal(); App.undo(); ok(App.doc.cameraKeys[1].x===48, 'camera key edit is undoable'); App.redo(); ok(App.doc.cameraKeys[1].x===40, 'camera key edit is redoable');
+  Q.UI.cameraDialog(); click('#modalBody [aria-label="Go to camera key frame 1"]'); ok(App.doc.activeFrame===0 && doc.querySelector('#modalBody h2').textContent.includes('frame 1'), 'camera key list jumps to selected frame'); Q.UI.closeModal();
+  await App.saveNow(false); const loaded=await Q.Store.load(App.doc.id); ok(loaded.cameraEnabled && loaded.cameraKeys.length===2 && loaded.cameraKeys[1].x===40 && loaded.cameraKeys[0].easing==='in', 'camera track survives save and reopen');
+  const records=JSON.parse(win.localStorage.getItem('qalam-projects')), record=records[App.doc.id]; delete record.cameraKeys; delete record.cameraEnabled; win.localStorage.setItem('qalam-projects',JSON.stringify(records));
+  const legacy=await Q.Store.load(App.doc.id); ok(!legacy.cameraEnabled && legacy.cameraKeys.length===0, 'older projects load with no camera track');
+  await App.saveNow(false); const stored=JSON.parse(win.localStorage.getItem('qalam-projects')); stored[App.doc.id].cameraKeys.push({frame:999,x:1,y:1,zoom:1,angle:0,easing:'linear'},{frame:1,x:1,y:1,zoom:0,angle:0,easing:'linear'}); win.localStorage.setItem('qalam-projects',JSON.stringify(stored));
+  const cleaned=await Q.Store.load(App.doc.id); ok(cleaned.cameraKeys.length===2 && cleaned.cameraKeys.every(k=>k.frame<cleaned.frames.length), 'invalid and out-of-timeline camera keys are rejected on load');
+  const oldCameraComposite=App.doc.compositeCamera, used=[]; App.doc.compositeCamera=function(ctx,i){used.push(i);return oldCameraComposite.call(this,ctx,i);};
+  const oldGif=Q.encodeGif, oldSave=Q.saveBytes; Q.encodeGif=()=>Promise.resolve({dataUrl:'data:image/gif;base64,AAAA'}); Q.saveBytes=()=>true; App.exportGif({}); await wait(25);
+  ok(used.join(',')==='0,1,2', 'GIF export renders each frame through the camera');
+  used.length=0; App.doc.fps=30; App.exportMp4(); await wait(150); ok(used.join(',')==='0,1,2', 'silent MP4 export renders frames through the camera');
+  used.length=0; App.exportPng(); ok(used.length===0, 'PNG export remains in original canvas coordinates');
+  Q.encodeGif=oldGif; Q.saveBytes=oldSave; App.doc.compositeCamera=oldCameraComposite;
+  App.view.dirty=false; App.togglePlay(); App.view.dirty=false; App.stopPlay(); ok(App.view.dirty, 'stopping camera playback redraws the editable canvas');
+  Q.UI.cameraDialog(); action('Clear all camera keys'); ok(doc.querySelector('#modalBody h2').textContent.includes('Clear camera keys'), 'clearing all camera keys asks for confirmation'); click('#modalBody .btn.danger'); ok(App.doc.cameraKeys.length===0, 'confirmed clear removes all camera keys'); Q.UI.closeModal(); App.undo(); ok(App.doc.cameraKeys.length===2, 'undo restores cleared camera keys');
+  }
+
+  {
+  console.log('3.1 particle animation');
+  App.createDoc(64,64,'Particles'); const original=App.doc.activeCel(true); App.addFrame(true); App.addFrame(true); App.selectFrame(0); App.doc.frames[1].skipped=true;
+  App.doc.setCameraKey({frame:0,x:32,y:32,zoom:1,angle:0,easing:'linear'}); App.doc.history.clear(); App.view.selection={x:0,y:0,w:10,h:10};
+  if (doc.querySelector('#timeline').classList.contains('hidden')) Q.UI.toggleTimeline();
+  click('#timeline [aria-label="Animation guides and audio"]'); ok(!!doc.querySelector('#timeline [aria-label="Generate particles"] svg'), 'particle generator is available in animation tools');
+  click('#timeline [aria-label="Generate particles"]'); const get=label=>doc.querySelector('#modalBody [aria-label="'+label+'"]');
+  ok(doc.querySelector('#modalBody').textContent.includes('topmost raster layer') && doc.querySelector('#modalBody').textContent.includes('Selection is ignored'), 'particle dialog explains baked layer and selection behaviour');
+  get('Particle count').value='201'; click('#modalBody .btn.primary'); ok(doc.querySelector('.canvas-error').textContent.includes('1–200') && App.doc.layers.length===1, 'invalid particle count is rejected');
+  get('Particle count').value='5'; get('Particle hex colour').value='invalid'; click('#modalBody .btn.primary'); ok(doc.querySelector('.canvas-error').textContent.includes('colour') && App.doc.layers.length===1, 'invalid particle colour is rejected');
+  get('Particle hex colour').value='#3a6'; get('Particle emission').value='continuous'; get('Particle shape').value='square'; get('Particle fade').value='no'; get('Particle seed').value='42'; get('Particle first frame').value='2';
+  const originalGenerate=App.generateParticles; let generated=null; App.generateParticles=function (opts) { generated=opts; return originalGenerate(opts); }; click('#modalBody .btn.primary'); App.generateParticles=originalGenerate;
+  ok(generated && generated.start===1 && generated.end===2 && generated.seed===42 && generated.mode==='continuous' && generated.shape==='square' && !generated.fade && generated.color==='#3a6', 'particle dialog passes settings to generation engine');
+  ok(App.doc.layers.length===2 && App.doc.layer().name==='Particles' && !App.doc.cel(0,1,false) && !!App.doc.cel(1,1,false) && !!App.doc.cel(2,1,false), 'generated layer has cels only in selected range, including skipped frame');
+  ok(App.doc.cel(0,0,false)===original && App.doc.cameraKeys.length===1 && App.view.selection.w===10 && App.doc.history.undoStack.length===1, 'particle generation preserves artwork, camera, selection and creates one history step');
+  App.undo(); ok(App.doc.layers.length===1 && App.doc.cameraKeys.length===1, 'particle layer creation is undoable'); App.redo(); ok(App.doc.layers.length===2 && !!App.doc.cel(1,1,false), 'particle layer creation is redoable');
+  await App.saveNow(false); const loaded=await Q.Store.load(App.doc.id); ok(loaded.layers.length===2 && loaded.layer().name==='Particles' && !loaded.cel(0,1,false) && !!loaded.cel(1,1,false) && loaded.cameraKeys.length===1, 'particle layer and camera survive save and reopen');
+  Q.UI.particleDialog(); get('Particle first frame').value='3'; get('Particle last frame').value='2'; click('#modalBody .btn.primary'); ok(doc.querySelector('.canvas-error').textContent.includes('range'), 'reversed particle range is rejected'); Q.UI.closeModal();
+  }
+
+  {
+  console.log('3.2 editable layer animation');
+  App.createDoc(64,64,'Layer animation'); const original=App.doc.activeCel(true); App.addFrame(true); App.addFrame(true); App.selectFrame(0); App.doc.history.clear();
+  if (doc.querySelector('#timeline').classList.contains('hidden')) Q.UI.toggleTimeline(); click('#timeline [aria-label="Animation guides and audio"]');
+  ok(!!doc.querySelector('#timeline [aria-label="Layer keyframes"] svg'), 'layer keyframes are accessible from the animation panel'); click('#timeline [aria-label="Layer keyframes"]');
+  const get=label=>doc.querySelector('#modalBody [aria-label="'+label+'"]'), action=label=>Array.from(doc.querySelectorAll('#modalBody button')).find(x=>x.textContent===label).click();
+  ok(!!doc.querySelector('#modalBody canvas[aria-label="Saved layer animation preview"]') && doc.querySelector('#modalBody').textContent.includes('not unsaved field changes'), 'layer track shows saved animation preview');
+  get('Layer scale (%)').value='0'; action('Add layer key'); ok(doc.querySelector('.canvas-error').textContent.includes('scale') && !(App.doc.layer().motionKeys || []).length, 'invalid layer animation values are rejected');
+  get('Layer scale (%)').value='100'; get('Layer X offset').value=''; action('Add layer key'); ok(doc.querySelector('.canvas-error').textContent.includes('every layer field'), 'blank layer motion values are rejected');
+  get('Layer X offset').value='0'; get('Layer easing').value='in'; action('Add layer key');
+  ok(App.doc.layer().motionEnabled && App.doc.layer().motionKeys.length===1 && !!doc.querySelector('#timeline .layer-motion-badge'), 'layer key is saved and marked on timeline');
+  Q.UI.closeModal(); App.selectFrame(2); Q.UI.layerMotionDialog(); get('Layer X offset').value='16'; get('Layer Y offset').value='8'; get('Layer scale (%)').value='150'; get('Layer rotation (°)').value='90'; action('Add layer key');
+  ok(App.doc.layer().motionKeys.length===2 && Q.layerMotionPose(App.doc.layer(),1).x===4 && App.doc.cel(0,0,false)===original, 'layer keys interpolate while source cels stay intact');
+  action('Disable layer motion'); ok(!App.doc.layer().motionEnabled && App.doc.layer().motionKeys.length===2, 'layer motion can be disabled without removing keys'); action('Enable layer motion');
+  get('Layer X offset').value='20'; action('Update layer key'); ok(App.doc.layer().motionKeys[1].x===20, 'layer key is editable'); Q.UI.closeModal();
+  App.undo(); ok(App.doc.layer().motionKeys[1].x===16, 'layer key edit can be undone'); App.redo(); ok(App.doc.layer().motionKeys[1].x===20, 'layer key edit can be redone');
+  Q.UI.layerMotionDialog(); click('#modalBody [aria-label="Go to layer key frame 1"]'); ok(App.doc.activeFrame===0, 'layer key list navigates to its frame'); Q.UI.closeModal();
+  await App.saveNow(false); const loaded=await Q.Store.load(App.doc.id); ok(loaded.layer().motionEnabled && loaded.layer().motionKeys.length===2 && loaded.layer().motionKeys[1].x===20, 'layer keys survive save and reopen');
+  const all=JSON.parse(win.localStorage.getItem('qalam-projects')); delete all[App.doc.id].layers[0].motionKeys; delete all[App.doc.id].layers[0].motionEnabled; win.localStorage.setItem('qalam-projects',JSON.stringify(all));
+  const legacy=await Q.Store.load(App.doc.id); ok(!legacy.layer().motionEnabled && legacy.layer().motionKeys.length===0, 'older projects open without layer animation');
+  await App.saveNow(false); const corrupt=JSON.parse(win.localStorage.getItem('qalam-projects')); corrupt[App.doc.id].layers[0].motionKeys.push({frame:999,x:0,y:0,scale:1,angle:0,easing:'linear'},{frame:1,x:0,y:0,scale:0,angle:0,easing:'linear'}); win.localStorage.setItem('qalam-projects',JSON.stringify(corrupt));
+  const clean=await Q.Store.load(App.doc.id); ok(clean.layer().motionKeys.length===2 && clean.layer().motionKeys.every(k=>k.frame<clean.frames.length), 'invalid and out-of-range layer keys are filtered when loading');
+  App.doc.addLayer(0); ok(App.doc.layers.length===2 && App.doc.layer().motionKeys.length===2, 'duplicating a layer copies its track');
+  App.mergeDownLayer(1); ok(App.doc.layers.length===2 && doc.querySelector('#toast').textContent.includes('motion keys'), 'merging animated layers is blocked instead of discarding keys');
+  App.doc.setLayerProp(1,'locked',true); Q.UI.layerMotionDialog(); action('Disable layer motion'); ok(doc.querySelector('.canvas-error').textContent.includes('Unlock') && App.doc.layer().motionEnabled, 'locked layer blocks track changes'); Q.UI.closeModal();
+  App.doc.setLayerProp(1,'locked',false); Q.UI.layerMotionDialog(); action('Clear all layer keys'); ok(doc.querySelector('#modalBody h2').textContent.includes('Clear layer keys'), 'clearing a layer track requires confirmation'); click('#modalBody .btn.danger'); ok(App.doc.layer().motionKeys.length===0, 'confirmed clear removes selected layer keys only'); Q.UI.closeModal();
+  App.undo(); ok(App.doc.layer().motionKeys.length===2 && App.doc.layers[0].motionKeys.length===2, 'undo restores cleared keys without altering the original layer track');
+  Q.UI.layerSheet(0); ok(doc.querySelector('#modalBody').textContent.includes('Layer keyframes'), 'layer options link directly to keyframe controls'); Q.UI.closeModal();
+  }
+
+  {
+  console.log('3.3 two-bone IK');
+  App.createDoc(64,64,'IK'); App.doc.activeCel(true); App.addFrame(true); App.addFrame(true); App.selectFrame(0);
+  if (doc.querySelector('#timeline').classList.contains('hidden')) Q.UI.toggleTimeline(); click('#timeline [aria-label="Animation guides and audio"]');
+  ok(!!doc.querySelector('#timeline [aria-label="Two-bone IK"] svg'), 'IK controls are accessible in animation tools'); click('#timeline [aria-label="Two-bone IK"]');
+  let btn=label=>Array.from(doc.querySelectorAll('#modalBody button')).find(x=>x.textContent===label).click();
+  btn('Review keys'); ok(doc.querySelector('.canvas-error').textContent.includes('two different layers'), 'IK requires two separate layers'); Q.UI.closeModal();
+  App.doc.addLayer(); App.doc.activeCel(true); App.doc.cel(1,1,true); App.doc.cel(2,1,true); App.doc.history.clear();
+  Q.UI.twoBoneIKDialog(); const get=label=>doc.querySelector('#modalBody [aria-label="'+label+'"]');
+  ok(doc.querySelector('#modalBody').textContent.includes('does not bend or deform pixels') && doc.querySelector('#modalBody').textContent.includes('Blank cels stay blank'), 'IK dialog explains rigid layers and empty cels');
+  get('IK lower layer').value=get('IK upper layer').value; btn('Review keys'); ok(doc.querySelector('.canvas-error').textContent.includes('two different layers'), 'IK rejects the same layer twice');
+  get('IK upper layer').value='0'; get('IK lower layer').value='1'; get('IK joint X').value=''; btn('Review keys'); ok(doc.querySelector('.canvas-error').textContent.includes('every IK field'), 'IK validates empty numeric fields');
+  get('IK root X').value='32'; get('IK root Y').value='16'; get('IK joint X').value='32'; get('IK joint Y').value='16'; btn('Review keys'); ok(doc.querySelector('.canvas-error').textContent.includes('bones'), 'IK rejects a zero-length bone');
+  get('IK joint Y').value='24'; get('IK tip X').value='32'; get('IK tip Y').value='32'; get('IK start target X').value='32'; get('IK start target Y').value='32'; get('IK end target X').value='63'; get('IK end target Y').value='63'; get('IK bend side').value='-1'; get('IK easing').value='inout';
+  btn('Preview'); ok(!!doc.querySelector('#modalBody canvas[aria-label="IK end pose skeleton preview"]') && doc.querySelector('.ik-preview').textContent.includes('clamped'), 'IK previews skeleton and reports unreachable targets');
+  btn('Review keys'); ok(doc.querySelector('#modalBody h2').textContent.includes('Replace keys') && doc.querySelector('#modalBody').textContent.includes('clamped') && !!doc.querySelector('#modalBody canvas[aria-label="IK end pose skeleton preview"]') && !App.doc.history.undoStack.length, 'IK requires confirmation before replacing keys'); click('#modalBody .btn.ghost');
+  ok(App.doc.layers.every(l=>!(l.motionKeys || []).length), 'cancelling IK preserves both tracks');
+  Q.UI.twoBoneIKDialog(); get('IK upper layer').value='0'; get('IK lower layer').value='1'; get('IK root Y').value='16'; get('IK joint Y').value='24'; get('IK tip Y').value='32'; get('IK start target Y').value='32'; get('IK end target X').value='63'; get('IK end target Y').value='63'; btn('Review keys'); click('#modalBody .btn.danger');
+  ok(App.doc.layers.every(l=>l.motionEnabled && l.motionKeys.length===3) && App.doc.history.undoStack.length===1, 'confirmed IK creates editable tracks on both layers in one step');
+  App.undo(); ok(App.doc.layers.every(l=>!(l.motionKeys || []).length), 'IK undo restores both original tracks'); App.redo(); ok(App.doc.layers.every(l=>l.motionKeys.length===3), 'IK redo restores both tracks');
+  await App.saveNow(false); const loaded=await Q.Store.load(App.doc.id); ok(loaded.layers.every(l=>l.motionEnabled && l.motionKeys.length===3), 'generated IK keys survive saving and reopening');
+  Q.UI.twoBoneIKDialog(); get('IK upper layer').value='0'; get('IK lower layer').value='1'; btn('Review keys'); App.doc.setLayerMotionKey(0,{frame:0,x:1,y:0,scale:1,angle:0,easing:'linear'}); const hist=App.doc.history.undoStack.length; click('#modalBody .btn.danger');
+  ok(App.doc.history.undoStack.length===hist && doc.querySelector('#toast').textContent.includes('cancelled'), 'IK confirmation cancels if either track changes');
+  App.doc.setLayerProp(1,'locked',true); Q.UI.twoBoneIKDialog(); get('IK upper layer').value='0'; get('IK lower layer').value='1'; btn('Review keys'); ok(doc.querySelector('.canvas-error').textContent.includes('Unlock'), 'IK rejects locked layers in the dialog'); Q.UI.closeModal();
+  }
+
+  {
+  console.log('3.4 painting workflow');
+  App.createDoc(64,64,'Painting'); App.doc.activeCel(true); const view=doc.querySelector('#view'), sw=doc.querySelector('#btnColor'); App.view.fit();
+  Q.UI.selectionDialog(); let action=Array.from(doc.querySelectorAll('#modalBody button')).find(b=>b.textContent==='Magic wand'); ok(!!action,'magic wand is available in Selection & transform'); action.click();
+  const point=App.view.toScreen(20,20); let wand=null; const oldWand=App.view.onWand; App.view.onWand=(x,y)=>{wand=[x,y];};
+  pointer(view,'pointerdown',point.x,point.y,{id:301}); pointer(view,'pointerup',point.x,point.y,{id:301}); App.view.onWand=oldWand;
+  ok(wand && Math.abs(wand[0]-20)<0.1 && App.view.tool==='brush','magic wand maps tap through canvas transform and returns to brush');
+  const oldFill=App.fillAt, oldHit=doc.elementFromPoint; let fills=[]; App.fillAt=(x,y,c)=>fills.push([x,y,c]); doc.elementFromPoint=()=>view;
+  pointer(sw,'pointerdown',10,10,{id:302}); pointer(sw,'pointermove',point.x,point.y,{id:302}); ok(!!doc.querySelector('#colorDropGhost'), 'colour drag shows a visible pointer indicator'); pointer(sw,'pointerup',point.x,point.y,{id:302}); click('#btnColor');
+  ok(fills.length===1 && Math.abs(fills[0][0]-20)<0.1 && !!fills[0][2] && !doc.querySelector('#colorDropGhost'), 'dropping swatch on canvas calls fill with the captured colour');
+  pointer(sw,'pointerdown',10,10,{id:303}); pointer(sw,'pointermove',point.x,point.y,{id:303}); pointer(sw,'pointercancel',point.x,point.y,{id:303}); click('#btnColor'); ok(fills.length===1 && !doc.querySelector('#colorDropGhost'), 'cancelled colour drag does not fill');
+  doc.elementFromPoint=()=>sw; pointer(sw,'pointerdown',10,10,{id:304}); pointer(sw,'pointermove',point.x,point.y,{id:304}); pointer(sw,'pointerup',point.x,point.y,{id:304}); click('#btnColor'); ok(fills.length===1,'colour drop ignores UI overlays');
+  App.fillAt=oldFill; doc.elementFromPoint=oldHit;
+  const before=App.doc.history.undoStack.length; Q.UI.effectsDialog(); const slider=doc.querySelector('[aria-label="Effect strength"]'); const samples=counts.getImageData;
+  slider.value='15'; slider.dispatchEvent(new win.Event('input',{bubbles:true})); slider.value='85'; slider.dispatchEvent(new win.Event('input',{bubbles:true}));
+  await wait(100); ok(!!doc.querySelector('canvas[aria-label="Current layer effect preview"]') && counts.getImageData===samples+1 && doc.querySelector('#modalBody').textContent.includes('85%') && App.doc.history.undoStack.length===before, 'effect slider coalesces preview updates without changing artwork');
+  click('#modalBody .btn.ghost'); ok(App.doc.history.undoStack.length===before, 'cancelling effect preview does not alter history');
+  }
+
+  {
+  console.log('3.5 workflow shortcuts');
+  App.createDoc(64,64,'Shortcuts'); App.doc.addLayer(); App.doc.addLayer(); App.doc.layer(2).visible=false; App.doc.history.clear();
+  Q.UI.openTray('layers'); let eye=doc.querySelector('[aria-label="Hide Layer 2"]') || doc.querySelectorAll('.layer-tools .mini-btn')[2];
+  const target=App.doc.layers[1]; eye=Array.from(doc.querySelectorAll('.layer-tools .mini-btn')).find(b=>b.getAttribute('aria-label')==='Hide '+target.name);
+  ok(!!eye && eye.title.includes('hold'),'layer eye explains solo shortcut');
+  pointer(eye,'pointerdown',10,10,{id:401}); await wait(650); pointer(eye,'pointerup',10,10,{id:401});
+  ok(!!App.doc.solo && App.doc.solo.target===target.id && App.doc.layers.map(l=>l.visible).join(',')==='false,true,false', 'holding layer eye solos without a stray visibility toggle');
+  await App.saveNow(false); const loaded=await Q.Store.load(App.doc.id); ok(!!loaded.solo && loaded.solo.target===target.id && loaded.restoreSolo() && loaded.layers.map(l=>l.visible).join(',')==='true,true,false', 'solo visibility snapshot survives save and reopening');
+  click('#trayBody button.btn.ghost'); ok(!App.doc.solo && App.doc.layers.map(l=>l.visible).join(',')==='true,true,false','visible restore action reinstates prior layer visibility');
+  const tapEye=Array.from(doc.querySelectorAll('.layer-tools .mini-btn')).find(b=>b.getAttribute('aria-label')==='Hide '+App.doc.layers[1].name); tapEye.click(); ok(!App.doc.layers[1].visible && !App.doc.solo,'ordinary eye tap still toggles only one layer'); App.undo();
+  App.undo(); ok(!!App.doc.solo,'solo restore can be undone'); App.redo(); ok(!App.doc.solo,'solo restore can be redone'); Q.UI.closeTray();
+  const sw=doc.querySelector('#btnColor'); App.setColor([200,0,0]); App.setColor([0,0,200]);
+  pointer(sw,'pointerdown',10,10,{id:402}); await wait(650); pointer(sw,'pointerup',10,10,{id:402}); click('#btnColor');
+  ok(Q.rgbToHex(App.view.color)==='#c80000' && Q.rgbToHex(App.previousColor)==='#0000c8','holding colour swatch swaps to previous colour without opening picker');
+  pointer(sw,'pointerdown',10,10,{id:403}); await wait(650); pointer(sw,'pointerup',10,10,{id:403}); click('#btnColor'); ok(Q.rgbToHex(App.view.color)==='#0000c8','holding colour again swaps back');
+  App.setBrush('pencil'); const source=App.view.brush, size=App.view.size; const er=doc.querySelector('#btnEraser');
+  pointer(er,'pointerdown',10,10,{id:404}); await wait(650); pointer(er,'pointerup',10,10,{id:404}); click('#btnEraser');
+  ok(App.view.brush.eraser && App.view.brush.syncedEraser && App.view.brush.engine===source.engine && App.view.size===size && er.getAttribute('aria-pressed')==='true', 'holding eraser matches the current brush without changing its size');
+  click('#btnEraser'); ok(App.view.brush===source && !App.view.brush.eraser,'tapping eraser returns to the previous painting brush');
+  click('#btnEraser'); ok(App.view.brush.eraser && !App.view.brush.syncedEraser,'tapping eraser toggles the standard hard eraser'); click('#btnEraser');
+  App.setSize(37); Q.UI.openTray('brushes'); click('[aria-label="Brush size presets"]'); let buttons=()=>Array.from(doc.querySelectorAll('#modalBody button')); buttons().find(b=>b.textContent==='Save current').click();
+  ok(JSON.stringify(Q.Store.meta('sizePresets')).includes('37') && !!doc.querySelector('[aria-label="Use size 37"]'),'brush size can be saved'); buttons().find(b=>b.textContent==='Save current').click(); ok(doc.querySelector('.canvas-error').textContent.includes('already'),'duplicate size presets are rejected');
+  for(let size of [10,20,30,40,50]) { App.setSize(size); buttons().find(b=>b.textContent==='Save current').click(); } App.setSize(60); buttons().find(b=>b.textContent==='Save current').click(); ok(doc.querySelector('.canvas-error').textContent.includes('Remove a size') && Q.Store.meta('sizePresets').length===6,'size presets enforce the six-size limit');
+  App.setSize(12); click('[aria-label="Use size 37"]'); ok(App.view.size===37,'saved size can be applied to the current brush');
+  Q.UI.sizePresetsDialog(); click('[aria-label="Remove size 37"]'); ok(!Q.Store.meta('sizePresets').includes(37),'saved sizes can be removed'); Q.UI.closeModal(); Q.UI.closeTray();
+  }
+
+  {
+  console.log('3.6 global drawing preferences and image reference');
+  App.createDoc(64,64,'Preferences'); App.doc.activeCel(true); App.doc.history.clear();
+  Q.UI.openTray('menu'); const prefs=Array.from(doc.querySelectorAll('#trayBody details')).find(d=>d.textContent.includes('Pressure & smoothing')); prefs.open=true;
+  Array.from(prefs.querySelectorAll('button')).find(b=>b.textContent.includes('Pressure & smoothing')).click();
+  const pressure=doc.querySelector('[aria-label="Global pressure curve"]'), smooth=doc.querySelector('[aria-label="Extra smoothing"]');
+  ok(!!pressure && !!smooth && doc.querySelector('#modalBody').textContent.includes('future strokes'),'global controls are discoverable in preferences');
+  const originalStream=App.view.brush.streamline, originalSize=App.view.brush.pressureSize;
+  pressure.value='50'; pressure.dispatchEvent(new win.Event('input',{bubbles:true})); smooth.value='40'; smooth.dispatchEvent(new win.Event('input',{bubbles:true}));
+  ok(App.view.globalPressure===0.5 && App.view.globalSmoothing===0.4 && Q.Store.meta('globalPressure')===0.5 && Q.Store.meta('globalSmoothing')===0.4 && App.view.brush.streamline===originalStream && App.view.brush.pressureSize===originalSize,'global settings persist without changing the brush preset');
+  ok(App.view._pressure({pointerType:'pen',pressure:0.25})===0.5 && App.view._pressure({pointerType:'touch',pressure:0.25})===1, 'global pressure affects pen only');
+  Array.from(doc.querySelectorAll('#modalBody button')).find(b=>b.textContent==='Reset').click(); ok(App.view.globalPressure===1 && App.view.globalSmoothing===0 && Q.Store.meta('globalSmoothing')===0,'global controls reset to neutral defaults'); Q.UI.closeModal(); Q.UI.closeTray();
+  Q.UI.openReference(); await wait(140); const cv=doc.querySelector('#referenceCanvas'), imageInput=doc.querySelector('#imageImport'), origClick=imageInput.click, origReader=win.FileReader, origImage=win.Image; let picks=0;
+  imageInput.click=()=>picks++; win.FileReader=class {readAsDataURL(){this.result='data:image/png;base64,AAAA';setTimeout(()=>this.onload(),0);}}; win.Image=class {constructor(){this.width=4000;this.height=2000;} set src(x){setTimeout(()=>this.onload(),0);}};
+  const before=App.doc.history.undoStack.length; click('#referencePickImage'); ok(picks===1 && Q.UI.imageTarget.kind==='reference','reference opens the native image picker');
+  Object.defineProperty(imageInput,'files',{value:[{name:'ref.png',type:'image/png',size:123}],configurable:true}); imageInput.dispatchEvent(new win.Event('change',{bubbles:true})); await wait(30);
+  ok(doc.querySelector('#referenceTitle').textContent==='Image reference' && cv.width===2048 && cv.height===1024 && App.doc.history.undoStack.length===before && App.doc.layers.length===1,'external reference is downscaled and does not edit the document');
+  Q.UI.refreshReference(); await wait(150); ok(cv.width===2048 && doc.querySelector('#referenceTitle').textContent==='Image reference','document updates do not overwrite the external reference');
+  click('#referenceCanvasMode'); await wait(150); ok(doc.querySelector('#referenceTitle').textContent==='Canvas reference' && cv.width!==2048,'canvas reference can be restored');
+  win.FileReader=class {readAsDataURL(){this.result='data:image/png;base64,AAAA';setTimeout(()=>this.onload(),60);}}; click('#referencePickImage'); imageInput.dispatchEvent(new win.Event('change',{bubbles:true})); click('#referenceClose'); await wait(100);
+  ok(doc.querySelector('#referenceWindow').classList.contains('hidden') && cv.width===1 && doc.querySelector('#referenceTitle').textContent==='Canvas reference','closing reference cancels pending loads and releases the bitmap');
+  Q.UI.openReference(); click('#referencePickImage'); imageInput.dispatchEvent(new win.Event('change',{bubbles:true})); App.createDoc(64,64,'New document'); await wait(100);
+  ok(doc.querySelector('#referenceWindow').classList.contains('hidden') && cv.width===1,'switching artwork cancels pending reference loads');
+  imageInput.click=origClick; win.FileReader=origReader; win.Image=origImage;
+  Q.Store.meta('globalPressure',0.75); Q.Store.meta('globalSmoothing',0.3); App.init(); await tick();
+  ok(App.view.globalPressure===0.75 && App.view.globalSmoothing===0.3,'global pressure and smoothing are restored at application startup');
+  }
+
+  {
+  console.log('3.7 precise transform');
+  App.createDoc(64,64,'Precision'); App.doc.activeCel(true); App.doc.history.clear(); App.view.selection={x:8,y:10,w:4,h:6};
+  Q.UI.selectionDialog(); const choice=Array.from(doc.querySelectorAll('#modalBody button')).find(b=>b.textContent==='Precise transform'); ok(!!choice && !!choice.querySelector('svg'),'precise transform is available from selection tools'); choice.click();
+  const field=label=>doc.querySelector('#modalBody [aria-label="'+label+'"]'); const w=field('Precise width (px)'),h=field('Precise height (px)'),dx=field('Precise move X (px)'),dy=field('Precise move Y (px)'),angle=field('Precise rotation (degrees)'),sample=field('Transform resampling');
+  ok(w.value==='4' && h.value==='6' && !!field('Approximate transformed layer preview') && doc.querySelector('#modalBody').textContent.includes('bounding box'),'dialog starts with current dimensions and explains the preview and selection');
+  w.value=''; click('#modalBody .btn.primary'); ok(doc.querySelector('.canvas-error').textContent.includes('every transform field') && App.doc.history.undoStack.length===0,'blank numeric transform input is rejected');
+  w.value='257'; click('#modalBody .btn.primary'); ok(doc.querySelector('.canvas-error').textContent.includes('size limit'),'excessive precision dimensions are rejected');
+  w.value='6'; h.value='4'; dx.value='1'; dy.value='2'; angle.value='90'; sample.value='nearest'; sample.dispatchEvent(new win.Event('change',{bubbles:true}));
+  ok(!doc.querySelector('.canvas-error').textContent && App.doc.history.undoStack.length===0,'preview validates changes without editing the document');
+  click('#modalBody .btn.primary'); ok(App.doc.history.undoStack.length===1 && App.view.selection.x===9 && App.view.selection.y===12 && App.view.selection.w===4 && App.view.selection.h===6,'apply commits precise transform and updates bounding selection');
+  App.undo(); ok(App.doc.history.undoStack.length===0,'precise transform is one undo step'); App.redo(); ok(App.doc.history.undoStack.length===1,'precise transform can be redone');
+  Q.UI.preciseTransformDialog(); const mx=field('Precise move X (px)'); mx.value='128'; mx.dispatchEvent(new win.Event('input',{bubbles:true})); ok(doc.querySelector('#modalBody').textContent.includes('cropped'),'precision preview warns when output is off canvas');
+  const history=App.doc.history.undoStack.length; click('#modalBody .btn.ghost'); ok(App.doc.history.undoStack.length===history,'cancelling precision transform leaves artwork unchanged');
+  Q.UI.preciseTransformDialog(); App.view.selection.x++; click('#modalBody .btn.primary'); ok(doc.querySelector('.canvas-error').textContent.includes('Selection changed') && App.doc.history.undoStack.length===history,'stale selection is rejected before mutation'); Q.UI.closeModal();
+  Q.UI.preciseTransformDialog(); App.doc.layer().locked=true; click('#modalBody .btn.primary'); ok(doc.querySelector('.canvas-error').textContent.includes('locked') && App.doc.history.undoStack.length===history,'precision dialog rechecks locks on apply'); App.doc.layer().locked=false; Q.UI.closeModal();
+  App.view.selection={x:1,y:1,w:4,h:4,points:[{x:1,y:1},{x:5,y:1},{x:1,y:5}]}; Q.UI.preciseTransformDialog(); ok(doc.querySelector('.canvas-error').textContent.includes('rectangular'),'precision dialog rejects lasso selections'); Q.UI.closeModal();
+  }
+
+  {
+  console.log('3.8 quick edit');
+  App.createDoc(64,64,'Quick Edit'); App.doc.activeCel(true); App.doc.history.clear(); App.view.selection={x:8,y:8,w:12,h:12}; App.clearClipboard();
+  Q.UI.selectionDialog(); const quick=Array.from(doc.querySelectorAll('#modalBody button')).find(b=>b.textContent==='Cut, copy & paste'); ok(!!quick && !!quick.querySelector('svg'),'quick edit is accessible through selection tools'); quick.click();
+  const choose=label=>Array.from(doc.querySelectorAll('#modalBody button')).find(b=>b.textContent===label).click();
+  ok(doc.querySelector('#modalBody').textContent.includes('not the system clipboard') && doc.querySelector('#modalBody').textContent.includes('current layer and frame'),'quick edit explains clipboard and source scope');
+  choose('Paste'); ok(doc.querySelector('.canvas-error').textContent.includes('Copy or cut'),'empty clipboard cannot paste'); choose('Copy'); ok(!!App.clipboard && App.clipboard.w===12 && App.doc.history.undoStack.length===0,'copy fills the session clipboard without modifying the document');
+  Q.UI.quickEditDialog(); choose('Cut'); ok(App.doc.history.undoStack.length===1 && !!App.clipboard,'cut creates an undoable edit'); App.undo(); ok(App.doc.history.undoStack.length===0 && !!App.clipboard,'undo cut leaves clipboard intact');
+  Q.UI.quickEditDialog(); choose('Paste'); ok(App.doc.layers.length===2 && App.doc.layer().name==='Pasted selection' && App.doc.history.undoStack.length===1,'paste creates a new top layer'); App.undo(); ok(App.doc.layers.length===1 && !!App.clipboard,'undo paste removes the layer only');
+  Q.UI.quickEditDialog(); App.view.selection.x++; choose('Cut'); ok(doc.querySelector('.canvas-error').textContent.includes('changed') && App.doc.history.undoStack.length===0,'quick edit refuses a stale selection'); Q.UI.closeModal();
+  const v=App.view, ev=(type,id,x,y)=>({type,pointerId:id,pointerType:'touch',clientX:x,clientY:y,pressure:1}); const tx=v.tx,ty=v.ty,scale=v.scale;
+  for(let i=0;i<3;i++) v._down(ev('pointerdown',501+i,200+i*40,200)); for(let i=0;i<3;i++) v._move(ev('pointermove',501+i,200+i*40,280)); for(let i=0;i<3;i++) v._up(ev('pointerup',501+i,200+i*40,280));
+  ok(doc.querySelector('#modalBody h2').textContent==='Cut, copy & paste' && v.tx===tx && v.ty===ty && v.scale===scale,'three-finger downward swipe opens quick edit without moving the viewport'); Q.UI.closeModal();
+  for(let i=0;i<3;i++) v._down(ev('pointerdown',511+i,200+i*40,200)); for(let i=0;i<3;i++) v._move(ev('pointermove',511+i,200+i*40,280)); v._up(ev('pointercancel',511,200,280)); for(let i=1;i<3;i++) v._up(ev('pointerup',511+i,200+i*40,280));
+  ok(doc.querySelector('#modal').classList.contains('hidden'),'cancelled swipe does not open quick edit');
+  for(let i=0;i<3;i++) v._down(ev('pointerdown',515+i,200+i*40,200)); for(let i=0;i<3;i++) v._move(ev('pointermove',515+i,280+i*40,200)); for(let i=0;i<3;i++) v._up(ev('pointerup',515+i,280+i*40,200)); ok(doc.querySelector('#modal').classList.contains('hidden'),'horizontal three-finger swipe does not open quick edit');
+  for(let i=0;i<4;i++) v._down(ev('pointerdown',521+i,200+i*40,200)); for(let i=0;i<4;i++) v._move(ev('pointermove',521+i,200+i*40,280)); for(let i=0;i<4;i++) v._up(ev('pointerup',521+i,200+i*40,280));
+  ok(doc.querySelector('#modal').classList.contains('hidden'),'four-finger swipes do not trigger quick edit');
+  const oldClip=App.clipboard; App.createDoc(64,64,'Paste target'); ok(App.clipboard===oldClip,'session clipboard survives changing artworks'); Q.UI.quickEditDialog(); choose('Paste'); ok(App.doc.layers.length===2,'paste works across artworks');
+  Q.UI.quickEditDialog(); choose('Clear clipboard'); ok(!App.clipboard,'clipboard can be cleared explicitly');
+  }
+
+  {
+  console.log('3.9 brush slider layout');
+  App.createDoc(64,64,'Layout'); const studio=doc.querySelector('#studio'), bar=studio.querySelector('.topbar'), timeline=doc.querySelector('#timeline'), brush=studio.querySelector('.rail-left'), tools=studio.querySelector('.rail-right');
+  if (!timeline.classList.contains('hidden')) Q.UI.toggleTimeline();
+  const oldStudioRect=studio.getBoundingClientRect, oldBarRect=bar.getBoundingClientRect, oldTimeRect=timeline.getBoundingClientRect;
+  studio.getBoundingClientRect=()=>({left:0,top:0,right:400,bottom:800,width:400,height:800}); Object.defineProperty(studio,'clientHeight',{value:800,configurable:true}); Object.defineProperty(bar,'offsetHeight',{value:52,configurable:true});
+  bar.getBoundingClientRect=()=>({left:0,top:0,bottom:52,width:400,height:52}); timeline.getBoundingClientRect=()=>({left:0,top:400,bottom:792,width:400,height:392});
+  Q.UI.openTray('menu'); const prefs=Array.from(doc.querySelectorAll('#trayBody details')).find(e=>e.textContent.includes('Brush slider layout')); prefs.open=true; const item=Array.from(prefs.querySelectorAll('button')).find(b=>b.textContent.includes('Brush slider layout'));
+  ok(!!item && !!item.querySelector('svg'),'brush slider layout has a distinctive preferences entry'); item.click();
+  const side=doc.querySelector('[aria-label="Brush slider side"]'), position=doc.querySelector('[aria-label="Brush slider vertical position"]');
+  ok(side.value==='left' && position.value==='50' && doc.querySelector('#modalBody').textContent.includes('scroll'),'layout defaults and short-screen fallback are explained');
+  side.value='right'; side.dispatchEvent(new win.Event('change',{bubbles:true})); position.value='0'; position.dispatchEvent(new win.Event('input',{bubbles:true}));
+  ok(studio.getAttribute('data-slider-side')==='right' && brush.style.top==='60px' && Q.Store.meta('railPreferences').side==='right' && Q.Store.meta('railPreferences').position===0,'side and top position apply immediately and persist');
+  position.value='100'; position.dispatchEvent(new win.Event('input',{bubbles:true}));
+  ok(brush.style.top==='358px' && tools.style.top==='263px' && doc.querySelector('#sizeWrap').style.height==='156px','bottom position keeps rails within portrait workspace');
+  Q.UI.closeModal(); Q.UI.closeTray(); Q.UI.toggleTimeline(); Q.UI.layoutRails();
+  ok(brush.style.top==='60px' && brush.style.maxHeight==='332px' && doc.querySelector('#sizeWrap').style.height==='105px','timeline space compacts rails above the panel');
+  Q.UI.toggleTimeline(); Q.UI.layoutRails(); ok(doc.querySelector('#sizeWrap').style.height==='156px' && brush.style.top==='358px','closing timeline restores portrait rail layout');
+  studio.getBoundingClientRect=()=>({left:0,top:0,right:800,bottom:320,width:800,height:320}); Object.defineProperty(studio,'clientHeight',{value:320,configurable:true}); timeline.getBoundingClientRect=()=>({left:0,top:180,bottom:312,width:800,height:132}); Q.UI.toggleTimeline(); Q.UI.layoutRails();
+  ok(brush.style.maxHeight==='112px' && doc.querySelector('#sizeWrap').style.height==='80px' && tools.style.maxHeight==='112px','short landscape timeline constrains rails for scrolling'); Q.UI.toggleTimeline();
+  studio.getBoundingClientRect=()=>({left:0,top:0,right:400,bottom:800,width:400,height:800}); Object.defineProperty(studio,'clientHeight',{value:800,configurable:true}); timeline.getBoundingClientRect=()=>({left:0,top:400,bottom:792,width:400,height:392}); Q.UI.layoutRails();
+  Q.UI.openTray('brushes'); const size=doc.querySelector('[aria-label="Brush size in tray"]'), opacity=doc.querySelector('[aria-label="Brush opacity in tray"]');
+  size.value='71'; size.dispatchEvent(new win.Event('input',{bubbles:true})); opacity.value='35'; opacity.dispatchEvent(new win.Event('input',{bubbles:true}));
+  ok(App.view.size===71 && App.view.opacity===0.35 && doc.querySelector('#sizeSlider').value==='71' && doc.querySelector('#opacitySlider').value==='35','horizontal brush-tray controls stay in sync with rail sliders');
+  App.setSize(29); App.setOpacity(0.8); ok(size.value==='29' && opacity.value==='80','rail and programmatic changes update brush-tray sliders');
+  Q.UI.closeTray(); Q.UI.railPreferencesDialog(); Array.from(doc.querySelectorAll('#modalBody button')).find(b=>b.textContent==='Reset').click();
+  ok(studio.getAttribute('data-slider-side')==='left' && Q.Store.meta('railPreferences').position===50 && doc.querySelector('[aria-label="Brush slider side"]').value==='left','reset restores default layout'); Q.UI.closeModal();
+  Q.Store.meta('railPreferences',{side:'right',position:25}); App.init(); await tick(); App.createDoc(64,64,'Reload layout'); Q.UI.layoutRails();
+  ok(studio.getAttribute('data-slider-side')==='right' && brush.style.top==='135px','saved rail layout is restored at application startup');
+  Q.UI.applyRailPreferences({side:'left',position:50},true); studio.getBoundingClientRect=oldStudioRect; bar.getBoundingClientRect=oldBarRect; timeline.getBoundingClientRect=oldTimeRect;
+  }
+
+  {
+  console.log('4.1 distraction-free canvas');
+  App.createDoc(64,64,'Focus view'); const studio=doc.querySelector('#studio'), timeline=doc.querySelector('#timeline'), restore=doc.querySelector('#btnRestoreInterface'), ref=doc.querySelector('#referenceWindow');
+  if (timeline.classList.contains('hidden')) Q.UI.toggleTimeline(); Q.UI.openReference();
+  App.view.zoomAt(1.2); const viewport=[App.view.scale,App.view.rot,App.view.tx,App.view.ty]; App.doc.history.clear();
+  Q.UI.openTray('menu'); const section=Array.from(doc.querySelectorAll('#trayBody details')).find(e=>e.textContent.includes('Canvas & view')); section.open=true;
+  const hide=Array.from(section.querySelectorAll('button')).find(b=>b.textContent==='Hide interface'); ok(hide && hide.querySelector('svg'),'focus view is discoverable in canvas actions with a distinctive icon'); hide.click();
+  ok(Q.UI.isFocusMode() && visible(restore) && !visible(studio.querySelector('.topbar')) && !visible(studio.querySelector('.rail-left')) && !visible(studio.querySelector('.rail-right')) && !visible(timeline) && !visible(ref) && !visible(doc.querySelector('#tray')) && visible(doc.querySelector('#view')), 'focus mode hides chrome but leaves canvas and labelled restore button visible');
+  ok(restore.getAttribute('aria-label')==='Show interface' && !timeline.classList.contains('hidden') && !ref.classList.contains('hidden'),'open timeline and reference are hidden temporarily, not closed');
+  ok(viewport.every((x,i)=>x===[App.view.scale,App.view.rot,App.view.tx,App.view.ty][i]) && App.doc.history.undoStack.length===0, 'focus mode leaves viewport and document history unchanged');
+  App.addLayer(); const n=App.doc.history.undoStack.length, v=App.view, ev=(type,id,x,y)=>({type,pointerId:id,pointerType:'touch',clientX:x,clientY:y,pressure:1}); v.tool='select';
+  for(let i=0;i<3;i++) v._down(ev('pointerdown',900+i,200+i*40,200)); for(let i=0;i<3;i++) v._up(ev('pointerup',900+i,200+i*40,200));
+  ok(App.doc.history.undoStack.length===n-1 && Q.UI.isFocusMode(),'three-finger undo still works in focus mode');
+  for(let i=0;i<4;i++) v._down(ev('pointerdown',910+i,200+i*40,200)); for(let i=0;i<4;i++) v._up(ev('pointerup',910+i,200+i*40,200));
+  ok(App.doc.history.undoStack.length===n && Q.UI.isFocusMode(),'four-finger redo still works in focus mode'); v.tool='brush';
+  const point=v.toScreen(32,32), beforeDraw=App.doc.history.undoStack.length; const pen=(type,x,y)=>({type,pointerId:925,pointerType:'pen',clientX:x,clientY:y,pressure:0.7}); v._down(pen('pointerdown',point.x,point.y)); v._move(pen('pointermove',point.x+12,point.y+6)); v._up(pen('pointerup',point.x+12,point.y+6)); ok(App.doc.history.undoStack.length===beforeDraw+1 && Q.UI.isFocusMode(),'drawing remains active in focus mode');
+  restore.click(); ok(!Q.UI.isFocusMode() && !visible(restore) && visible(timeline) && visible(ref) && visible(studio.querySelector('.topbar')), 'restore button returns timeline, reference and controls');
+  Q.UI.setFocusMode(true); Q.UI.quickEditDialog(); ok(win.qalamBack()===0 && Q.UI.isFocusMode() && !visible(doc.querySelector('#modal')),'Back closes an open dialog before leaving focus mode');
+  ok(win.qalamBack()===0 && !Q.UI.isFocusMode() && visible(ref) && !studio.classList.contains('hidden'),'Android Back restores interface without closing reference or leaving artwork');
+  Q.UI.setFocusMode(true); win.dispatchEvent(new win.KeyboardEvent('keydown',{key:'Escape'})); ok(!Q.UI.isFocusMode(),'Escape restores the interface');
+  Q.UI.setFocusMode(true); App.createDoc(64,64,'Another artwork'); ok(!Q.UI.isFocusMode() && !visible(restore), 'switching artwork resets focus mode');
+  Q.UI.setFocusMode(true); App.backToGallery(); ok(!Q.UI.isFocusMode() && studio.classList.contains('hidden') && !visible(restore),'returning to gallery resets focus mode');
+  App.createDoc(64,64,'Post focus');
+  }
+
+  {
+  console.log('4.2 hold gesture timing');
+  App.createDoc(64,64,'Gesture settings'); const history=App.doc.history.undoStack.length;
+  Q.UI.openTray('menu'); const prefs=Array.from(doc.querySelectorAll('#trayBody details')).find(e=>e.textContent.includes('Hold gesture timing')); prefs.open=true;
+  const item=Array.from(prefs.querySelectorAll('button')).find(b=>b.textContent==='Hold gesture timing'); ok(item && item.querySelector('svg'),'timing preferences are discoverable'); item.click();
+  let shape=doc.querySelector('[aria-label="QuickShape hold"]'), eye=doc.querySelector('[aria-label="Eyedropper hold"]');
+  ok(shape.value==='380' && eye.value==='520' && doc.querySelector('#modalBody').textContent.includes('120 ms'),'defaults and timing precision are explained');
+  shape.value='1000'; shape.dispatchEvent(new win.Event('input',{bubbles:true})); eye.value='400'; eye.dispatchEvent(new win.Event('input',{bubbles:true}));
+  ok(App.view.gestureDelays.shape===1000 && App.view.gestureDelays.eyedrop===400 && Q.Store.meta('gestureDelays').shape===1000 && doc.querySelector('#modalBody').textContent.includes('1000 ms') && App.doc.history.undoStack.length===history,'independent hold timings persist without editing artwork');
+  Q.UI.closeModal(); Q.UI.closeTray();
+  const originalNow=Q.now, originalSet=win.setInterval, originalClear=win.clearInterval; let now=10000, callback=null, triggered='', interval=0;
+  Q.now=()=>now; win.setInterval=(fn,ms)=>{callback=fn; interval=ms; return 42;}; win.clearInterval=()=>{};
+  try {
+    const v=Object.create(Q.View.prototype); v.stroke={len:20,size:10}; v._lastStampTime=now; v.gestureDelays={shape:1000,eyedrop:400}; v._quickShape=()=>{triggered='shape';}; v._holdEyedrop=()=>{triggered='eyedrop';};
+    v._armHold(); now+=400; callback(); ok(!triggered && interval===120,'long stroke waits for its own QuickShape delay');
+    v.gestureDelays.shape=200; now+=599; callback(); ok(!triggered,'changing preference does not change an active hold'); now+=1; callback(); ok(triggered==='shape' && v.holdTimer===0,'QuickShape activates at captured threshold');
+    triggered=''; v._lastStampTime=now; v._armHold(); now+=200; callback(); ok(triggered==='shape','new strokes use updated QuickShape delay');
+    triggered=''; v.stroke={len:0,size:10}; v.gestureDelays={shape:2000,eyedrop:400}; v._lastStampTime=now; v._armHold(); now+=400; callback(); ok(!triggered,'eyedropper waits through its configured idle time'); now+=1; callback(); ok(triggered==='eyedrop','eyedropper delay works independently of QuickShape');
+    triggered=''; v.stroke={len:20,size:10}; v._armHold(); v.stroke=null; callback(); ok(!triggered && v.holdTimer===0,'cancelled stroke disarms the timer');
+  } finally { Q.now=originalNow; win.setInterval=originalSet; win.clearInterval=originalClear; }
+  App.createDoc(64,64,'Other artwork'); ok(App.view.gestureDelays.shape===1000 && App.view.gestureDelays.eyedrop===400,'device preferences carry across artworks');
+  App.init(); await tick(); ok(App.view.gestureDelays.shape===1000 && App.view.gestureDelays.eyedrop===400,'timings are restored on startup');
+  App.createDoc(64,64,'Reset test'); Q.UI.gesturePreferences(); Array.from(doc.querySelectorAll('#modalBody button')).find(b=>b.textContent==='Reset').click();
+  shape=doc.querySelector('[aria-label="QuickShape hold"]'); eye=doc.querySelector('[aria-label="Eyedropper hold"]'); ok(shape.value==='380' && eye.value==='520' && Q.Store.meta('gestureDelays').shape===380 && Q.Store.meta('gestureDelays').eyedrop===520,'reset restores and persists original timing'); Q.UI.closeModal();
+  }
+
+  {
+  console.log('4.3 clear current cel');
+  App.createDoc(64,64,'Clear cel'); const d=App.doc, v=App.view, first=d.activeCel(true); d.addFrame(false); const second=d.activeCel(true); d.activeFrame=0; d.history.clear(); v.selection={x:5,y:5,w:10,h:10};
+  const ev=(type,id,x,y)=>({type,pointerId:id,pointerType:'touch',clientX:x,clientY:y,pressure:1});
+  function scrub(id,opts={}) {
+    for(let i=0;i<3;i++) v._down(ev('pointerdown',id+i,300+i*40,300));
+    for (const dx of [70,-70,70]) for(let i=0;i<3;i++) v._move(ev('pointermove',id+i,300+i*40+(opts.oneFinger && i!==0 ? 0 : dx*(opts.reverse ? -1 : 1)),300+(opts.vertical ? dx : 0)));
+    for(let i=0;i<3;i++) v._up(ev(opts.cancel && i===0 ? 'pointercancel' : 'pointerup',id+i,370+i*40,300));
+  }
+  scrub(1000); ok(visible(doc.querySelector('#modal')) && doc.querySelector('#modalBody h2').textContent==='Clear current cel?' && doc.querySelector('#modalBody').textContent.includes('ignoring any selection') && d.activeCel(false)===first && d.history.undoStack.length===0,'three-finger scrub requests confirmation without editing');
+  Array.from(doc.querySelectorAll('#modalBody button')).find(b=>b.textContent==='Cancel').click(); ok(d.activeCel(false)===first && d.history.undoStack.length===0,'cancel keeps current cel');
+  scrub(1005,{reverse:true}); ok(visible(doc.querySelector('#modal')), 'scrub works in either horizontal direction'); click('#modalBody .btn.danger'); ok(d.activeCel(false)===null && d.history.undoStack.length===1 && d.cel(1,0,false)===second, 'scrub confirmation clears only the active cel'); App.undo(); ok(d.activeCel(false)===first,'scrub clear is undoable'); d.history.clear();
+  scrub(1010,{cancel:true}); ok(!visible(doc.querySelector('#modal')),'cancelled scrub does not open confirmation');
+  scrub(1020,{oneFinger:true}); ok(!visible(doc.querySelector('#modal')),'one moving finger cannot trigger scrub');
+  scrub(1030,{vertical:true}); ok(!visible(doc.querySelector('#modal')),'large vertical motion cannot trigger scrub');
+  for(let i=0;i<4;i++) v._down(ev('pointerdown',1040+i,300+i*40,300)); for(const dx of [70,-70,70]) for(let i=0;i<4;i++) v._move(ev('pointermove',1040+i,300+i*40+dx,300)); for(let i=0;i<4;i++) v._up(ev('pointerup',1040+i,370+i*40,300)); ok(!visible(doc.querySelector('#modal')),'four fingers cannot trigger scrub');
+  for(let i=0;i<3;i++) v._down(ev('pointerdown',1050+i,300+i*40,300)); for(let i=0;i<3;i++) v._move(ev('pointermove',1050+i,370+i*40,300)); v._up(ev('pointerup',1050,370,300)); for(const dx of [-70,70]) for(let i=1;i<3;i++) v._move(ev('pointermove',1050+i,300+i*40+dx,300)); for(let i=1;i<3;i++) v._up(ev('pointerup',1050+i,370+i*40,300)); ok(!visible(doc.querySelector('#modal')),'lifting early prevents remaining fingers completing scrub');
+  Q.UI.openTray('menu'); const action=Array.from(doc.querySelectorAll('#trayBody button')).find(b=>b.textContent==='Clear current cel'); ok(action && action.querySelector('svg'),'clear current cel has an accessible menu action'); action.click();
+  click('#modalBody .btn.danger'); ok(d.activeCel(false)===null && d.cel(1,0,false)===second && d.history.undoStack.length===1 && v.selection.x===5,'confirmed action clears only the active cel in one undo step without changing selection');
+  App.undo(); ok(d.activeCel(false)===first && d.cel(1,0,false)===second,'undo restores cleared cel'); App.redo(); ok(d.activeCel(false)===null && d.cel(1,0,false)===second,'redo clears again'); App.undo();
+  Q.UI.clearCelDialog(); d.layer().locked=true; click('#modalBody .btn.danger'); ok(d.activeCel(false)===first,'lock acquired before confirmation blocks clear'); d.layer().locked=false;
+  Q.UI.clearCelDialog(); d.activeFrame=1; click('#modalBody .btn.danger'); ok(d.activeCel(false)===second && d.cel(0,0,false)===first,'frame change before confirmation blocks clear'); d.activeFrame=0;
+  Q.UI.clearCelDialog(); d.addLayer(); click('#modalBody .btn.danger'); ok(d.cel(0,0,false)===first,'layer/history change before confirmation blocks clear'); App.undo();
+  d.layer().alphaLocked=true; Q.UI.clearCelDialog(); ok(!visible(doc.querySelector('#modal')) && d.activeCel(false)===first,'alpha lock prevents confirmation'); d.layer().alphaLocked=false;
+  d.layer().visible=false; Q.UI.clearCelDialog(); ok(!visible(doc.querySelector('#modal')) && d.activeCel(false)===first,'hidden layer prevents confirmation'); d.layer().visible=true;
+  Q.UI.clearCelDialog(); d.history.struct(function(){this.bg='#eeeeee';}); click('#modalBody .btn.danger'); ok(d.activeCel(false)===first,'history change before confirmation blocks clearing same cel');
+  const n=d.history.undoStack.length; for(let i=0;i<3;i++) v._down(ev('pointerdown',1060+i,300+i*40,300)); for(let i=0;i<3;i++) v._up(ev('pointerup',1060+i,300+i*40,300)); ok(d.history.undoStack.length===n-1 && !visible(doc.querySelector('#modal')),'three-finger tap remains undo');
+  for(let i=0;i<4;i++) v._down(ev('pointerdown',1070+i,300+i*40,300)); for(let i=0;i<4;i++) v._up(ev('pointerup',1070+i,300+i*40,300)); ok(d.history.undoStack.length===n && !visible(doc.querySelector('#modal')),'four-finger tap remains redo');
+  for(let i=0;i<3;i++) v._down(ev('pointerdown',1080+i,300+i*40,300)); for(let i=0;i<3;i++) v._move(ev('pointermove',1080+i,300+i*40,380)); for(let i=0;i<3;i++) v._up(ev('pointerup',1080+i,300+i*40,380)); ok(doc.querySelector('#modalBody h2').textContent==='Cut, copy & paste','downward swipe still opens Quick Edit'); Q.UI.closeModal();
+  }
+
+  {
+  console.log('4.5 recolour matching pixels');
+  App.createDoc(64,64,'Recolour'); const d=App.doc, cel=d.activeCel(true); d.history.clear(); App.setColor([0,128,255]);
+  Q.UI.openTray('menu'); const entry=Array.from(doc.querySelectorAll('#trayBody button')).find(b=>b.textContent==='Recolour matching pixels'); ok(entry && entry.querySelector('svg'),'recolour is discoverable from create and edit'); entry.click();
+  const get=label=>doc.querySelector('#modalBody [aria-label="'+label+'"]'), src=get('Source colour'), dest=get('Replacement colour'), slider=get('Recolour tolerance'), preview=get('Recolour preview, tap to sample source');
+  ok(src.value==='#000000' && dest.value==='#0080ff' && slider.value==='0' && preview && doc.querySelector('#modalBody').textContent.includes('disconnected areas') && doc.querySelector('#modalBody').textContent.includes('Alpha is preserved'),'dialog explains scope, shows preview and starts with brush colour');
+  src.value='wrong'; src.dispatchEvent(new win.Event('input',{bubbles:true})); click('#modalBody .btn.primary'); ok(doc.querySelector('.canvas-error').textContent.includes('HEX') && d.history.undoStack.length===0,'invalid colour is rejected without changes');
+  const ctx=cel.getContext('2d'), oldGet=ctx.getImageData; let sampled=null; ctx.getImageData=function(x,y,w,h){ if(w===1 && h===1) { sampled=[x,y]; return {data:new Uint8ClampedArray([34,68,136,255])}; } return oldGet.call(this,x,y,w,h); };
+  preview.getBoundingClientRect=()=>({left:0,top:0,width:200,height:200,right:200,bottom:200}); pointer(preview,'pointerdown',100,50,{id:1200});
+  ok(src.value==='#224488' && sampled[0]===32 && sampled[1]===16,'preview samples exact raw source pixel');
+  ctx.getImageData=function(x,y,w,h){ if(w===1 && h===1) return {data:new Uint8ClampedArray([0,0,0,0])}; return oldGet.call(this,x,y,w,h); }; pointer(preview,'pointerdown',50,50,{id:1201}); ok(src.value==='#224488' && doc.querySelector('.canvas-error').textContent.includes('non-transparent'),'transparent sampling is rejected'); ctx.getImageData=oldGet;
+  slider.value='24'; slider.dispatchEvent(new win.Event('input',{bubbles:true})); ok(doc.querySelector('#modalBody').textContent.includes('24') && doc.querySelector('.canvas-error').textContent==='', 'tolerance updates live preview');
+  const oldRecolor=App.recolorMatching; let passed=null; App.recolorMatching=function(t,a,b,n){ passed={t,a,b,n}; return oldRecolor(t,a,b,n); }; click('#modalBody .btn.primary');
+  ok(passed && passed.n===24 && passed.a.join(',')==='34,68,136' && passed.b.join(',')==='0,128,255' && !!doc.querySelector('#progressCard'),'apply starts bounded recolour with chosen parameters'); await wait(80); App.recolorMatching=oldRecolor;
+  ok(!visible(doc.querySelector('#modal')) && !App.view.locked && d.history.undoStack.length===0,'no matching pixels leave no history and release UI');
+  Q.UI.recolorDialog(); d.layer().locked=true; click('#modalBody .btn.primary'); ok(doc.querySelector('.canvas-error').textContent.includes('unlock') && d.history.undoStack.length===0, 'locked layer is rejected before applying'); d.layer().locked=false; Q.UI.closeModal();
+  Q.UI.recolorDialog(); d.addLayer(); click('#modalBody .btn.primary'); ok(doc.querySelector('.canvas-error').textContent.includes('changed'), 'stale layer is rejected'); Q.UI.closeModal();
+  }
+
+  {
+  console.log('4.6 appearance, fit and alpha shortcuts');
+  App.createDoc(64,48,'Three features'); const d=App.doc, v=App.view; d.activeCel(true); d.history.clear();
+  Q.UI.openTray('menu'); const pref=Array.from(doc.querySelectorAll('#trayBody details')).find(e=>e.textContent.includes('Interface appearance')); pref.open=true; const appearance=Array.from(pref.querySelectorAll('button')).find(b=>b.textContent==='Interface appearance');
+  ok(appearance && appearance.querySelector('svg'),'light and dark interface settings are discoverable'); appearance.click(); const theme=doc.querySelector('[aria-label="Interface appearance"]');
+  ok(theme.value==='dark' && doc.documentElement.getAttribute('data-theme')==='dark','appearance defaults to dark');
+  const docBg=d.bg, undoBefore=d.history.undoStack.length; theme.value='light'; theme.dispatchEvent(new win.Event('change',{bubbles:true}));
+  ok(doc.documentElement.getAttribute('data-theme')==='light' && Q.Store.meta('interfaceTheme')==='light' && d.bg===docBg && d.history.undoStack.length===undoBefore,'light theme applies and persists without changing artwork');
+  ok(win.getComputedStyle(doc.querySelector('#modalBody')).backgroundColor==='rgb(251, 251, 252)' && win.getComputedStyle(doc.querySelector('.topbar')).color!=='rgb(244, 244, 248)','light theme sets a light modal surface and distinct toolbar styling');
+  Array.from(doc.querySelectorAll('#modalBody button')).find(b=>b.textContent==='Reset').click(); ok(theme.value==='dark' && Q.Store.meta('interfaceTheme')==='dark' && doc.documentElement.getAttribute('data-theme')==='dark','appearance reset returns to dark');
+  theme.value='light'; theme.dispatchEvent(new win.Event('change',{bubbles:true})); Q.UI.closeModal(); Q.UI.closeTray();
+  App.createDoc(32,64,'Another canvas'); ok(doc.documentElement.getAttribute('data-theme')==='light','appearance persists between artworks');
+  App.init(); await tick(); ok(doc.documentElement.getAttribute('data-theme')==='light','appearance is restored on startup');
+  App.createDoc(64,48,'Fit and alpha'); const current=App.doc, view=App.view; current.activeCel(true); current.history.clear(); view.selection={x:4,y:4,w:8,h:8}; view.scale=3; view.rot=1.1; view.tx=32; view.ty=55;
+  const fit=doc.querySelector('#btnFitCanvas'), frame=current.frames[current.activeFrame], before=current.history.undoStack.length; ok(fit && fit.getAttribute('aria-label')==='Fit canvas' && fit.querySelector('svg'),'fit canvas has an accessible icon in the tool rail'); fit.click();
+  const expected=Math.max(0.02,Math.min(view.cssW/current.width,view.cssH/current.height)*0.86);
+  ok(Math.abs(view.scale-expected)<1e-8 && view.rot===0 && Math.abs(view.tx-(view.cssW-view.scale*current.width)/2)<1e-8 && Math.abs(view.ty-(view.cssH-view.scale*current.height)/2)<1e-8,'fit button centres artwork and resets rotation and zoom');
+  ok(current.history.undoStack.length===before && current.frames[current.activeFrame]===frame && view.selection.x===4,'fit changes only the view, not artwork, frame or selection');
+  App.addLayer(); current.history.clear(); current.layers[0].opacity=0.6; const active=current.activeLayer; Q.UI.openTray('layers');
+  let lock=Array.from(doc.querySelectorAll('.layer-row .alpha-lock')).find(b=>b.getAttribute('aria-label')==='Lock alpha: '+current.layers[0].name);
+  ok(lock && lock.getAttribute('aria-pressed')==='false' && lock.querySelector('svg'),'each layer exposes an accessible checkerboard alpha-lock button');
+  pointer(lock,'pointerdown',100,100,{id:1500}); pointer(lock,'pointermove',170,100,{id:1500}); pointer(lock,'pointerup',170,100,{id:1500}); ok(current.layers[0].opacity===0.6 && current.history.undoStack.length===0, 'touching the alpha button cannot start layer opacity dragging'); lock.click();
+  lock=Array.from(doc.querySelectorAll('.layer-row .alpha-lock')).find(b=>b.getAttribute('aria-label')==='Unlock alpha: '+current.layers[0].name);
+  ok(current.layers[0].alphaLocked && current.activeLayer===active && current.layers[0].opacity===0.6 && current.history.undoStack.length===1 && lock && lock.getAttribute('aria-pressed')==='true','shortcut toggles the intended layer, without changing selection or opacity');
+  App.undo(); ok(!current.layers[0].alphaLocked && current.activeLayer===active,'alpha-lock shortcut can be undone'); App.redo(); ok(current.layers[0].alphaLocked,'alpha-lock shortcut can be redone');
+  await App.saveNow(false); const loaded=await Q.Store.load(current.id); ok(loaded.layers[0].alphaLocked && loaded.layers[0].opacity===0.6,'alpha lock and opacity survive save and reopen');
+  Q.UI.closeTray(); Q.UI.setTheme('invalid',true); ok(doc.documentElement.getAttribute('data-theme')==='dark' && Q.Store.meta('interfaceTheme')==='dark','invalid themes fall back to dark');
+  }
+
+  {
+  console.log('4.7 creative helpers');
+  App.createDoc(64,64,'Creative helpers'); const d=App.doc, v=App.view; d.activeCel(true); d.history.clear();
+  App.setColor([255,0,0]); Q.UI.openTray('color'); const harmony=doc.querySelector('[aria-label="Colour harmonies"]'); ok(harmony && harmony.querySelector('svg'),'colour harmonies is accessible from the colour tray'); harmony.click();
+  let options=doc.querySelectorAll('#modalBody .harmony-item'); ok(options.length===7 && options[2].getAttribute('aria-label').includes('Complementary #00ffff') && options[2].querySelector('.harmony-sample'),'harmony dialog shows labeled colour previews');
+  options[2].click(); ok(v.color.join(',')==='0,255,255' && !visible(doc.querySelector('#modal')) && doc.querySelector('[aria-label="Current hex colour"]').value==='#00ffff','choosing a harmony updates brush colour and picker');
+  harmony.click(); options=doc.querySelectorAll('#modalBody .harmony-item'); ok(options[5].getAttribute('aria-label').includes('Split complementary'),'split complementary harmony previews are labelled'); options[5].click(); ok(d.history.undoStack.length===0,'split complementary changes brush colour only');
+  ok(d.history.undoStack.length===0,'colour suggestions do not edit artwork'); Q.UI.closeTray();
+  Q.UI.openTray('menu'); let toggle=Array.from(doc.querySelectorAll('#trayBody button')).find(b=>b.textContent==='Preview transparency'); ok(toggle && toggle.querySelector('svg'),'transparency preview is discoverable in Actions'); toggle.click();
+  ok(v.transparentPreview && d.bg==='#ffffff' && d.history.undoStack.length===0 && Array.from(doc.querySelectorAll('#trayBody button')).some(b=>b.textContent==='Show canvas background'),'checker preview toggles without changing document background or history');
+  toggle=Array.from(doc.querySelectorAll('#trayBody button')).find(b=>b.textContent==='Show canvas background'); toggle.click(); ok(!v.transparentPreview,'transparency preview toggles off');
+  v.transparentPreview=true; App.createDoc(64,64,'New canvas'); ok(!v.transparentPreview,'transparency preview resets on artwork switch');
+  const fresh=App.doc; fresh.history.clear(); v.selection={x:10,y:10,w:20,h:20}; Q.UI.selectionDialog(); let invert=Array.from(doc.querySelectorAll('#modalBody button')).find(b=>b.textContent==='Invert selection');
+  ok(invert && invert.querySelector('svg'),'invert selection is available in selection tools'); invert.click(); ok(v.selection.runs && fresh.history.undoStack.length===0,'inversion changes temporary selection without artwork history');
+  const inverted=v.selection; Q.UI.selectionDialog(); Array.from(doc.querySelectorAll('#modalBody button')).find(b=>b.textContent==='Invert selection').click(); ok(v.selection!==inverted && v.selection.x===10 && v.selection.y===10 && v.selection.w===20 && v.selection.h===20,'inverting again returns to the original rectangle pixels');
+  v.selection={x:0,y:0,w:64,h:64}; const all=v.selection; Q.UI.selectionDialog(); Array.from(doc.querySelectorAll('#modalBody button')).find(b=>b.textContent==='Invert selection').click(); ok(v.selection===all && doc.querySelector('#toast').textContent.includes('empty'),'empty inverse is rejected without changing selection');
+  }
+
+  {
+  console.log('4.8 painting tools and visual fill designer');
+  App.createDoc(64,64,'Paint tools'); const d=App.doc,v=App.view; d.activeCel(true); d.history.clear();
+  const rail=doc.querySelector('.rail-left'); ok([...rail.children].map(x=>x.id).join(',')==='btnBrush,sizeWrap,btnColor,opacityWrap','colour swatch is between the rectangular size and opacity controls');
+  ok(win.getComputedStyle(doc.querySelector('#sizeWrap')).borderRadius==='5px','vertical slider container is rectangular');
+  Q.UI.openTray('brushes'); await tick(); const thumbnails=doc.querySelectorAll('#trayBody .brush-card canvas'); ok(Q.BRUSHES.length===28 && thumbnails.length===28 && thumbnails[0].getAttribute('aria-label').includes('preview'),'expanded library has labelled preview thumbnails');
+  ok(!!Q.BRUSHES.find(b=>b.id==='chalk') && !!Q.BRUSHES.find(b=>b.id==='brush-pen'),'new brush presets are available'); Q.UI.closeTray();
+  click('#btnSmudge'); ok(v.tool==='smudge' && doc.querySelector('#btnSmudge').getAttribute('aria-pressed')==='true' && doc.querySelector('#btnSmudge svg'),'smudge is an accessible active tool');
+  const canvas=doc.querySelector('#view'), a=v.toScreen(12,12), b=v.toScreen(24,12);
+  pointer(canvas,'pointerdown',a.x,a.y,{id:1600}); ok(v.stroke instanceof Q.SmudgeStroke && !v.holdTimer,'smudge starts without QuickShape or eyedropper hold'); pointer(canvas,'pointermove',b.x,b.y,{id:1600}); pointer(canvas,'pointerup',b.x,b.y,{id:1600});
+  ok(d.history.undoStack.length===1,'smudge gesture commits one history step'); App.undo(); ok(d.history.canRedo(),'smudge gesture can be undone'); d.history.clear();
+  d.layer().alphaLocked=true; pointer(canvas,'pointerdown',a.x,a.y,{id:1601}); ok(!v.stroke && doc.querySelector('#toast').textContent.includes('alpha lock'),'alpha locked layer refuses smudge'); pointer(canvas,'pointerup',a.x,a.y,{id:1601}); d.layer().alphaLocked=false;
+  d.layer().locked=true; pointer(canvas,'pointerdown',a.x,a.y,{id:1602}); ok(!v.stroke && doc.querySelector('#toast').textContent.includes('locked'),'locked layer refuses smudge'); pointer(canvas,'pointerup',a.x,a.y,{id:1602}); d.layer().locked=false;
+  d.layer().visible=false; pointer(canvas,'pointerdown',a.x,a.y,{id:1605}); ok(!v.stroke && doc.querySelector('#toast').textContent.includes('hidden'),'hidden layer refuses smudge'); pointer(canvas,'pointerup',a.x,a.y,{id:1605}); d.layer().visible=true;
+  pointer(canvas,'pointerdown',a.x,a.y,{id:1606}); pointer(canvas,'pointermove',b.x,b.y,{id:1606}); pointer(canvas,'pointercancel',b.x,b.y,{id:1606}); ok(!v.stroke && d.history.undoStack.length===0,'cancelled pointer discards smudge and history');
+
+  pointer(canvas,'pointerdown',a.x,a.y,{id:1603}); pointer(canvas,'pointermove',b.x,b.y,{id:1603}); pointer(canvas,'pointerdown',b.x+5,b.y+5,{id:1604}); ok(!v.stroke && !!v.g && d.history.undoStack.length===0,'pinch cancels a finger smudge without history'); pointer(canvas,'pointerup',a.x,a.y,{id:1603}); pointer(canvas,'pointerup',b.x+5,b.y+5,{id:1604});
+  click('#btnFill'); ok(v.tool==='fill' && doc.querySelector('#btnSmudge').getAttribute('aria-pressed')==='false','switching to fill turns off the smudge indicator'); click('#btnSmudge'); click('#btnBrush'); ok(v.tool==='brush' && doc.querySelector('#btnSmudge').getAttribute('aria-pressed')==='false','brush button exits smudge'); Q.UI.closeTray();
+  Q.UI.paintLayerDialog('gradient'); const start=doc.querySelector('[aria-label="Start colour"]'), end=doc.querySelector('[aria-label="End colour"]'), hue=doc.querySelector('[aria-label="Start colour Hue"]'), sat=doc.querySelector('[aria-label="Start colour Saturation"]'), bright=doc.querySelector('[aria-label="Start colour Brightness"]'), preview=doc.querySelector('[aria-label="Gradient preview"]');
+  ok(preview && hue && sat && bright && doc.querySelector('[aria-label="End colour Hue"]') && doc.querySelector('[aria-label="Gradient midpoint"]'),'gradient designer has a preview, both colour pickers and midpoint');
+  hue.value='120'; sat.value='100'; bright.value='100'; bright.dispatchEvent(new win.Event('input',{bubbles:true})); ok(start.value==='#00ff00' && start.parentElement.querySelector('.paint-swatch').style.background==='rgb(0, 255, 0)','HSV controls update HEX and colour preview');
+  doc.querySelector('[aria-label="End colour preset #ff3b30"]').click(); ok(end.value==='#ff3b30','end colour can be chosen visually from palette');
+  Array.from(doc.querySelectorAll('#modalBody button')).find(b=>b.textContent==='Swap colours').click(); ok(start.value==='#ff3b30' && end.value==='#00ff00','gradient colours can be swapped');
+  start.value='not-hex'; start.dispatchEvent(new win.Event('input',{bubbles:true})); ok(doc.querySelector('.canvas-error').textContent && preview.style.opacity==='0.25','invalid HEX dims preview and reports error'); Q.UI.closeModal();
+  Q.UI.paintLayerDialog('solid'); ok(doc.querySelector('[aria-label="Solid colour preview"]') && doc.querySelector('[aria-label="Colour Hue"]'),'solid layer also has visual colour controls and preview'); doc.querySelector('[aria-label="Colour preset #007aff"]').click(); ok(doc.querySelector('#modalBody input[aria-label="Colour"]').value==='#007aff','solid layer palette updates HEX'); Q.UI.closeModal();
+  Q.UI.paintLayerDialog('gradient'); const count=d.layers.length; d.addFrame(false); click('#modalBody .btn.primary'); ok(d.layers.length===count && doc.querySelector('.canvas-error').textContent.includes('changed'),'stale gradient target cannot create a layer on a different frame'); Q.UI.closeModal();
+  }
+
+  {
+  console.log('4.9 gradient, brush search and smudge controls');
+  App.createDoc(64,64,'Painting update'); const d=App.doc,v=App.view; d.activeCel(true); d.history.clear();
+  Q.UI.openTray('brushes'); let search=doc.querySelector('[aria-label="Search brushes"]'), category=doc.querySelector('[aria-label="Brush category"]');
+  ok(search && category && doc.querySelectorAll('#trayBody .brush-card:not(.hidden)').length===28,'brush library has accessible search and category filters');
+  search.value='chalk'; search.dispatchEvent(new win.Event('input',{bubbles:true})); let shown=doc.querySelectorAll('#trayBody .brush-card:not(.hidden)'); ok(shown.length===1 && shown[0].textContent.includes('Chalk'),'search filters brush names without changing artwork');
+  shown[0].click(); search=doc.querySelector('[aria-label="Search brushes"]'); category=doc.querySelector('[aria-label="Brush category"]'); ok(search.value==='chalk' && v.brush.id==='chalk' && doc.querySelectorAll('#trayBody .brush-card:not(.hidden)').length===1,'filter remains when selecting a brush');
+  search.value=''; search.dispatchEvent(new win.Event('input',{bubbles:true})); category.value='ERASER'; category.dispatchEvent(new win.Event('change',{bubbles:true})); shown=doc.querySelectorAll('#trayBody .brush-card:not(.hidden)'); ok(shown.length===2 && [...shown].every(card=>card.dataset.brushCategory==='ERASER'),'category shows only matching brush thumbnails');
+  search.value='nothing matches'; search.dispatchEvent(new win.Event('input',{bubbles:true})); ok(!doc.querySelectorAll('#trayBody .brush-card:not(.hidden)').length && doc.querySelector('#trayBody [role="status"]').textContent.includes('No brushes'),'empty search result is explained');
+  search.value=''; search.dispatchEvent(new win.Event('input',{bubbles:true})); category.value='all'; category.dispatchEvent(new win.Event('change',{bubbles:true})); Q.UI.closeTray();
+  Q.UI.openTray('menu'); const pref=Array.from(doc.querySelectorAll('#trayBody details')).find(x=>x.textContent.includes('Smudge edge')); const entry=Array.from(pref.querySelectorAll('button')).find(x=>x.textContent==='Smudge edge'); ok(entry && entry.querySelector('svg'),'smudge edge setting is discoverable in preferences'); entry.click();
+  let hardness=doc.querySelector('[aria-label="Smudge edge hardness"]'); ok(hardness.value==='100','smudge defaults to its original hard edge'); hardness.value='25'; hardness.dispatchEvent(new win.Event('input',{bubbles:true})); ok(v.smudgeHardness===0.25 && Q.Store.meta('smudgeHardness')===0.25 && d.history.undoStack.length===0,'smudge softness saves device preference without editing art'); Q.UI.closeModal(); Q.UI.closeTray();
+  click('#btnSmudge'); const canvas=doc.querySelector('#view'), a=v.toScreen(12,12); pointer(canvas,'pointerdown',a.x,a.y,{id:1700}); ok(v.stroke && v.stroke.hardness===0.25 && v.stroke.mask,'softness is captured by new smudge strokes'); pointer(canvas,'pointercancel',a.x,a.y,{id:1700});
+  App.init(); await tick(); ok(App.view.smudgeHardness===0.25,'smudge preference is restored at startup'); Q.UI.smudgePreferences(); Array.from(doc.querySelectorAll('#modalBody button')).find(b=>b.textContent==='Reset').click(); ok(App.view.smudgeHardness===1 && Q.Store.meta('smudgeHardness')===1,'smudge reset restores the hard edge'); Q.UI.closeModal();
+  App.createDoc(64,64,'Transparent fill'); const current=App.doc; current.history.clear(); Q.UI.paintLayerDialog('gradient'); const dir=doc.querySelector('[aria-label="Gradient direction"]'), angle=doc.querySelector('[aria-label="Gradient angle"]'), startA=doc.querySelector('[aria-label="Start colour opacity"]'), endA=doc.querySelector('[aria-label="End colour opacity"]');
+  ok(dir && angle && startA && endA && !visible(angle),'gradient endpoint opacity is available and custom angle initially hidden'); dir.value='angle'; dir.dispatchEvent(new win.Event('change',{bubbles:true})); angle.value='90'; angle.dispatchEvent(new win.Event('input',{bubbles:true})); startA.value='20'; startA.dispatchEvent(new win.Event('input',{bubbles:true})); endA.value='80'; endA.dispatchEvent(new win.Event('input',{bubbles:true})); ok(visible(angle) && angle.parentElement.textContent.includes('90°'),'custom angle can be adjusted and read');
+  Array.from(doc.querySelectorAll('#modalBody button')).find(b=>b.textContent==='Swap colours').click(); ok(startA.value==='80' && endA.value==='20','swap also exchanges endpoint opacity');
+  let captured=null; const old=App.addPaintLayer; App.addPaintLayer=function(...args){captured=args; return old(...args);}; click('#modalBody .btn.primary'); App.addPaintLayer=old;
+  ok(captured[3]==='angle' && captured[5].angle===90 && captured[5].alpha1===0.8 && captured[5].alpha2===0.2 && current.layers.length===2,'designer applies selected angle and alpha to an undoable layer'); App.undo(); ok(current.layers.length===1,'gradient creation is undoable');
+  Q.UI.paintLayerDialog('solid'); ok(doc.querySelector('[aria-label="Colour opacity"]'),'solid colour designer has opacity'); Q.UI.closeModal();
+  }
+
+  {
+  console.log('5.0 studio interface refresh');
+  App.createDoc(64,64,'UI refresh'); const d=App.doc, before=d.history.undoStack.length;
+  const buttons=[...doc.querySelectorAll('.topbar button')].map(b=>b.id); ok(buttons.join(',')==='btnGallery,btnMenu,btnEffects,btnSelection,btnUndo,btnRedo,btnTimeline','studio toolbar groups actions and editing controls in a predictable order');
+  ok(doc.querySelector('#btnSelection svg') && doc.querySelector('#btnSelection').getAttribute('aria-label')==='Selection and transform','selection has a direct accessible toolbar shortcut');
+  Q.UI.openTray('brushes'); ok(doc.querySelector('#btnBrush').getAttribute('aria-expanded')==='true' && doc.querySelector('#tray').getAttribute('data-panel')==='brushes','active panel state is exposed accessibly');
+  const close=doc.querySelector('#trayBody [aria-label="Close panel"]'); ok(close && close.querySelector('svg'),'panel has an explicit icon-only close button'); close.click(); ok(!visible(doc.querySelector('#tray')) && doc.querySelector('#btnBrush').getAttribute('aria-expanded')==='false','panel close button restores canvas view');
+  click('#btnLayers'); click('#btnSelection'); ok(!visible(doc.querySelector('#tray')) && visible(doc.querySelector('#modal')) && doc.querySelector('#modalBody h2').textContent==='Selection & transform','selection shortcut opens existing selection tools and closes the panel'); Q.UI.closeModal();
+  Q.UI.openTray('menu'); const details=[...doc.querySelectorAll('#trayBody details')].find(x=>x.textContent.includes('Artwork details')); const entry=[...details.querySelectorAll('button')].find(x=>x.textContent==='Artwork details'); ok(!!entry,'artwork details is accessible from Actions on compact screens'); entry.click();
+  const name=doc.querySelector('[aria-label="Artwork name in details"]'); name.value='New title'; click('#modalBody .btn.primary'); ok(d.name==='New title' && doc.querySelector('#docTitle').value==='New title' && d.history.undoStack.length===before,'artwork details renames the active project without editing pixels');
+  await App.saveNow(false); const loaded=await Q.Store.load(d.id); ok(loaded.name==='New title','artwork name is persisted');
+  Q.UI.artworkDetails(); const original=d; App.createDoc(64,64,'Other artwork'); click('#modalBody .btn.primary'); ok(original.name==='New title' && App.doc.name==='Other artwork' && doc.querySelector('.canvas-error').textContent.includes('changed'),'stale details dialog cannot rename a different artwork'); Q.UI.closeModal(); Q.UI.closeTray();
+  }
+
+  {
+  console.log('5.1 layer selection');
+  App.createDoc(64,64,'Batch layers'); App.addLayer(); App.addLayer(); const d=App.doc; d.history.clear(); Q.UI.openTray('layers');
+  let rows=[...doc.querySelectorAll('.layer-row')], active=d.layer().id, other=d.layers[0].id;
+  ok(rows[0].getAttribute('aria-pressed')==='true' && rows[0].getAttribute('role')==='button','active layer selection is accessible');
+  let row=rows[2]; pointer(row,'pointerdown',50,100,{id:2301,pointerType:'touch'}); pointer(row,'pointermove',115,100,{id:2301,pointerType:'touch'}); pointer(row,'pointerup',115,100,{id:2301,pointerType:'touch'});
+  ok(d.layer().id===active && doc.querySelectorAll('.layer-row[aria-pressed="true"]').length===2 && d.layers[0].opacity===1 && d.history.undoStack.length===0,'right swipe adds selection without changing active layer or opacity');
+  row=[...doc.querySelectorAll('.layer-row')][2]; pointer(row,'pointerdown',50,100,{id:2302,pointerType:'touch'}); pointer(row,'pointerup',110,100,{id:2302,pointerType:'touch'}); ok(doc.querySelectorAll('.layer-row[aria-pressed="true"]').length===1,'right swipe again removes extra selection');
+  [...doc.querySelectorAll('#trayBody .chip')].find(b=>b.textContent==='Select layers').click(); [...doc.querySelectorAll('.layer-row')][2].click(); ok(doc.querySelectorAll('.layer-row[aria-pressed="true"]').length===2,'tap selection mode adds a layer');
+  [...doc.querySelectorAll('#trayBody .chip')].find(b=>b.textContent.startsWith('Actions ·')).click(); [...doc.querySelectorAll('#modalBody button')].find(b=>b.textContent==='Hide selected').click(); ok(!d.layer().visible && !d.layers.find(l=>l.id===other).visible && d.history.undoStack.length===1,'batch hide changes selected layers as one undo step');
+  App.undo(); ok(d.layer().visible && d.layers.find(l=>l.id===other).visible,'batch hide undo restores visibility'); App.redo(); ok(!d.layer().visible && !d.layers.find(l=>l.id===other).visible,'batch hide redo works');
+  Q.UI.openTray('layers'); [...doc.querySelectorAll('#trayBody .chip')].find(b=>b.textContent==='Select all').click(); [...doc.querySelectorAll('#trayBody .chip')].find(b=>b.textContent.startsWith('Actions ·')).click(); [...doc.querySelectorAll('#modalBody button')].find(b=>b.textContent==='Delete selected').click(); click('#modalBody .btn.danger'); ok(d.layers.length===3,'cannot delete every layer');
+  Q.UI.openTray('layers'); [...doc.querySelectorAll('#trayBody .chip')].find(b=>b.textContent==='Done selecting').click(); [...doc.querySelectorAll('.layer-row')][1].click(); ok(doc.querySelectorAll('.layer-row[aria-pressed="true"]').length===1 && d.activeLayer===1,'ordinary tap switches active layer and clears multi-selection');
+  doc.querySelector('[aria-label^="Layer options:"]').click(); const opacity=doc.querySelector('[aria-label="Layer opacity"]'); opacity.value='42'; opacity.dispatchEvent(new win.Event('input',{bubbles:true})); opacity.dispatchEvent(new win.Event('change',{bubbles:true})); ok(d.layers[2].opacity===0.42,'layer options provide an undoable opacity slider'); App.undo(); ok(d.layers[2].opacity===1,'opacity slider undo restores old value'); Q.UI.closeModal();
+  await App.saveNow(false); const loadedBatch=await Q.Store.load(d.id); ok(loadedBatch.layers.map(l=>l.visible).join()===d.layers.map(l=>l.visible).join(),'batch visibility survives saving and loading');
+  ok(doc.title==='Qelem' && doc.querySelector('#splash span').textContent==='Qelem','corrected spelling is shown at launch and in the title');
+  Q.UI.closeTray();
+  }
+
+  {
+  console.log('5.2 ellipse, layer tags and JPEG');
+  App.createDoc(64,64,'New features'); const d=App.doc;
+  Q.UI.selectionDialog(); let selectAction=label=>[...doc.querySelectorAll('#modalBody button')].find(b=>b.textContent===label).click(); selectAction('Draw ellipse');
+  const a=App.view.toScreen(8,9), b=App.view.toScreen(40,38), canvas=doc.querySelector('#view');
+  pointer(canvas,'pointerdown',a.x,a.y,{id:2401}); pointer(canvas,'pointermove',b.x,b.y,{id:2401}); pointer(canvas,'pointerup',b.x,b.y,{id:2401});
+  ok(App.view.selection && App.view.selection.shape==='ellipse' && !!App.view.selection.ellipse && App.view.tool==='brush','ellipse gesture creates a temporary elliptical selection');
+  Q.UI.selectionDialog(); ok(doc.querySelector('#modalBody').textContent.includes('Ellipse selected') && doc.querySelector('#modalBody').textContent.includes('Fill selection'),'ellipse state and fill action are labelled correctly'); selectAction('Deselect');
+  Q.UI.selectionDialog(); selectAction('Draw ellipse'); pointer(canvas,'pointerdown',a.x,a.y,{id:2402}); pointer(canvas,'pointermove',b.x,b.y,{id:2402}); pointer(canvas,'pointercancel',b.x,b.y,{id:2402}); ok(!App.view.selection,'cancelled ellipse does not commit');
+  Q.UI.openTray('layers'); doc.querySelector('[aria-label^="Layer options:"]').click(); const tag=doc.querySelector('[aria-label="Layer colour tag"]'); tag.value='violet'; tag.dispatchEvent(new win.Event('change',{bubbles:true}));
+  ok(d.layer().tag==='violet' && doc.querySelector('.layer-row .tag-violet') && doc.querySelector('.layer-row').getAttribute('aria-label').includes('violet tag'),'layer tag is visible and accessible');
+  App.undo(); ok(Q.layerTag(d.layer().tag)==='' && !doc.querySelector('.layer-row .layer-tag'),'tag change is undoable'); App.redo(); ok(d.layer().tag==='violet','tag redo restores colour'); Q.UI.closeModal();
+  await App.saveNow(false); const loaded=await Q.Store.load(d.id); ok(loaded.layer().tag==='violet','layer colour tag persists in project storage');
+  const records=JSON.parse(win.localStorage.getItem('qalam-projects')); delete records[d.id].layers[0].tag; win.localStorage.setItem('qalam-projects',JSON.stringify(records)); const oldProject=await Q.Store.load(d.id); ok(oldProject.layer().tag==='' && oldProject.name===d.name,'older saved project without tags opens normally');
+  records[d.id].layers[0].tag='malicious-class'; win.localStorage.setItem('qalam-projects',JSON.stringify(records)); const corrupted=await Q.Store.load(d.id); ok(corrupted.layer().tag==='','invalid saved tags are sanitized');
+  d.addLayer(0); ok(d.layer().tag==='violet','single-layer duplication retains tag'); const old=d.layers[0].id; ok(d.batchLayers([old],'duplicate')==='' && d.layers.some(l=>l.id!==old && l.tag==='violet'),'batch duplication retains tags');
+  Q.UI.openTray('menu'); const exp=[...doc.querySelectorAll('#trayBody details')].find(e=>e.textContent.includes('Export JPEG')); ok(!!exp,'JPEG export appears in Actions'); [...exp.querySelectorAll('button')].find(b=>b.textContent==='Export JPEG').click();
+  ok(doc.querySelector('[aria-label="JPEG quality"]').value==='0.9' && doc.querySelector('#modalBody').textContent.includes('no transparency'),'JPEG dialog explains export and defaults to high quality');
+  const originalExport=App.exportJpeg; let quality=null; App.exportJpeg=q=>{quality=q;}; doc.querySelector('[aria-label="JPEG quality"]').value='0.75'; click('#modalBody .btn.primary'); ok(quality===0.75,'selected JPEG quality is passed to export');
+  Q.UI.jpegDialog(); App.createDoc(64,64,'Different artwork'); click('#modalBody .btn.primary'); ok(quality===0.75,'stale JPEG dialog cannot export another artwork'); App.exportJpeg=originalExport; Q.UI.closeTray();
+  }
+
+  {
+  console.log('5.3 combined selections, palette and gallery duplicate');
+  App.createDoc(64,64,'Original'); const d=App.doc,v=App.view, canvas=doc.querySelector('#view'); d.activeCel(true); d.addFrame(false); d.activeCel(true); d.layer().tag='green'; d.history.clear();
+  const perform=(op,shape,x1,y1,x2,y2,id)=>{ Q.UI.selectionDialog(); doc.querySelector('[aria-label="Selection combination"]').value=op; [...doc.querySelectorAll('#modalBody button')].find(b=>b.textContent===shape).click(); const a=v.toScreen(x1,y1),b=v.toScreen(x2,y2); pointer(canvas,'pointerdown',a.x,a.y,{id}); pointer(canvas,'pointermove',b.x,b.y,{id}); pointer(canvas,'pointerup',b.x,b.y,{id}); };
+  perform('replace','Draw rectangle',3,3,20,20,2501); const original=v.selection; perform('add','Draw rectangle',25,25,40,40,2502);
+  ok(v.selection.runs && v.selection.x<=3 && v.selection.x+v.selection.w>=40 && d.history.undoStack.length===0,'add selection unions a second rectangle without changing art');
+  perform('subtract','Draw rectangle',5,5,10,10,2503); ok(v.selection.runs && v.selection!==original,'subtract selection removes a region');
+  const selected=v.selection; Q.UI.selectionDialog(); doc.querySelector('[aria-label="Selection combination"]').value='add'; [...doc.querySelectorAll('#modalBody button')].find(b=>b.textContent==='Draw rectangle').click(); const a=v.toScreen(1,1),b=v.toScreen(20,20); pointer(canvas,'pointerdown',a.x,a.y,{id:2504}); pointer(canvas,'pointermove',b.x,b.y,{id:2504}); pointer(canvas,'pointercancel',b.x,b.y,{id:2504}); ok(v.selection===selected,'cancelled combination keeps prior selection');
+  v.selection=null; Q.UI.selectionDialog(); doc.querySelector('[aria-label="Selection combination"]').value='subtract'; [...doc.querySelectorAll('#modalBody button')].find(b=>b.textContent==='Draw rectangle').click(); ok(v.tool==='brush' && doc.querySelector('#toast').textContent.includes('selection first'),'combine requires an existing selection');
+  win.localStorage.removeItem('qelem-palette'); App.setColor([17,34,51]); Q.UI.openTray('color'); click('[aria-label="Saved palette"]');
+  [...doc.querySelectorAll('#modalBody button')].find(b=>b.textContent==='Add current colour').click(); ok(Q.readSavedPalette().join()==='#112233' && doc.querySelector('[aria-label="Use #112233"]'),'current colour saves as an accessible palette swatch');
+  [...doc.querySelectorAll('#modalBody button')].find(b=>b.textContent==='Add current colour').click(); ok(Q.readSavedPalette().length===1,'duplicate palette colours are not added');
+  Q.UI.closeModal(); App.setColor([255,0,0]); Q.UI.savedPaletteDialog(); click('[aria-label="Use #112233"]'); ok(Q.rgbToHex(v.color)==='#112233' && d.history.undoStack.length===0,'saved swatch changes brush colour but not artwork');
+  Q.UI.savedPaletteDialog(); [...doc.querySelectorAll('#modalBody button')].find(b=>b.textContent==='Remove mode').click(); click('[aria-label="Remove #112233"]'); ok(Q.readSavedPalette().length===0,'remove mode deletes a swatch');
+  Q.UI.closeModal(); win.localStorage.setItem('qelem-palette',JSON.stringify(['#abc','#aabbcc','invalid','#FF0000'])); ok(Q.readSavedPalette().join(',')==='#aabbcc,#ff0000','palette sanitizes malformed, duplicate and shorthand values');
+  const storageProto=Object.getPrototypeOf(win.localStorage), originalSet=storageProto.setItem; storageProto.setItem=function(){throw new Error('quota');}; ok(!Q.writeSavedPalette(['#123456']),'palette reports storage failure'); storageProto.setItem=originalSet;
+  const full=Array.from({length:24},(_,i)=>'#'+i.toString(16).padStart(6,'0')); ok(Q.writeSavedPalette(full) && !Q.writeSavedPalette([...full,'#ffffff']) && Q.readSavedPalette().length===24,'palette has a 24-colour cap'); Q.UI.savedPaletteDialog(); [...doc.querySelectorAll('#modalBody button')].find(b=>b.textContent==='Clear palette').click(); click('#modalBody .btn.danger'); ok(Q.readSavedPalette().length===0,'palette clear requires confirmation');
+  Q.UI.closeTray(); await App.saveNow(false); const origId=d.id; const id=await Q.Store.duplicate(origId), copy=await Q.Store.load(id); ok(id!==origId && copy.name==='Original copy' && copy.frames.length===2 && copy.layer().tag==='green' && !!copy.cel(0,0,false) && !!copy.cel(1,0,false),'duplicating a saved artwork preserves frames, cels and layer metadata');
+  const rawCopy=JSON.parse(win.localStorage.getItem('qalam-projects')); const beforeRecord={...rawCopy[origId]}, afterRecord={...rawCopy[id]}; delete beforeRecord.id; delete beforeRecord.name; delete beforeRecord.updated; delete afterRecord.id; delete afterRecord.name; delete afterRecord.updated; ok(JSON.stringify(beforeRecord)===JSON.stringify(afterRecord),'duplicate copies the complete saved record including future metadata');
+  copy.name='Modified copy'; await Q.Store.save(copy,null); const again=await Q.Store.load(origId); ok(again.name==='Original' && again.frames.length===2,'editing the copy does not overwrite the original');
+  const oldUid=Q.uid; Q.uid=()=>origId; let collision=false; try { await Q.Store.duplicate(origId); } catch(e) { collision=true; } Q.uid=oldUid; ok(collision && (await Q.Store.load(origId)).name==='Original','duplicate refuses ID collisions');
+  let missing=false; try { await Q.Store.duplicate('no-such-artwork'); } catch(e) { missing=true; } ok(missing,'duplicating a missing artwork fails safely');
+  const previousSet=storageProto.setItem; storageProto.setItem=function(){throw new Error('quota');}; let quota=false; try { await Q.Store.duplicate(origId); } catch(e) { quota=true; } storageProto.setItem=previousSet; ok(quota && (await Q.Store.load(origId)).name==='Original','gallery duplicate fails safely when local storage is full');
+  App.backToGallery(); await tick(); await tick(); const preview=[...doc.querySelectorAll('.g-preview')].find(el=>el.getAttribute('aria-label')==='Preview artwork: Original'); preview.click(); ok(doc.querySelector('#modalBody').textContent.includes('Duplicate artwork'),'gallery preview exposes duplicate action'); [...doc.querySelectorAll('#modalBody button')].find(b=>b.textContent==='Duplicate artwork').click(); await tick(); await tick(); ok((await Q.Store.list()).filter(x=>x.name==='Original copy').length>=1,'gallery duplicate saves another artwork');
+  const realDuplicate=Q.Store.duplicate; let resolveDuplicate; Q.Store.duplicate=()=>new Promise(resolve=>{resolveDuplicate=resolve;}); Q.UI.previewGalleryItem({id:origId,name:'Original',w:64,h:64,frames:2}); [...doc.querySelectorAll('#modalBody button')].find(b=>b.textContent==='Duplicate artwork').click(); Q.UI.closeModal(); Q.UI.aboutSheet(); resolveDuplicate('done'); await tick(); ok(visible(doc.querySelector('#modal')) && doc.querySelector('#modalBody h2').textContent==='Qelem','a late duplication does not close an unrelated dialog'); Q.Store.duplicate=realDuplicate; Q.UI.closeModal();
+  }
+
+  {
+  console.log('5.4 custom brushes and brush studio');
+  win.localStorage.removeItem('qelem-custom-brushes'); Q.restoreCustomBrushes(); App.createDoc(64,64,'Brush tests'); const d=App.doc; d.history.clear(); App.setBrush('technical'); Q.UI.openTray('brushes'); click('[aria-label="Brush studio"]');
+  ok(doc.querySelector('[aria-label="Live brush preview"]') && doc.querySelector('[aria-label="Grain"]') && doc.querySelector('[aria-label="Scatter"]') && doc.querySelector('[aria-label="Size jitter"]') && doc.querySelector('[aria-label="Speed size"]') && doc.querySelector('[aria-label="Taper in"]'),'studio exposes live preview and additional brush dynamics');
+  const controls=[...doc.querySelectorAll('#modalBody button')]; controls.find(b=>b.textContent==='Duplicate brush').click(); let brush=App.view.brush, id=brush.id; const source=Q.brushById('technical'); ok(brush.custom && id!==source.id && brush.engine==='grain' && source.grain===brush.grain,'duplicate creates an independent custom brush from the selected preset');
+  let scatter=doc.querySelector('[aria-label="Scatter"]'); scatter.value='43'; scatter.dispatchEvent(new win.Event('input',{bubbles:true})); let grain=doc.querySelector('[aria-label="Grain"]'); grain.value='20'; grain.dispatchEvent(new win.Event('input',{bubbles:true})); ok(brush.scatter===0.43 && brush.grain===0.2 && source.scatter!==0.43 && source.grain!==0.2,'editing a custom brush does not alter the source');
+  [...doc.querySelectorAll('#modalBody button')].find(b=>b.textContent==='Rename brush').click(); let input=doc.querySelector('[aria-label="Custom brush name"]'); input.value='<img src=x>'; click('#modalBody .btn.primary'); ok(doc.querySelector('#modalBody h2').textContent.includes('<img src=x>') && !doc.querySelector('#modalBody h2 img'),'custom name renders as text instead of HTML');
+  [...doc.querySelectorAll('#modalBody button')].find(b=>b.textContent==='Done').click(); const category=doc.querySelector('[aria-label="Brush category"]'); category.value='CUSTOM'; category.dispatchEvent(new win.Event('change',{bubbles:true})); const custom=[...doc.querySelectorAll('.brush-card')].filter(x=>visible(x)); ok(custom.length===1 && custom[0].querySelector('.brush-name').textContent==='<img src=x>' && !custom[0].querySelector('img'),'custom filter and safe name rendering work');
+  Q.restoreCustomBrushes(); brush=Q.brushById(id); App.setBrush(id); ok(brush.custom && brush.name==='<img src=x>' && brush.scatter===0.43 && brush.grain===0.2,'custom brush settings persist after reload');
+  Q.UI.brushStudio(); [...doc.querySelectorAll('#modalBody button')].find(b=>b.textContent==='Reset').click(); ok(brush.scatter===source.scatter && brush.grain===source.grain && brush.name==='<img src=x>','reset restores copied defaults without renaming');
+  const oldSet=Object.getPrototypeOf(win.localStorage).setItem, proto=Object.getPrototypeOf(win.localStorage); proto.setItem=function(){throw Error('storage full');}; const oldVal=brush.scatter; scatter=doc.querySelector('[aria-label="Scatter"]'); scatter.value='70'; scatter.dispatchEvent(new win.Event('input',{bubbles:true})); ok(brush.scatter===oldVal && Number(scatter.value)===Math.round(oldVal*100),'failed save does not mutate a custom brush'); proto.setItem=oldSet;
+  [...doc.querySelectorAll('#modalBody button')].find(b=>b.textContent==='Delete brush').click(); click('#modalBody .btn.danger'); ok(!Q.BRUSHES.some(b=>b.id===id) && App.view.brush.id==='studio' && d.history.undoStack.length===0,'confirmed delete returns to a built-in brush without editing artwork');
+  Q.UI.brushStudio(); const builtIn=App.view.brush, oldJitter=builtIn.jitter; let jitter=doc.querySelector('[aria-label="Size jitter"]'); jitter.value='75'; jitter.dispatchEvent(new win.Event('input',{bubbles:true})); [...doc.querySelectorAll('#modalBody button')].find(b=>b.textContent==='Reset').click(); ok(builtIn.jitter===oldJitter,'reset removes dynamics absent from a built-in default'); Q.UI.closeModal();
+  Q.UI.closeTray(); win.localStorage.setItem('qelem-custom-brushes','[{"id":"custom-bad","name":"Broken","base":{},"current":{}}]'); Q.restoreCustomBrushes(); ok(Q.BRUSHES.length===28,'invalid saved brush records are skipped'); win.localStorage.removeItem('qelem-custom-brushes'); Q.restoreCustomBrushes();
+  Q.UI.openTray('brushes'); const cs=doc.querySelector('[aria-label="Brush category"]'); cs.value='all'; cs.dispatchEvent(new win.Event('change',{bubbles:true})); Q.UI.closeTray();
+  }
+
+  {
+  console.log('5.5 favorites and palette organization');
+  const button=label=>[...doc.querySelectorAll('#modalBody button')].find(b=>b.textContent.trim()===label);
+  win.localStorage.removeItem('qelem-favorite-brushes'); App.createDoc(64,64,'Palette tests'); const d=App.doc; d.history.clear(); App.setBrush('studio'); Q.UI.brushStudio();
+  button('Add favorite').click(); ok(Q.favoriteBrushes().includes('studio') && button('Remove favorite').getAttribute('aria-pressed')==='true','favorite brush is saved and toggled in Brush Studio');
+  Q.UI.closeModal(); Q.UI.openTray('brushes'); let category=doc.querySelector('[aria-label="Brush category"]'); category.value='FAVORITES'; category.dispatchEvent(new win.Event('change',{bubbles:true}));
+  ok([...doc.querySelectorAll('.brush-card')].filter(visible).length===1 && doc.querySelector('[aria-label="Studio pen brush, favorite"]'),'favorites filter and accessible marker identify the saved brush');
+  Q.UI.openTray('brushes'); ok(Q.favoriteBrushes().includes('studio') && [...doc.querySelectorAll('.brush-card')].filter(visible).length===1,'favorites persist after reopening the library');
+  const proto=Object.getPrototypeOf(win.localStorage), original=proto.setItem; proto.setItem=()=>{throw Error('quota');}; ok(!Q.setBrushFavorite(Q.brushById('technical'),true) && Q.favoriteBrushes().join()==='studio','failed favorite write preserves previous favorites'); proto.setItem=original;
+  win.localStorage.setItem('qelem-favorite-brushes',JSON.stringify(['studio','studio','missing',{},'technical'])); ok(Q.favoriteBrushes().join()==='studio,technical','favorite list ignores malformed, duplicate and missing IDs');
+  win.localStorage.setItem('qelem-favorite-brushes','bad'); ok(Q.favoriteBrushes().length===0,'corrupt favorites do not break the brush library'); win.localStorage.removeItem('qelem-favorite-brushes');
+  const custom=Q.createCustomBrush(Q.brushById('eraser')).brush; ok(Q.setBrushFavorite(custom,true) && Q.favoriteBrushes().includes(custom.id),'custom erasers can be favorited'); ok(Q.deleteCustomBrush(custom) && !Q.favoriteBrushes().includes(custom.id),'deleted custom brushes no longer appear as favorites');
+  Q.UI.brushStudio(); button('Add favorite').click(); button('Remove favorite').click(); ok(!Q.favoriteBrushes().includes('studio'),'favorite can be removed'); Q.UI.closeModal();
+  category=doc.querySelector('[aria-label="Brush category"]'); category.value='all'; category.dispatchEvent(new win.Event('change',{bubbles:true})); Q.UI.closeTray();
+  Q.writeSavedPalette(['#ff0000','#0000ff','#222222']); Q.UI.savedPaletteDialog(); button('Reorder mode').click(); click('[aria-label="Reorder #ff0000"]'); ok(doc.querySelector('[aria-label="Reorder #ff0000"]').getAttribute('aria-pressed')==='true','reorder mode marks the first swatch'); click('[aria-label="Reorder #0000ff"]'); ok(Q.readSavedPalette().join()==='#0000ff,#ff0000,#222222','two swatches can be swapped and saved');
+  button('Sort by hue').click(); ok(Q.readSavedPalette().join()==='#ff0000,#0000ff,#222222','hue sort orders saturated hues before neutrals'); button('Sort by brightness').click(); ok(Q.readSavedPalette()[0]==='#222222','brightness sort orders dark colours first');
+  const saved=Q.readSavedPalette().join(); proto.setItem=()=>{throw Error('quota');}; button('Sort by hue').click(); ok(Q.readSavedPalette().join()===saved,'failed palette reordering preserves saved data'); proto.setItem=original;
+  let cel=d.activeCel(false); button('Extract layer colours').click(); ok(!cel && Q.readSavedPalette().join()===saved,'extracting an empty layer leaves the palette unchanged');
+  cel=d.activeCel(true); const extract=Q.extractCelColors; Q.extractCelColors=()=>['#ff0000','#00ff00','#123456']; button('Extract layer colours').click(); ok(Q.readSavedPalette().includes('#00ff00') && Q.readSavedPalette().includes('#123456') && Q.readSavedPalette().filter(c=>c==='#ff0000').length===1 && d.history.undoStack.length===0,'extraction adds new unique colours without changing artwork'); Q.extractCelColors=extract;
+  Q.UI.closeModal(); Q.UI.savedPaletteDialog(); ok(Q.readSavedPalette().length===5 && !!doc.querySelector('[aria-label="Use #00ff00"]'),'palette organization persists after reopening');
+  const oldExtract=Q.extractCelColors; Q.extractCelColors=()=>Array.from({length:24},(_,i)=>'#'+(i+100).toString(16).padStart(6,'0')); button('Extract layer colours').click(); ok(Q.readSavedPalette().length===13,'extraction adds at most eight colours per action');
+  const prior=Q.readSavedPalette().join(); proto.setItem=()=>{throw Error('quota');}; button('Extract layer colours').click(); ok(Q.readSavedPalette().join()===prior,'failed palette extraction save is atomic'); proto.setItem=original;
+  Q.writeSavedPalette(Array.from({length:24},(_,i)=>'#'+i.toString(16).padStart(6,'0'))); button('Extract layer colours').click(); ok(Q.readSavedPalette().length===24,'extraction respects full palette capacity');
+  Q.writeSavedPalette([]); App.createDoc(64,64,'Different palette target'); button('Extract layer colours').click(); ok(Q.readSavedPalette().length===0 && doc.querySelector('#toast').textContent.includes('Artwork changed'),'stale palette does not extract from a different artwork'); Q.extractCelColors=oldExtract; Q.UI.closeModal();
+  }
+
+  {
+  console.log('5.6 animation productivity');
+  const button=label=>[...doc.querySelectorAll('#modalBody button')].find(b=>b.textContent.trim()===label);
+  App.createDoc(64,64,'Animation tools'); const d=App.doc; d.activeCel(true); d.addFrame(false); d.activeCel(true); d.frames[0].group='<img src=x>'; d.frames[1].group='<img src=x>'; d.frames[1].skipped=true; d.history.clear();
+  Q.UI.batchFramesDialog(); ok(button('Insert blank frames') && button('Clear cels in range'),'batch panel exposes insertion and cel clearing'); button('Insert blank frames').click();
+  doc.querySelector('[aria-label="Insert after frame"]').value='0'; doc.querySelector('[aria-label="Number of blank frames"]').value='100'; button('Insert').click(); ok(d.frames.length===2 && doc.querySelector('.canvas-error').textContent.includes('60-frame'),'insertion dialog rejects exceeding frame limit');
+  doc.querySelector('[aria-label="Number of blank frames"]').value='2'; doc.querySelector('[aria-label="New frame hold"]').value='3'; button('Insert').click(); ok(d.frames.length===4 && d.frames[0].duration===3 && !d.frames[0].cels[0] && d.activeFrame===0,'insert dialog creates blank frames before first');
+  App.undo(); ok(d.frames.length===2 && d.frames[1].skipped && d.frames[0].cels[0],'insert undo restores existing drawings'); App.redo(); ok(d.frames.length===4 && d.frames[2].group==='<img src=x>','insert redo restores frames and labels');
+  Q.UI.findFrameDialog(); ok(doc.querySelector('[aria-label="Frame label"] option').textContent==='<img src=x>' && !doc.querySelector('[aria-label="Frame label"] img'),'frame labels are displayed safely as text');
+  button('Next label').click(); ok(d.activeFrame===2,'next label finds the next tagged frame'); button('Next label').click(); ok(d.activeFrame===3,'label navigation includes skipped frames'); button('Next label').click(); ok(d.activeFrame===2,'label navigation wraps');
+  doc.querySelector('[aria-label="Frame number"]').value='1'; button('Go to frame').click(); ok(d.activeFrame===0,'frame number navigation selects exact frame'); doc.querySelector('[aria-label="Frame number"]').value='99'; button('Go to frame').click(); ok(d.activeFrame===0 && doc.querySelector('#modalBody [role="status"]').textContent.includes('Enter a frame number'),'invalid frame number is rejected'); Q.UI.closeModal();
+  Q.UI.batchFramesDialog(); button('Clear cels in range').click(); doc.querySelector('[aria-label="Clear first frame"]').value='3'; doc.querySelector('[aria-label="Clear last frame"]').value='4'; button('Clear cels').click(); ok(d.frames[2].cels[0] && d.frames[3].cels[0] && doc.querySelector('#modalBody h2').textContent==='Clear these cels?','cel range clear requires confirmation'); click('#modalBody .btn.danger'); ok(!d.frames[2].cels[0] && !d.frames[3].cels[0] && d.frames[3].skipped,'confirmed clear removes current layer cels including skipped frame');
+  App.undo(); ok(d.frames[2].cels[0] && d.frames[3].cels[0],'clear can be undone'); App.redo(); ok(!d.frames[2].cels[0] && !d.frames[3].cels[0],'clear can be redone'); App.undo();
+  d.layer().locked=true; Q.UI.clearCelRangeDialog(); button('Clear cels').click(); ok(doc.querySelector('.canvas-error').textContent.includes('unlock') && d.frames[2].cels[0],'locked layer cannot be cleared'); d.layer().locked=false; button('Clear cels').click(); d.addLayer(); click('#modalBody .btn.danger'); ok(d.frames[2].cels[0] && doc.querySelector('#toast').textContent.includes('changed'),'stale clear confirmation cannot affect a different layer');
+  d.activeLayer=0; await App.saveNow(false); const loaded=await Q.Store.load(d.id); ok(loaded.frames.length===4 && loaded.frames[0].duration===3 && loaded.frames[3].skipped && loaded.frames[3].group==='<img src=x>' && !!loaded.frames[3].cels[0],'inserted frames and original artwork survive save and reopen');
+  Q.UI.insertBlankFramesDialog(); d.addFrame(false); button('Insert').click(); ok(doc.querySelector('.canvas-error').textContent.includes('frames changed'),'insertion rejects a stale frame list'); Q.UI.closeModal();
+  Q.UI.clearCelRangeDialog(); d.addFrame(false); button('Clear cels').click(); ok(doc.querySelector('.canvas-error').textContent.includes('frames changed'),'cel clear rejects a stale frame list before confirmation'); Q.UI.closeModal();
+  Q.UI.clearCelRangeDialog(); button('Clear cels').click(); const index=d.frames.findIndex(f=>f.cels[0]), otherIndex=d.frames.findIndex((f,i)=>i!==index && f.cels[0]), oldCel=d.frames[index].cels[0]; d.frames[index].cels[0]=null; click('#modalBody .btn.danger'); ok(d.frames[otherIndex].cels[0] && doc.querySelector('#toast').textContent.includes('changed'),'clear refuses when targeted cel changes after confirmation'); d.frames[index].cels[0]=oldCel;
+  Q.UI.findFrameDialog(); App.createDoc(64,64,'Different document'); button('Next label').click(); ok(doc.querySelector('#modalBody [role="status"]').textContent.includes('Artwork changed'),'frame navigator refuses a stale artwork'); Q.UI.closeModal();
+  }
+
+  {
+  console.log('5.7 smudge controls and input');
+  App.createDoc(64,64,'Smudge improvements'); let v=App.view; const d=App.doc; d.activeCel(true); d.history.clear();
+  Q.UI.smudgePreferences(); const pressure=doc.querySelector('[aria-label="Smudge stylus pressure"]'); ok(pressure && pressure.value==='off','stylus pressure defaults to off for compatibility'); pressure.value='on'; pressure.dispatchEvent(new win.Event('change',{bubbles:true})); ok(v.smudgePressure && Q.Store.meta('smudgePressure')===true,'stylus pressure setting persists on this device'); Q.UI.closeModal();
+  App.init(); await tick(); v=App.view; ok(v.smudgePressure===true,'stylus pressure setting restores on startup'); App.createDoc(64,64,'Smudge input'); const d2=App.doc, canvas=doc.querySelector('#view'); d2.activeCel(true); d2.history.clear(); v.tool='smudge'; v.globalPressure=1;
+  const a=v.toScreen(16,20), b=v.toScreen(26,20), c=v.toScreen(32,20); pointer(canvas,'pointerdown',a.x,a.y,{id:1890,pointerType:'pen',pressure:0.25}); ok(v.stroke && v.stroke.pressureStrength && Math.abs(v.stroke.pressure-0.25)<0.001,'new stylus strokes capture pressure setting and input'); pointer(canvas,'pointermove',b.x,b.y,{id:1890,pointerType:'pen',pressure:0.25}); const stroke=v.stroke; pointer(canvas,'pointerup',c.x,c.y,{id:1890,pointerType:'pen',pressure:0}); ok(Math.abs(stroke.lx-32)<0.01 && stroke.pressure===0.25 && d2.history.undoStack.length===1,'pointer release uses the final position without false zero pressure');
+  Q.UI.smudgePreferences(); [...doc.querySelectorAll('#modalBody button')].find(b=>b.textContent==='Reset').click(); ok(!v.smudgePressure && Q.Store.meta('smudgePressure')===false && doc.querySelector('[aria-label="Smudge stylus pressure"]').value==='off','smudge reset restores pressure default'); Q.UI.closeModal();
+  }
+
+  {
+  console.log('5.8 named palettes and HEX lists');
+  const button=label=>[...doc.querySelectorAll('#modalBody button')].find(b=>b.textContent.trim()===label);
+  win.localStorage.removeItem('qelem-palettes-v1'); win.localStorage.setItem('qelem-palette',JSON.stringify(['#112233','#ff0000'])); App.createDoc(64,64,'Palettes'); const history=App.doc.history.undoStack.length;
+  Q.UI.savedPaletteDialog(); ok(doc.querySelector('[aria-label="Palette set"]').value==='default' && doc.querySelector('[aria-label="Use #112233"]'),'existing device palette is displayed before migration');
+  button('Manage palettes').click(); button('New palette').click(); doc.querySelector('[aria-label="Palette name"]').value='<img src=x>'; button('Save').click(); let s=Q.paletteSets(), id=s.active;
+  ok(s.palettes.length===2 && !Q.readSavedPalette().length && doc.querySelector('[aria-label="Palette set"] option:checked').textContent==='<img src=x>' && !doc.querySelector('[aria-label="Palette set"] img'),'new palette is empty and unsafe names render as text');
+  button('Palette HEX codes').click(); const paste=doc.querySelector('[aria-label="Paste HEX colours"]'); paste.value='#ff0000, abc; #00ff00 #ABC'; button('Add HEX colours').click(); ok(Q.readSavedPalette().join()==='#ff0000,#aabbcc,#00ff00','pasted HEX list normalizes and deduplicates');
+  button('Palette HEX codes').click(); ok(doc.querySelector('[aria-label="Current palette HEX codes"]').readOnly && doc.querySelector('[aria-label="Current palette HEX codes"]').value.includes('#aabbcc'),'current HEX list is selectable and read-only');
+  doc.querySelector('[aria-label="Paste HEX colours"]').value='#ffffff invalid'; button('Add HEX colours').click(); ok(Q.readSavedPalette().length===3 && doc.querySelector('#modalBody [role="alert"]').textContent.includes('Invalid HEX'),'invalid HEX list makes no partial change');
+  const full=Array.from({length:23},(_,i)=>'#'+i.toString(16).padStart(6,'0')); Q.writeSavedPalette(full,id); doc.querySelector('[aria-label="Paste HEX colours"]').value='#ffffff #ff0000'; button('Add HEX colours').click(); ok(Q.readSavedPalette().length===23 && doc.querySelector('#modalBody [role="alert"]').textContent.includes('24 colours'),'bulk HEX import refuses overflow without partial writes');
+  Q.writeSavedPalette(['#123456'],id); button('Back to palette').click(); button('Manage palettes').click(); button('Duplicate palette').click(); button('Save').click(); const copy=Q.paletteSets().active; ok(copy!==id && Q.readSavedPalette().join()==='#123456','duplicate palette copies colours'); Q.writeSavedPalette(['#ffffff'],copy);
+  let sel=doc.querySelector('[aria-label="Palette set"]'); sel.value=id; sel.dispatchEvent(new win.Event('change',{bubbles:true})); ok(Q.readSavedPalette().join()==='#123456','switching shows independent palette colours'); button('Manage palettes').click(); button('Rename palette').click(); doc.querySelector('[aria-label="Palette name"]').value='My renamed palette'; button('Save').click(); ok(Q.paletteSets().palettes.find(p=>p.id===id).name==='My renamed palette','palette rename persists');
+  button('Manage palettes').click(); button('Delete palette').click(); ok(Q.paletteSets().palettes.length===3 && doc.querySelector('#modalBody h2').textContent.includes('Delete'),'deleting a palette requires confirmation'); click('#modalBody .btn.danger'); ok(Q.paletteSets().palettes.length===2 && !Q.paletteSets().palettes.some(p=>p.id===id) && Q.readSavedPalette().join()==='#112233,#ff0000','delete removes only selected palette and returns to preserved original');
+  const proto=Object.getPrototypeOf(win.localStorage), set=proto.setItem, prior=win.localStorage.getItem('qelem-palettes-v1'); button('Manage palettes').click(); button('New palette').click(); doc.querySelector('[aria-label="Palette name"]').value='Quota'; proto.setItem=()=>{throw Error('quota');}; button('Save').click(); ok(doc.querySelector('#modalBody [role="alert"]').textContent.includes('Could not save') && win.localStorage.getItem('qelem-palettes-v1')===prior,'quota failure keeps all palettes unchanged'); proto.setItem=set; Q.UI.closeModal();
+  Q.UI.savedPaletteDialog(); button('Manage palettes').click(); button('Delete palette').click(); Q.selectPalette(copy); click('#modalBody .btn.danger'); ok(Q.paletteSets().palettes.length===2 && doc.querySelector('#toast').textContent.includes('changed'),'stale delete confirmation cannot delete a different palette'); Q.UI.closeModal();
+  Q.UI.paletteHexDialog(); doc.querySelector('[aria-label="Paste HEX colours"]').value='#010203'; const oldMulti=win.localStorage.getItem('qelem-palettes-v1'); proto.setItem=()=>{throw Error('quota');}; button('Add HEX colours').click(); ok(doc.querySelector('#modalBody [role="alert"]').textContent.includes('Could not save') && win.localStorage.getItem('qelem-palettes-v1')===oldMulti,'HEX paste quota failure leaves palette unchanged'); proto.setItem=set;
+  Q.selectPalette('default'); button('Add HEX colours').click(); ok(doc.querySelector('#modalBody [role="alert"]').textContent.includes('Palette changed') && Q.readSavedPalette().join()==='#112233,#ff0000','stale HEX dialog cannot write to another palette'); Q.UI.closeModal();
+  Q.UI.savedPaletteDialog(); button('Clear palette').click(); Q.selectPalette(copy); click('#modalBody .btn.danger'); ok(Q.readSavedPalette().join()==='#ffffff','stale clear confirmation cannot clear a different palette'); Q.UI.closeModal();
+  win.localStorage.setItem('qelem-palettes-v1','{broken'); Q.UI.savedPaletteDialog(); ok(doc.querySelector('#modalBody').textContent.includes('read only') && !!Q.paletteSets().error && !Q.writeSavedPalette([]),'corrupt multi-palette data is shown as read-only without overwriting it'); Q.UI.closeModal();
+  ok(App.doc.history.undoStack.length===history,'palette management and HEX entry do not change artwork history'); win.localStorage.removeItem('qelem-palettes-v1'); win.localStorage.removeItem('qelem-palette');
+  }
+
+  {
+  console.log('5.9 fill sampling preferences');
+  App.createDoc(64,64,'Fill options'); Q.UI.fillSettings(); const source=doc.querySelector('[aria-label="Sample layers"]'), scope=doc.querySelector('[aria-label="Match area"]');
+  ok(source.value==='active' && scope.value==='connected' && doc.querySelector('#modalBody').textContent.includes('wand replaces'),'fill settings show compatible defaults and explain shared behavior');
+  source.value='visible';source.dispatchEvent(new win.Event('change',{bubbles:true})); scope.value='all';scope.dispatchEvent(new win.Event('change',{bubbles:true}));
+  ok(App.fillSource==='visible' && App.fillScope==='all' && Q.Store.meta('fillSource')==='visible' && Q.Store.meta('fillScope')==='all','fill settings persist'); Q.UI.closeModal(); App.init();await tick();
+  ok(App.fillSource==='visible' && App.fillScope==='all','fill settings restore on startup'); Q.Store.meta('fillSource','invalid');Q.Store.meta('fillScope','invalid');App.init();await tick();ok(App.fillSource==='active' && App.fillScope==='connected','invalid fill preferences use defaults');
+  }
+
+  {
+  console.log('6.0 canvas transform controls');
+  App.createDoc(64,64,'Canvas transform');const d=App.doc,v=App.view;d.activeCel(true);d.history.clear();v.selection={x:10,y:10,w:24,h:24};Q.UI.selectionDialog();
+  const entry=[...doc.querySelectorAll('#modalBody button')].find(b=>b.textContent==='Canvas transform');ok(entry && entry.querySelector('svg'),'canvas transform is discoverable from selection tools');entry.click();
+  const mode=doc.querySelector('[aria-label="Transform style"]');ok(mode && mode.options.length===5 && v.meshTransform && doc.querySelector('[aria-label="Canvas transform"]'),'canvas toolbar shows five named transform styles');
+  v.meshTransform.points[4].x+=4; mode.value='warp';mode.dispatchEvent(new win.Event('change',{bubbles:true}));ok(v.meshTransform.mode==='warp' && v.meshTransform.points[4].x===26,'switching style keeps existing mesh'); const quality=doc.querySelector('[aria-label="Transform resampling"]');ok(quality.value==='smooth','smooth resampling is the default');quality.value='nearest';quality.dispatchEvent(new win.Event('change',{bubbles:true}));ok(v.meshTransform.sampling==='nearest','pixelated resampling can be selected');[...doc.querySelectorAll('.mesh-toolbar button')].find(b=>b.textContent==='Reset').click();ok(v.meshTransform.points[4].x===22,'reset restores mesh geometry');
+  const flip=doc.querySelector('[aria-label="Flip source horizontally"]');ok(flip && flip.querySelector('svg') && flip.getAttribute('aria-pressed')==='false','canvas flip has an accessible non-emoji icon');flip.click();ok(v.meshTransform.flipX && flip.getAttribute('aria-pressed')==='true','canvas flip toggles the pending transform');[...doc.querySelectorAll('.mesh-toolbar button')].find(b=>b.textContent==='Reset').click();ok(!v.meshTransform.flipX && flip.getAttribute('aria-pressed')==='false','reset clears the pending flip');
+  [...doc.querySelectorAll('.mesh-toolbar button')].find(b=>b.textContent==='Cancel').click();ok(!v.meshTransform && !doc.querySelector('.mesh-toolbar') && d.history.undoStack.length===0,'cancel removes the temporary transform without history');
+  Q.UI.canvasTransform(); mode && (mode.value='distort'); pointer(doc.querySelector('#btnLayers'),'pointerdown',5,5,{id:2400});ok(!v.meshTransform && !doc.querySelector('.mesh-toolbar'),'other toolbar actions cancel pending transform');
+  }
+
+  {
+  console.log('6.3 interaction and Gradient Map');
+  App.createDoc(64,64,'Gradient Map');const d=App.doc,v=App.view;d.activeCel(true);d.history.clear();
+  Q.UI.effectsDialog();const launch=doc.querySelector('[aria-label="Open Gradient Map"]');ok(launch,'Gradient Map is discoverable in Effects');launch.click();await wait(25);
+  let colors=['Shadows','Midtones','Highlights'].map(x=>doc.querySelector(`[aria-label="${x} HEX"]`));ok(colors.every(Boolean) && doc.querySelector('[aria-label="Gradient Map artwork preview"]') && doc.querySelector('.gradient-map-bar').style.background,'gradient map displays editable stops and a preview');
+  [...doc.querySelectorAll('#modalBody button')].find(b=>b.textContent==='Ocean').click();ok(colors[0].value==='#0c2042' && colors[2].value==='#d1f3d7','gradient preset sets three colours');[...doc.querySelectorAll('#modalBody button')].find(b=>b.textContent==='Reverse').click();ok(colors[0].value==='#d1f3d7' && colors[2].value==='#0c2042','gradient reverse swaps endpoint colours');
+  colors[0].value='invalid';colors[0].dispatchEvent(new win.Event('input',{bubbles:true}));[...doc.querySelectorAll('#modalBody button')].find(b=>b.textContent==='Apply Gradient Map').click();ok(doc.querySelector('#modalBody [role="alert"]').textContent.includes('HEX') && d.history.undoStack.length===0,'invalid gradient input is rejected without edits');colors[0].value='#000';colors[0].dispatchEvent(new win.Event('input',{bubbles:true}));
+  d.layer().locked=true;[...doc.querySelectorAll('#modalBody button')].find(b=>b.textContent==='Apply Gradient Map').click();ok(doc.querySelector('#modalBody [role="alert"]').textContent.includes('unlock'),'locked layer is rejected before apply');d.layer().locked=false;Q.UI.closeModal();
+  Q.UI.gradientMapDialog();d.addLayer();[...doc.querySelectorAll('#modalBody button')].find(b=>b.textContent==='Apply Gradient Map').click();ok(doc.querySelector('#modalBody [role="alert"]').textContent.includes('changed'),'gradient dialog rejects changed targets');Q.UI.closeModal();
+  const size=doc.querySelector('#sizeSlider'), opacity=doc.querySelector('#opacitySlider'), oldSync=Q.UI.syncBrushUi;let syncCount=0;Q.UI.syncBrushUi=()=>{syncCount++;};for(let i=1;i<=100;i++){size.value=String(i);size.dispatchEvent(new win.Event('input',{bubbles:true}));opacity.value=String(i);opacity.dispatchEvent(new win.Event('input',{bubbles:true}));}Q.UI.syncBrushUi=oldSync;
+  ok(syncCount===0 && v.size===100 && v.opacity===1 && doc.querySelector('#sizeVal').textContent==='100' && doc.querySelector('#opacityVal').textContent==='100','rapid slider inputs update exact values without refreshing unrelated brush controls');
+  const sw=doc.querySelector('#btnColor');pointer(sw,'pointerdown',10,10,{id:2501});pointer(sw,'pointermove',25,25,{id:2501});for(let i=0;i<20;i++)pointer(sw,'pointermove',30+i,60+i,{id:2501});await wait(35);let ghost=doc.querySelector('#colorDropGhost');ok(ghost && ghost.style.transform.includes('49px,79px') && ghost.style.left==='' && ghost.style.top==='','colour drag follows latest pointer using compositor transform');pointer(sw,'lostpointercapture',49,79,{id:2501});ok(!doc.querySelector('#colorDropGhost'),'lost pointer capture removes pending colour indicator');
+  }
+
+  await App.saveNow(false);
+  console.log(failures ? `\n${failures} check(s) FAILED` : '\nall UI checks passed');
+  process.exit(failures ? 1 : 0);
+}
+
+run().catch((err) => {
+  console.error('test crashed:', err && err.stack || err);
+  process.exit(1);
+});
