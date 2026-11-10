@@ -450,7 +450,7 @@ async function run() {
 
   console.log('about');
   Q.UI.aboutSheet();
-  ok(doc.querySelector('#modalBody').textContent.includes('Developed by Qmer') && doc.querySelector('#modalBody').textContent.includes('Version 4.4'), 'About credits Qmer and shows current version');
+  ok(doc.querySelector('#modalBody').textContent.includes('Developed by Qmer') && doc.querySelector('#modalBody').textContent.includes('Version 4.5'), 'About credits Qmer and shows current version');
   Q.UI.closeModal();
 
   console.log('hardware back');
@@ -1279,6 +1279,25 @@ async function run() {
   const n=d.history.undoStack.length; for(let i=0;i<3;i++) v._down(ev('pointerdown',1060+i,300+i*40,300)); for(let i=0;i<3;i++) v._up(ev('pointerup',1060+i,300+i*40,300)); ok(d.history.undoStack.length===n-1 && !visible(doc.querySelector('#modal')),'three-finger tap remains undo');
   for(let i=0;i<4;i++) v._down(ev('pointerdown',1070+i,300+i*40,300)); for(let i=0;i<4;i++) v._up(ev('pointerup',1070+i,300+i*40,300)); ok(d.history.undoStack.length===n && !visible(doc.querySelector('#modal')),'four-finger tap remains redo');
   for(let i=0;i<3;i++) v._down(ev('pointerdown',1080+i,300+i*40,300)); for(let i=0;i<3;i++) v._move(ev('pointermove',1080+i,300+i*40,380)); for(let i=0;i<3;i++) v._up(ev('pointerup',1080+i,300+i*40,380)); ok(doc.querySelector('#modalBody h2').textContent==='Cut, copy & paste','downward swipe still opens Quick Edit'); Q.UI.closeModal();
+  }
+
+  {
+  console.log('4.5 recolour matching pixels');
+  App.createDoc(64,64,'Recolour'); const d=App.doc, cel=d.activeCel(true); d.history.clear(); App.setColor([0,128,255]);
+  Q.UI.openTray('menu'); const entry=Array.from(doc.querySelectorAll('#trayBody button')).find(b=>b.textContent==='Recolour matching pixels'); ok(entry && entry.querySelector('svg'),'recolour is discoverable from create and edit'); entry.click();
+  const get=label=>doc.querySelector('#modalBody [aria-label="'+label+'"]'), src=get('Source colour'), dest=get('Replacement colour'), slider=get('Recolour tolerance'), preview=get('Recolour preview, tap to sample source');
+  ok(src.value==='#000000' && dest.value==='#0080ff' && slider.value==='0' && preview && doc.querySelector('#modalBody').textContent.includes('disconnected areas') && doc.querySelector('#modalBody').textContent.includes('Alpha is preserved'),'dialog explains scope, shows preview and starts with brush colour');
+  src.value='wrong'; src.dispatchEvent(new win.Event('input',{bubbles:true})); click('#modalBody .btn.primary'); ok(doc.querySelector('.canvas-error').textContent.includes('HEX') && d.history.undoStack.length===0,'invalid colour is rejected without changes');
+  const ctx=cel.getContext('2d'), oldGet=ctx.getImageData; let sampled=null; ctx.getImageData=function(x,y,w,h){ if(w===1 && h===1) { sampled=[x,y]; return {data:new Uint8ClampedArray([34,68,136,255])}; } return oldGet.call(this,x,y,w,h); };
+  preview.getBoundingClientRect=()=>({left:0,top:0,width:200,height:200,right:200,bottom:200}); pointer(preview,'pointerdown',100,50,{id:1200});
+  ok(src.value==='#224488' && sampled[0]===32 && sampled[1]===16,'preview samples exact raw source pixel');
+  ctx.getImageData=function(x,y,w,h){ if(w===1 && h===1) return {data:new Uint8ClampedArray([0,0,0,0])}; return oldGet.call(this,x,y,w,h); }; pointer(preview,'pointerdown',50,50,{id:1201}); ok(src.value==='#224488' && doc.querySelector('.canvas-error').textContent.includes('non-transparent'),'transparent sampling is rejected'); ctx.getImageData=oldGet;
+  slider.value='24'; slider.dispatchEvent(new win.Event('input',{bubbles:true})); ok(doc.querySelector('#modalBody').textContent.includes('24') && doc.querySelector('.canvas-error').textContent==='', 'tolerance updates live preview');
+  const oldRecolor=App.recolorMatching; let passed=null; App.recolorMatching=function(t,a,b,n){ passed={t,a,b,n}; return oldRecolor(t,a,b,n); }; click('#modalBody .btn.primary');
+  ok(passed && passed.n===24 && passed.a.join(',')==='34,68,136' && passed.b.join(',')==='0,128,255' && !!doc.querySelector('#progressCard'),'apply starts bounded recolour with chosen parameters'); await wait(80); App.recolorMatching=oldRecolor;
+  ok(!visible(doc.querySelector('#modal')) && !App.view.locked && d.history.undoStack.length===0,'no matching pixels leave no history and release UI');
+  Q.UI.recolorDialog(); d.layer().locked=true; click('#modalBody .btn.primary'); ok(doc.querySelector('.canvas-error').textContent.includes('unlock') && d.history.undoStack.length===0, 'locked layer is rejected before applying'); d.layer().locked=false; Q.UI.closeModal();
+  Q.UI.recolorDialog(); d.addLayer(); click('#modalBody .btn.primary'); ok(doc.querySelector('.canvas-error').textContent.includes('changed'), 'stale layer is rejected'); Q.UI.closeModal();
   }
 
   await App.saveNow(false);

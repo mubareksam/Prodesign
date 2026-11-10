@@ -939,7 +939,7 @@
     }
     group('Create & edit', [
       ['New canvas',ICON.plus,()=>UI.newCanvasDialog()], ['Import image as layer',ICON.photo,()=>UI.pickImage()], ['Effects',ICON.sparkle,()=>UI.effectsDialog()],
-      ['Selection & transform',ICON.copy,()=>UI.selectionDialog()], ['Clear current cel',ICON.clear,()=>UI.clearCelDialog()], ['Cut, copy & paste',ICON.paste,()=>UI.quickEditDialog()], ['Fill settings',ICON.sparkle,()=>UI.fillSettings()]
+      ['Selection & transform',ICON.copy,()=>UI.selectionDialog()], ['Recolour matching pixels',ICON.swatch,()=>UI.recolorDialog()], ['Clear current cel',ICON.clear,()=>UI.clearCelDialog()], ['Cut, copy & paste',ICON.paste,()=>UI.quickEditDialog()], ['Fill settings',ICON.sparkle,()=>UI.fillSettings()]
     ]);
     group('Canvas & view', [
       ['Canvas background',ICON.sparkle,()=>UI.backgroundDialog()], ['Drawing guides',ICON.sparkle,()=>UI.guideDialog()],
@@ -1172,6 +1172,42 @@
     const actions=Q.crel('div','modal-actions'), cancel=Q.crel('button','btn ghost','Cancel'), apply=Q.crel('button','btn primary','Apply');
     cancel.addEventListener('click',()=>UI.closeModal()); apply.addEventListener('click',function(){ const value=update(); if(!value) return; const result=app().preciseTransform(value.options,target); if(result.error) { error.textContent=result.error; return; } UI.closeModal(); });
     actions.appendChild(cancel); actions.appendChild(apply); card.appendChild(actions); UI.openModal(card);
+  };
+
+  UI.recolorDialog = function () {
+    app().stopPlay(); UI.closeTray(); const d=app().doc, v=app().view; if(!d) return;
+    const selection=v.selection, target={doc:d,frame:d.frames[d.activeFrame],layer:d.layer(),cel:d.activeCel(false),selection:selection,bounds:selection ? {x:selection.x,y:selection.y,w:selection.w,h:selection.h} : {x:0,y:0,w:d.width,h:d.height},undo:d.history.undoStack.slice(),redo:d.history.redoStack.slice()};
+    const card=Q.crel('div'); card.appendChild(Q.crel('h2',null,'Recolour matching pixels'));
+    card.appendChild(Q.crel('p','sub','Replace matching non-transparent colours anywhere in the active cel, including disconnected areas. A selection limits the result. Alpha is preserved; other layers and frames are unchanged. Undo restores the pixels.'));
+    function colour(label,value) { const row=Q.crel('div','field studio-field'), input=Q.crel('input','select'); row.appendChild(Q.crel('label',null,label)); input.type='text'; input.value=value; input.setAttribute('aria-label',label); row.appendChild(input); card.appendChild(row); return input; }
+    const source=colour('Source colour','#000000'), replacement=colour('Replacement colour',Q.rgbToHex(v.color));
+    const row=Q.crel('div','field studio-field'), slider=Q.crel('input'); row.appendChild(Q.crel('label',null,'Tolerance')); slider.type='range'; slider.min=0; slider.max=128; slider.value=0; slider.setAttribute('aria-label','Recolour tolerance'); const value=Q.crel('div','val','0'); row.appendChild(slider); row.appendChild(value); card.appendChild(row);
+    const preview=Q.canvas(192,192); preview.className='recolor-preview'; preview.setAttribute('aria-label','Recolour preview, tap to sample source'); preview.title='Tap to sample the original active cel'; const scale=Math.min(192/d.width,192/d.height); preview.width=Math.max(1,Math.round(d.width*scale)); preview.height=Math.max(1,Math.round(d.height*scale)); card.appendChild(preview);
+    card.appendChild(Q.crel('p','sub','Tap the preview to sample a source pixel from the original cel, or enter HEX colours. Preview is downsampled and approximate, without other layers or animation transforms. RGB tolerance is per channel. Transparent pixels are skipped. Estimated temporary allocations are limited to 64 MiB; existing artwork and history use additional memory.'));
+    const error=Q.crel('p','canvas-error'); error.setAttribute('role','alert'); card.appendChild(error);
+    function read() { const a=Q.hexToRgb(source.value), b=Q.hexToRgb(replacement.value); if(!a || !b) return {error:'Enter valid 3- or 6-digit HEX colours'}; const t=Number(slider.value), result=app().validateRecolor(target,a,b,t); return result.error ? result : {source:a,replacement:b,tolerance:t}; }
+    function update() {
+      value.textContent=slider.value; const options=read(); error.textContent=options.error || '';
+      try {
+        const c=preview.getContext('2d'); c.clearRect(0,0,preview.width,preview.height); if(!target.cel) return;
+        c.drawImage(target.cel,0,0,preview.width,preview.height);
+        if(!options.error) {
+          const image=c.getImageData(0,0,preview.width,preview.height); let mask=null;
+          if(selection) { const mc=Q.canvas(preview.width,preview.height), m=mc.getContext('2d'); m.scale(preview.width/d.width,preview.height/d.height); Q.selectionPath(m,selection); m.fillStyle='#000'; m.fill(); const rgba=m.getImageData(0,0,preview.width,preview.height).data; mask=new Uint8Array(preview.width*preview.height); for(let i=0;i<mask.length;i++) mask[i]=rgba[i*4+3]>=128 ? 1 : 0; }
+          Q.recolorMatching(image,options.source,options.replacement,options.tolerance,mask); c.putImageData(image,0,0);
+        }
+      } catch(e) { error.textContent='Preview unavailable on this device; colours are validated before applying.'; }
+    }
+    [source,replacement,slider].forEach(el=>el.addEventListener('input',update));
+    preview.addEventListener('pointerdown',function(e){
+      if(!target.cel || app().doc!==d || d.activeCel(false)!==target.cel) return;
+      const box=preview.getBoundingClientRect(); if(!box.width || !box.height) return;
+      const x=Q.clamp(Math.floor((e.clientX-box.left)/box.width*d.width),0,d.width-1),y=Q.clamp(Math.floor((e.clientY-box.top)/box.height*d.height),0,d.height-1);
+      try { const px=target.cel.getContext('2d').getImageData(x,y,1,1).data; if(!px[3]) { error.textContent='Choose a non-transparent source pixel'; return; } source.value=Q.rgbToHex([px[0],px[1],px[2]]); update(); } catch(err) { error.textContent='Could not sample this pixel'; }
+    });
+    const actions=Q.crel('div','modal-actions'), cancel=Q.crel('button','btn ghost','Cancel'), apply=Q.crel('button','btn primary','Apply'); cancel.addEventListener('click',()=>UI.closeModal());
+    apply.addEventListener('click',function(){ const options=read(); if(options.error) { error.textContent=options.error; return; } const result=app().recolorMatching(target,options.source,options.replacement,options.tolerance); if(result.error) error.textContent=result.error; });
+    actions.appendChild(cancel); actions.appendChild(apply); card.appendChild(actions); UI.openModal(card); update();
   };
 
   UI.fillSettings = function () {
@@ -1777,7 +1813,7 @@
     card.appendChild(Q.crel('p', 'sub', 'A paint, sketch and frame-by-frame animation studio for Android. Artwork is stored on this device only — nothing is uploaded.'));
     card.appendChild(Q.crel('p', 'sub', 'Developed by Qmer'));
     card.appendChild(Q.crel('p', 'sub', 'ቀለም (qalam) means “pen” or “ink”.'));
-    card.appendChild(Q.crel('p', 'sub', 'Version 4.4'));
+    card.appendChild(Q.crel('p', 'sub', 'Version 4.5'));
     const actions = Q.crel('div', 'modal-actions');
     const close = Q.crel('button', 'btn primary', 'Close');
     close.addEventListener('click', function () { UI.closeModal(); });

@@ -838,4 +838,28 @@ function precisionOptions(opts={}) { return {width:2,height:4,dx:0,dy:0,angle:90
  d.layer().visible=false; ok(!d.clearCurrentCel() && d.activeCel(false)===first,'hidden layer blocks clear cel');
 }
 
+{
+ function target(d) { const s=App.view.selection; return {doc:d,frame:d.frames[d.activeFrame],layer:d.layer(),cel:d.activeCel(false),selection:s,bounds:s ? {x:s.x,y:s.y,w:s.w,h:s.h} : {x:0,y:0,w:d.width,h:d.height},undo:d.history.undoStack.slice(),redo:d.history.redoStack.slice()}; }
+ const d=setup(), cel=d.activeCel(true), c=cel.getContext('2d');
+ c.fillStyle='#ff0000'; c.fillRect(1,1,2,2); c.fillRect(12,12,2,2); c.fillStyle='#f50000'; c.fillRect(6,6,2,2); c.fillStyle='rgba(255,0,0,0.5)'; c.fillRect(3,8,2,2); c.fillStyle='#0000ff'; c.fillRect(9,1,2,2);
+ const alphaBefore=pixel(cel,3,8)[3]; d.addFrame(false); const other=d.activeCel(true); other.getContext('2d').fillRect(1,1,1,1); d.activeFrame=0; d.history.clear();
+ ok(App.recolorMatching(target(d),[255,0,0],[0,255,0],10).started,'recolour starts on active cel'); await new Promise(r=>setTimeout(r,70));
+ ok(same(pixel(cel,1,1),[0,255,0,255]) && same(pixel(cel,12,12),[0,255,0,255]) && same(pixel(cel,6,6),[0,255,0,255]),'recolour matches disconnected and tolerance-bound pixels');
+ ok(pixel(cel,3,8)[1]===255 && pixel(cel,3,8)[3]===alphaBefore && pixel(cel,0,0)[3]===0 && pixel(cel,9,1)[2]===255,'recolour preserves alpha, transparency and unmatched colours');
+ ok(pixel(other,1,1)[3]===255 && d.history.undoStack.length===1,'other frames remain untouched and recolour is one undo step');
+ d.history.undo(); ok(pixel(cel,1,1)[0]===255 && pixel(cel,3,8)[3]===alphaBefore && pixel(cel,6,6)[0]===245, 'undo restores matching pixels and alpha'); d.history.redo(); ok(pixel(cel,1,1)[1]===255 && pixel(cel,3,8)[3]===alphaBefore,'redo reapplies recolour'); d.history.undo(); d.history.clear();
+ App.view.selection={x:0,y:0,w:5,h:5}; App.recolorMatching(target(d),[255,0,0],[0,0,255],0); await new Promise(r=>setTimeout(r,70));
+ ok(pixel(cel,1,1)[2]===255 && pixel(cel,12,12)[0]===255 && pixel(cel,3,8)[0]===255,'rectangular selection restricts recolour'); d.history.undo(); d.history.clear();
+ App.view.selection={x:0,y:0,w:16,h:16,runs:[{x:1,y:1,w:1},{x:12,y:12,w:1}]}; App.recolorMatching(target(d),[255,0,0],[0,255,0],0); await new Promise(r=>setTimeout(r,70));
+ ok(pixel(cel,1,1)[1]===255 && pixel(cel,12,12)[1]===255 && pixel(cel,2,1)[0]===255, 'wand mask limits recolour exactly'); d.history.undo(); d.history.clear();
+ App.view.selection={x:0,y:0,w:5,h:5,points:[{x:0,y:0},{x:5,y:0},{x:0,y:5}]}; App.recolorMatching(target(d),[255,0,0],[0,255,0],0); await new Promise(r=>setTimeout(r,70));
+ ok(pixel(cel,1,1)[1]===255 && pixel(cel,12,12)[0]===255,'lasso mask limits recolour'); d.history.undo(); d.history.clear(); App.view.selection=null;
+ d.layer().alphaLocked=true; App.recolorMatching(target(d),[255,0,0],[0,255,0],0); await new Promise(r=>setTimeout(r,70)); ok(pixel(cel,3,8)[3]===alphaBefore && pixel(cel,3,8)[1]===255,'recolour works with alpha lock while retaining alpha'); d.history.undo(); d.history.clear(); d.layer().alphaLocked=false;
+ d.layer().locked=true; ok(!!App.recolorMatching(target(d),[255,0,0],[0,255,0],0).error && d.history.undoStack.length===0,'locked layer rejects recolour'); d.layer().locked=false; d.layer().visible=false; ok(!!App.recolorMatching(target(d),[255,0,0],[0,255,0],0).error,'hidden layer rejects recolour'); d.layer().visible=true;
+ App.recolorMatching(target(d),[1,2,3],[0,255,0],0); await new Promise(r=>setTimeout(r,70)); ok(d.history.undoStack.length===0,'no match does not create history');
+ const oldSnapGet=d.history.snapCtx.getImageData; d.history.snapCtx.getImageData=()=>{throw Error('out of memory');}; App.recolorMatching(target(d),[255,0,0],[0,255,0],0); await new Promise(r=>setTimeout(r,70)); d.history.snapCtx.getImageData=oldSnapGet; ok(pixel(cel,1,1)[0]===255 && d.history.undoStack.length===0 && !App.view.locked,'undo allocation failure leaves pixels and history unchanged');
+ const stale=target(d); App.recolorMatching(stale,[255,0,0],[0,255,0],0); d.activeFrame=1; await new Promise(r=>setTimeout(r,70)); ok(pixel(cel,1,1)[0]===255 && d.history.undoStack.length===0 && !App.view.locked,'stale frame cancels asynchronous recolour safely'); d.activeFrame=0;
+ const large={...target(d),bounds:{x:0,y:0,w:4096,h:4096}}; const ow=d.width,oh=d.height; d.width=4096; d.height=4096; ok(App.validateRecolor(large,[0,0,0],[255,0,0],0).error.includes('64 MiB'),'oversized recolour is refused before allocation'); d.width=ow; d.height=oh;
+}
+
 console.log(`all ${n} raster integration checks passed`);

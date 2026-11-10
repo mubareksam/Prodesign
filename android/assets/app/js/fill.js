@@ -36,6 +36,20 @@
     }
     return maxX<0 ? null : {x:minX,y:minY,w:maxX-minX+1,h:maxY-minY+1};
   };
+  // Replace matching non-transparent RGB pixels, including disconnected areas.
+  // Alpha is never changed; the optional binary mask is local to image bounds.
+  Q.recolorMatching = function (image, source, target, tolerance, mask) {
+    const w=image.width,h=image.height,data=image.data,tol=Q.clamp(tolerance,0,128);
+    let minX=w,minY=h,maxX=-1,maxY=-1;
+    for(let n=0;n<w*h;n++) {
+      const i=n*4; if(!data[i+3] || (mask && !mask[n])) continue;
+      if(Math.abs(data[i]-source[0])>tol || Math.abs(data[i+1]-source[1])>tol || Math.abs(data[i+2]-source[2])>tol) continue;
+      if(data[i]===target[0] && data[i+1]===target[1] && data[i+2]===target[2]) continue;
+      data[i]=target[0]; data[i+1]=target[1]; data[i+2]=target[2];
+      const x=n%w,y=Math.floor(n/w); minX=Math.min(minX,x); maxX=Math.max(maxX,x); minY=Math.min(minY,y); maxY=Math.max(maxY,y);
+    }
+    return maxX<0 ? null : {x:minX,y:minY,w:maxX-minX+1,h:maxY-minY+1};
+  };
   // Connected-colour selection on the active cel. Run-length geometry keeps
   // clipping compatible with brushes; reject pathological complex boundaries.
   Q.floodSelect = function (image, sx, sy, threshold) {

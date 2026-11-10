@@ -13,6 +13,12 @@ The supplied feature inventory is a roadmap, not a list of completed work.
   clutter. Effect thumbnails are generated offline from illustrative sample art,
   not a live preview. Real-device layout and touch testing remain necessary.
 
+- Recolour matching non-transparent RGB pixels in the current cel, including
+  disconnected areas; tap the approximate preview to sample the original cel or
+  enter source and replacement HEX colours. Per-channel tolerance is 0–128; alpha
+  is preserved, selection masks apply and the edit is undoable. Hidden/locked
+  layers are refused. This is not a live crosshair tool; estimated temporary
+  allocations are limited to 64 MiB, excluding existing artwork/history.
 - Gallery eye button opens the saved, read-only thumbnail without loading the
   project: last-saved active frame, background included, at up to 320 px. It is
   neither full-resolution nor animated and does not show camera or layer motion;

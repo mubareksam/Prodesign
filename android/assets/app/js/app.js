@@ -825,6 +825,47 @@
     }, 40);
   };
 
+  // Recolour raw pixels of one current cel, bounded by selection and memory.
+  App.validateRecolor = function (target, source, replacement, tolerance) {
+    const d=App.doc, v=App.view;
+    if(!d || !target || target.doc!==d || d.frames[d.activeFrame]!==target.frame || d.layer()!==target.layer || d.activeCel(false)!==target.cel || v.selection!==target.selection || App.playing) return {error:'Artwork, frame, layer or selection changed; reopen recolour'};
+    if(!target.cel) return {error:'Draw on this layer first'};
+    if(!target.layer.visible || target.layer.locked) return {error:'Show and unlock this layer first'};
+    if(!Array.isArray(source) || !Array.isArray(replacement) || source.length!==3 || replacement.length!==3 || !source.concat(replacement).every(n=>Number.isInteger(n) && n>=0 && n<=255) || !Number.isInteger(tolerance) || tolerance<0 || tolerance>128) return {error:'Enter valid colours and tolerance'};
+    const r=target.bounds, s=v.selection;
+    if(!r || ![r.x,r.y,r.w,r.h].every(Number.isInteger) || r.x<0 || r.y<0 || r.w<1 || r.h<1 || r.x+r.w>d.width || r.y+r.h>d.height || (s && (s.x!==r.x || s.y!==r.y || s.w!==r.w || s.h!==r.h))) return {error:'Selection changed; reopen recolour'};
+    const complex=!!(s && (s.points || s.runs));
+    if(4*d.width*d.height+(complex ? 13 : 8)*r.w*r.h>64*1024*1024) return {error:'Recolour exceeds the 64 MiB temporary-memory limit'};
+    if(target.undo.length!==d.history.undoStack.length || target.redo.length!==d.history.redoStack.length || target.undo.some((e,i)=>e!==d.history.undoStack[i]) || target.redo.some((e,i)=>e!==d.history.redoStack[i])) return {error:'Artwork changed; reopen recolour'};
+    return {};
+  };
+  App.recolorMatching = function (target,source,replacement,tolerance) {
+    const check=App.validateRecolor(target,source,replacement,tolerance); if(check.error) return check;
+    const d=App.doc,v=App.view, r=target.bounds; v.locked=true; Q.UI.progress('Recolouring','Processing the current layer…',0);
+    const progressNode=document.getElementById ? document.getElementById('progressCard') : null;
+    setTimeout(function() {
+      try {
+        const valid=App.validateRecolor(target,source,replacement,tolerance); if(valid.error) { Q.toast(valid.error,4000); return; }
+        const ctx=target.cel.getContext('2d'), image=ctx.getImageData(r.x,r.y,r.w,r.h), mask=target.selection ? Q.selectionMask(target.selection) : null;
+        const rect=Q.recolorMatching(image,source,replacement,tolerance,mask);
+        if(rect) {
+          // Acquire undo data before touching the cel, so an allocation failure
+          // cannot leave an unrecorded edit.
+          const changed={x:r.x+rect.x,y:r.y+rect.y,w:rect.w,h:rect.h};
+          d.history.beginPixels(target.cel);
+          const before=d.history.snapCtx.getImageData(changed.x,changed.y,changed.w,changed.h);
+          try { ctx.putImageData(image,r.x,r.y,rect.x,rect.y,rect.w,rect.h); }
+          catch(err) { try { ctx.putImageData(before,changed.x,changed.y); } catch(ignored) {} throw err; }
+          d.history.push({type:'pixels',f:d.activeFrame,l:d.activeLayer,rect:changed,before:before});
+          v.dirty=true; Q.UI.syncDoc(); App.markDirty();
+        }
+        Q.toast(rect ? 'Recoloured · Undo to restore' : 'No matching pixels changed');
+      } catch(err) { Q.toast('Could not recolour on this device',4000); }
+      finally { if(!progressNode || document.getElementById('progressCard')===progressNode) Q.UI.endProgress(); if(App.view===v && App.doc===d && !App.playing) v.locked=false; }
+    },40);
+    return {started:true};
+  };
+
   App.applyEffect = function (kind, amount) {
     const d = App.doc, cel = d && d.activeCel(false);
     if (!cel) { Q.toast('Draw on this layer first'); return; }

@@ -8,11 +8,11 @@ brushes, layers with blend modes, a colour wheel, a frame timeline with onion sk
 Procreate's gesture vocabulary, PNG/GIF export and device-dependent MP4 export — all offline, with no account and
 no network permissions at all.
 
-- Package: `com.qalam.studio` · version 4.4 (versionCode 35)
+- Package: `com.qalam.studio` · version 4.5 (versionCode 36)
 - minSdk 26 (Android 8.0) · targetSdk 33 · armeabi-v7a/arm64/x86/x86_64 independent
   (everything is HTML/JS running inside the app's own `WebView`, so the APK has no
   native code)
-- APK: **`artifacts/Qalam-4.4.apk`** (~303 KB), signed with a v1+v2 scheme
+- APK: **`artifacts/Qalam-4.5.apk`** (~305 KB), signed with a v1+v2 scheme
 - The written analysis of Procreate that this app was specified from:
   [`docs/procreate-analysis.md`](procreate-analysis.md)
 
@@ -20,7 +20,7 @@ no network permissions at all.
 
 ## 1. Install
 
-1. Copy `artifacts/Qalam-4.4.apk` to the phone (USB, Drive, chat to yourself — anything).
+1. Copy `artifacts/Qalam-4.5.apk` to the phone (USB, Drive, chat to yourself — anything).
 2. Open it with the phone's file manager. Android will ask to allow installs from
    that app the first time ("Install unknown apps").
 3. Install and open **Qalam**. If an earlier Qalam version is already installed, Android should offer an update that preserves its data. Back up important artwork first. Android does not allow this app to silently uninstall itself; do not uninstall it unless you have backed up its local artwork.
@@ -87,6 +87,19 @@ Bottom bar: **Gallery · Layer · Brush · Colour · Timeline · Menu** (plus **
   zero leaves its own setting alone. Both settings apply to brushes and erasers,
   are stored on the device, and leave brush presets and existing pixels unchanged.
   High smoothing can add lag; supported pressure depends on the device/stylus.
+- **Actions → Create & edit → Recolour matching pixels** — replace matching
+  non-transparent RGB pixels throughout the active cel, including disconnected
+  areas. Tap the small preview to sample a source pixel from the original cel,
+  or enter a 3- or 6-digit HEX colour; the replacement defaults to the brush
+  colour. The 0–128 tolerance is applied independently to each RGB channel;
+  alpha is not used for matching and remains unchanged, including with alpha lock.
+  Transparent pixels are skipped. An active rectangle, lasso or wand selection
+  limits the result. Other layers and frames are untouched; one undo restores
+  the change. The preview is downsampled and approximate, not a live canvas or
+  transformed/composited output. This is not Procreate's interactive crosshair
+  recolour tool. Estimated temporary allocations are capped at 64 MiB; existing
+  canvas and undo history use additional memory. Hidden or locked layers are
+  refused; no matching changes produce no undo step.
 - **Clear current cel** — use Actions → Create & edit → Clear current cel, or
   put three fingers down together on the canvas and scrub right-left-right (or
   left-right-left) within two seconds, keeping all three in contact and moving
@@ -506,7 +519,7 @@ tools/
   tests/pixel_integration.mjs real raster and animation export checks
   tests/gif_roundtrip.mjs    encodes a GIF and decodes it with an independent decoder
   tests/ui_smoke.mjs         jsdom boot + full UI drive (gallery -> export)
-artifacts/Qalam-4.4.apk           the signed, installable artefact
+artifacts/Qalam-4.5.apk           the signed, installable artefact
 docs/procreate-analysis.md   the Procreate study this app was built from
 docs/qalam.md                this file
 ```
@@ -536,7 +549,7 @@ Design notes worth knowing before changing code:
 
 ```bash
 bash tools/fetch-toolchain.sh     # once per machine: JVM, apktool, aapt2, jars, npm
-bash tools/build.sh               # -> artifacts/Qalam-4.4.apk (signed + verified)
+bash tools/build.sh               # -> artifacts/Qalam-4.5.apk (signed + verified)
 bash tools/check_reference.sh     # optional: javac-check the Java mirrors
 ```
 
