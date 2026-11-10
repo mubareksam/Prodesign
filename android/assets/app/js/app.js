@@ -12,6 +12,8 @@
     autosaveTimer: 0,
     ready: false,
     fillThreshold: 12,
+    fillSource: 'active',
+    fillScope: 'connected',
     previousColor: null,
     lastPaintBrush: null,
     clipboard: null
@@ -49,6 +51,8 @@
     v.gestureDelays=Q.sanitizeGestureDelays(Q.Store.meta('gestureDelays'));
     const threshold = Q.Store.meta('fillThreshold');
     if (typeof threshold === 'number') App.fillThreshold = Q.clamp(threshold, 0, 128);
+    App.fillSource=Q.Store.meta('fillSource')==='visible' ? 'visible' : 'active';
+    App.fillScope=Q.Store.meta('fillScope')==='all' ? 'all' : 'connected';
     const pressure=Q.Store.meta('globalPressure'), smoothing=Q.Store.meta('globalSmoothing');
     v.smudgeHardness=Q.sanitizeSmudgeHardness(Q.Store.meta('smudgeHardness'));
     v.smudgePressure=Q.Store.meta('smudgePressure')===true;
@@ -817,44 +821,80 @@
     } catch(err) { return {error:'Could not transform this area on this device'}; }
   };
 
+  // Visible composite samples ignore the canvas background and playback-only
+  // transforms, but honor layer visibility, opacity, blend modes and clipping.
+  function fillSourceImage(d,frame,cel,bounds,source) {
+    if(source==='active') return cel ? cel.getContext('2d').getImageData(bounds.x,bounds.y,bounds.w,bounds.h) : Q.canvas(bounds.w,bounds.h).getContext('2d').getImageData(0,0,bounds.w,bounds.h);
+    const cv=Q.canvas(bounds.w,bounds.h), ctx=cv.getContext('2d'); ctx.translate(-bounds.x,-bounds.y); d.composite(ctx,frame); ctx.setTransform(1,0,0,1,0,0); return ctx.getImageData(0,0,bounds.w,bounds.h);
+  }
+  function fillMemoryAllowed(d,bounds,source,scope,selection) {
+    if(source==='active' && scope==='connected') return true; // Keep the legacy default available for large artworks.
+    const docPixels=d.width*d.height, area=bounds.w*bounds.h;
+    if(area>4*1024*1024 || (source==='visible' && docPixels>4*1024*1024)) return false;
+    const clip=source==='visible' && d.layers.some(l=>l.clipped && l.visible) ? 4*docPixels : 0;
+    // Conservative allowance for sampled and destination canvases, image data,
+    // queues, undo, transient readbacks and a newly-created full-size cel.
+    return area*32+(selection && Q.complexSelection(selection) ? 9*area : 0)+clip+4*docPixels<=64*1024*1024;
+  }
+  function captureFillState(d,frame,source) {
+    const f=d.frames[frame]; return {undo:d.history.undoStack.slice(),redo:d.history.redoStack.slice(),layers:source==='visible' ? d.layers.map((l,i)=>({id:l.id,visible:l.visible,opacity:l.opacity,blend:l.blend,clipped:l.clipped,cel:f.cels[i]})) : null};
+  }
+  function fillStateUnchanged(d,frame,state) {
+    const h=d.history; if(state.undo.length!==h.undoStack.length || state.redo.length!==h.redoStack.length || state.undo.some((e,i)=>h.undoStack[i]!==e) || state.redo.some((e,i)=>h.redoStack[i]!==e)) return false;
+    return !state.layers || (state.layers.length===d.layers.length && state.layers.every((s,i)=>{const l=d.layers[i]; return l.id===s.id && l.visible===s.visible && l.opacity===s.opacity && l.blend===s.blend && l.clipped===s.clipped && d.frames[frame].cels[i]===s.cel;}));
+  }
+  function closeFillProgress(node) { if(!node || document.getElementById('progressCard')===node) Q.UI.endProgress(); }
+
   App.wandAt = function (x,y) {
     const d=App.doc, v=App.view; if(!d || v.locked || x<0 || y<0 || x>=d.width || y>=d.height) return;
-    const layer=d.layer(), cel=d.activeCel(false), frame=d.activeFrame, layerIndex=d.activeLayer;
+    const layer=d.layer(), cel=d.activeCel(false), frame=d.activeFrame, layerIndex=d.activeLayer, frameObj=d.frames[frame], source=App.fillSource==='visible' ? 'visible' : 'active', scope=App.fillScope==='all' ? 'all' : 'connected', tolerance=App.fillThreshold;
     if(!layer || !layer.visible) { Q.toast('This layer is hidden'); return; }
-    v.locked=true; Q.UI.progress('Selecting','Finding connected pixels on the current layer…',0);
+    const bounds={x:0,y:0,w:d.width,h:d.height}, selection=v.selection; if(!fillMemoryAllowed(d,bounds,source,scope,null)) { Q.toast('Selection exceeds the sampling memory limit',4000); return; }
+    const state=captureFillState(d,frame,source); v.locked=true; Q.UI.progress('Selecting',source==='visible' ? 'Sampling visible layers…' : 'Finding matching pixels…',0);
+    const progressNode=document.getElementById ? document.getElementById('progressCard') : null;
     setTimeout(function () { try {
-      if(App.doc!==d || d.activeFrame!==frame || d.activeLayer!==layerIndex || d.activeCel(false)!==cel) { Q.toast('Selection cancelled'); return; }
-      const image=cel ? cel.getContext('2d').getImageData(0,0,d.width,d.height) : Q.canvas(d.width,d.height).getContext('2d').getImageData(0,0,d.width,d.height);
-      const result=Q.floodSelect(image,x,y,App.fillThreshold); if(result && result.error) { Q.toast(result.error,4000); return; }
-      if(result) { v.selection=result; v.dirty=true; Q.toast('Connected area selected · Menu → Selection & transform',3000); }
-    } catch(e) { Q.toast('Could not select this area',4000); } finally { Q.UI.endProgress(); v.locked=false; } },40);
+      if(App.doc!==d || App.view!==v || d.frames[frame]!==frameObj || d.activeFrame!==frame || d.activeLayer!==layerIndex || d.layer()!==layer || d.activeCel(false)!==cel || v.selection!==selection || !layer.visible || !fillStateUnchanged(d,frame,state)) { Q.toast('Selection cancelled'); return; }
+      const image=fillSourceImage(d,frame,cel,bounds,source);
+      const result=source==='active' && scope==='connected' ? Q.floodSelect(image,x,y,tolerance) : Q.selectionFromRegion(Q.matchColorRegion(image,x,y,tolerance,scope,null,null),d.width,d.height,0,0);
+      if(result && result.error) { Q.toast(result.error,4000); return; }
+      if(result) { v.selection=result; v.dirty=true; Q.toast('Matching area selected · Menu → Selection & transform',3000); }
+      else Q.toast('No matching pixels selected');
+    } catch(e) { Q.toast('Could not select this area',4000); } finally { closeFillProgress(progressNode); if(App.view===v && App.doc===d && !App.playing) v.locked=false; } },40);
   };
 
   App.fillAt = function (x, y, droppedColor) {
-    const d = App.doc;
-    if (!d || x < 0 || y < 0 || x >= d.width || y >= d.height) return;
-    const layer = d.layer();
-    if (!layer || !layer.visible) { Q.toast('This layer is hidden'); return; }
-    if (layer.locked) { Q.toast('This layer is locked'); return; }
-    const bounds=App.view.selection ? {...App.view.selection} : {x:0,y:0,w:d.width,h:d.height};
-    if (x < bounds.x || y < bounds.y || x >= bounds.x+bounds.w || y >= bounds.y+bounds.h) { Q.toast('Tap inside the selection'); return; }
-    const cel = d.activeCel(true), color = (droppedColor || App.view.color).slice(), tolerance = App.fillThreshold, alphaLocked=!!layer.alphaLocked;
-    App.view.locked = true;
-    Q.UI.progress('Filling', 'Processing the current layer…', 0);
-    setTimeout(function () {
-      try {
-        if (App.doc !== d || d.activeCel(false) !== cel) { Q.UI.endProgress(); return; }
-        const ctx=cel.getContext('2d'), image=ctx.getImageData(bounds.x,bounds.y,bounds.w,bounds.h);
-        const mask=Q.selectionMask(bounds);
-        const rect=Q.floodFill(image,x-bounds.x,y-bounds.y,color,tolerance,alphaLocked,mask);
-        if (rect) {
-          d.history.beginPixels(cel); ctx.putImageData(image,bounds.x,bounds.y); d.history.endPixels({x:rect.x+bounds.x,y:rect.y+bounds.y,w:rect.w,h:rect.h});
-          App.view.dirty=true; App.markDirty();
-        }
-        Q.UI.endProgress(); Q.toast(rect ? 'Filled · Undo to revert' : 'Nothing to fill');
-      } catch (err) { Q.UI.endProgress(); Q.toast('Could not fill this canvas',4000); }
-      finally { App.view.locked = false; }
-    }, 40);
+    const d=App.doc,v=App.view; if(!d || !v || v.locked || x<0 || y<0 || x>=d.width || y>=d.height) return;
+    const layer=d.layer(); if(!layer || !layer.visible) { Q.toast('This layer is hidden'); return; } if(layer.locked) { Q.toast('This layer is locked'); return; }
+    const selection=v.selection, bounds=selection ? {...selection} : {x:0,y:0,w:d.width,h:d.height};
+    if(x<bounds.x || y<bounds.y || x>=bounds.x+bounds.w || y>=bounds.y+bounds.h) { Q.toast('Tap inside the selection'); return; }
+    const source=App.fillSource==='visible' ? 'visible' : 'active', scope=App.fillScope==='all' ? 'all' : 'connected';
+    if(!fillMemoryAllowed(d,bounds,source,scope,selection)) { Q.toast('Fill exceeds the sampling memory limit',4000); return; }
+    const originalCel=d.activeCel(false), color=(droppedColor || v.color).slice(), tolerance=App.fillThreshold, alphaLocked=!!layer.alphaLocked, frame=d.activeFrame, frameObj=d.frames[frame], layerIndex=d.activeLayer;
+    const state=captureFillState(d,frame,source); v.locked=true; Q.UI.progress('Filling',source==='visible' ? 'Sampling visible layers…' : 'Processing the current layer…',0);
+    const progressNode=document.getElementById ? document.getElementById('progressCard') : null;
+    setTimeout(function () { try {
+      if(App.doc!==d || App.view!==v || d.frames[frame]!==frameObj || d.activeFrame!==frame || d.activeLayer!==layerIndex || d.layer()!==layer || d.activeCel(false)!==originalCel || v.selection!==selection || !layer.visible || layer.locked || !!layer.alphaLocked!==alphaLocked || !fillStateUnchanged(d,frame,state)) { Q.toast('Fill cancelled'); return; }
+      const image=fillSourceImage(d,frame,originalCel,bounds,'active'), mask=Q.selectionMask(bounds);
+      let rect;
+      if(source==='active' && scope==='connected') rect=Q.floodFill(image,x-bounds.x,y-bounds.y,color,tolerance,alphaLocked,mask);
+      else {
+        const ref=source==='active' ? image : fillSourceImage(d,frame,originalCel,bounds,'visible');
+        const region=Q.matchColorRegion(ref,x-bounds.x,y-bounds.y,tolerance,scope,mask,alphaLocked ? image.data : null);
+        rect=Q.fillColorRegion(image,region,color,alphaLocked);
+      }
+      if(rect) {
+        const changed={x:rect.x+bounds.x,y:rect.y+bounds.y,w:rect.w,h:rect.h};
+        // Acquire undo pixels before committing. A failed read or write cannot
+        // leave an unrecorded fill; no full-canvas snapshot is required.
+        const before=originalCel ? originalCel.getContext('2d').getImageData(changed.x,changed.y,changed.w,changed.h) : Q.canvas(changed.w,changed.h).getContext('2d').getImageData(0,0,changed.w,changed.h);
+        const cel=originalCel || d.activeCel(true), ctx=cel.getContext('2d');
+        try { ctx.putImageData(image,bounds.x,bounds.y,rect.x,rect.y,rect.w,rect.h); } catch(err) { if(!originalCel) frameObj.cels[layerIndex]=null; else try { ctx.putImageData(before,changed.x,changed.y); } catch(ignore) {} throw err; }
+        d.history.push({type:'pixels',f:frame,l:layerIndex,rect:changed,before:before}); v.dirty=true; App.markDirty();
+      }
+      Q.toast(rect ? 'Filled · Undo to revert' : 'Nothing to fill');
+    } catch (err) { Q.toast('Could not fill this canvas',4000); }
+    finally { closeFillProgress(progressNode); if(App.view===v && App.doc===d && !App.playing) v.locked=false; }
+    },40);
   };
 
   // Recolour raw pixels of one current cel, bounded by selection and memory.

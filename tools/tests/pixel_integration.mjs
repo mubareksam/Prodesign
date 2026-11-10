@@ -1088,4 +1088,49 @@ console.log('5.7 smudge accuracy and responsiveness');
  const sel=Q.ellipseSelection({x:20,y:16},{x:48,y:48},64,64), s=new Q.SmudgeStroke(d,14,0.7,sel,0.4); s.begin({x:22,y:32});s.add({x:43,y:32});s.end(); const after=[...ctx.getImageData(0,0,64,64).data];
  ok(after.some((v,i)=>v!==before[i]),'smudge modifies semitransparent pixels inside an ellipse');d.history.undo();ok(same([...ctx.getImageData(0,0,64,64).data],before),'tiled undo restores semitransparent colours and alpha exactly');d.history.redo();ok(same([...ctx.getImageData(0,0,64,64).data],after),'tiled redo restores semitransparent smudge exactly');
 }
+console.log('5.9 fill and wand sampling');
+{
+ const d=setup(), ink=d.activeCel(true), ctx=ink.getContext('2d'); ctx.fillStyle='#000'; ctx.fillRect(3,3,10,1);ctx.fillRect(3,12,10,1);ctx.fillRect(3,3,1,10);ctx.fillRect(12,3,1,10); d.addLayer(); const target=d.layer(); d.history.clear();
+ App.fillSource='visible'; App.fillScope='connected'; App.fillThreshold=0; App.fillAt(6,6,[255,0,0]); await new Promise(r=>setTimeout(r,75)); const cel=d.activeCel(false);
+ ok(cel && same(pixel(cel,6,6),[255,0,0,255]) && pixel(cel,1,1)[3]===0 && pixel(cel,3,5)[3]===0,'visible-layer sampling fills the bounded interior onto the active layer only');
+ ok(same(pixel(ink,3,5),[0,0,0,255]) && d.layer()===target && d.history.undoStack.length===1 && d.history.snap===null,'reference ink stays unchanged and fill uses local undo without a full snapshot');
+ d.history.undo(); ok(pixel(cel,6,6)[3]===0,'visible reference fill undo restores destination'); d.history.redo(); ok(pixel(cel,6,6)[0]===255,'visible reference fill redo restores destination');
+ d.history.undo(); d.history.clear(); App.view.selection={x:4,y:4,w:3,h:3}; App.fillAt(5,5,[0,255,0]); await new Promise(r=>setTimeout(r,75)); ok(pixel(cel,5,5)[1]===255 && pixel(cel,8,8)[3]===0,'reference fill respects destination selection bounds'); d.history.undo();
+ App.view.selection=null; d.layers[0].visible=false; App.fillAt(6,6,[255,0,0]); await new Promise(r=>setTimeout(r,75)); ok(pixel(cel,1,1)[0]===255,'hidden layers do not bound visible sampling'); d.history.undo();d.layers[0].visible=true;
+}
+{
+ const d=setup(), cel=d.activeCel(true), c=cel.getContext('2d'); c.fillStyle='#f00';c.fillRect(1,1,3,3);c.fillRect(10,1,3,3);c.fillStyle='#00f';c.fillRect(5,1,3,3); d.history.clear(); App.fillSource='active';App.fillScope='connected';App.fillThreshold=0;
+ App.fillAt(2,2,[0,255,0]);await new Promise(r=>setTimeout(r,75));ok(pixel(cel,2,2)[1]===255 && pixel(cel,11,2)[0]===255,'default fill changes only a connected patch');d.history.undo();d.history.clear();
+ App.fillScope='all';App.fillAt(2,2,[0,255,0]);await new Promise(r=>setTimeout(r,75));ok(pixel(cel,2,2)[1]===255 && pixel(cel,11,2)[1]===255 && pixel(cel,6,2)[2]===255,'all-matching fill recolours disconnected matching patches only');d.history.undo();ok(pixel(cel,2,2)[0]===255 && pixel(cel,11,2)[0]===255,'all-matching fill is one undoable change');
+ App.view.selection={x:0,y:0,w:8,h:8};App.fillAt(2,2,[0,255,0]);await new Promise(r=>setTimeout(r,75));ok(pixel(cel,2,2)[1]===255 && pixel(cel,11,2)[0]===255,'all-matching fill is restricted by selection');d.history.undo();App.view.selection=null;
+ App.fillAt(2,2,[255,0,0]);await new Promise(r=>setTimeout(r,75));ok(d.history.undoStack.length===0,'matching fill creates no history if no pixels change');
+}
+{
+ const d=setup(), ref=d.activeCel(true), r=ref.getContext('2d');r.fillStyle='#000';r.fillRect(7,0,2,16);d.addLayer();const cel=d.activeCel(true), c=cel.getContext('2d');c.fillStyle='rgba(0,0,255,0.5)';c.fillRect(1,1,4,4); d.layer().alphaLocked=true;d.history.clear(); const originalAlpha=pixel(cel,2,2)[3];
+ App.fillSource='visible';App.fillScope='all';App.fillThreshold=0;App.fillAt(2,2,[255,0,0]);await new Promise(r=>setTimeout(r,75));ok(pixel(cel,2,2)[0]===255 && pixel(cel,2,2)[3]===originalAlpha && pixel(cel,6,2)[3]===0,'reference all-matching fill preserves alpha lock');d.history.undo();
+ App.fillAt(6,2,[255,0,0]);await new Promise(r=>setTimeout(r,75));ok(pixel(cel,6,2)[3]===0 && !d.history.canUndo(),'reference fill refuses transparent alpha-locked seed');
+}
+{
+ const d=setup(), ref=d.activeCel(true), c=ref.getContext('2d');c.fillStyle='#000';c.fillRect(7,0,2,16);d.addLayer();d.history.clear();App.fillSource='visible';App.fillScope='connected';App.fillThreshold=0;
+ App.wandAt(3,3);await new Promise(r=>setTimeout(r,75));let s=App.view.selection, m=Q.selectionMask(s);const selected=(x,y)=>x>=s.x && y>=s.y && x<s.x+s.w && y<s.y+s.h && !!m[(y-s.y)*s.w+x-s.x];ok(selected(3,3) && !selected(12,3) && !selected(7,3),'visible magic wand selects the connected visible region');
+ App.fillScope='all';App.wandAt(3,3);await new Promise(r=>setTimeout(r,75));s=App.view.selection;m=Q.selectionMask(s);ok(selected(3,3) && selected(12,3) && !selected(7,3) && d.history.undoStack.length===0,'all-matching wand selects disconnected areas without editing artwork');
+}
+{
+ const d=setup(), base=d.activeCel(true), bc=base.getContext('2d');bc.fillStyle='#f00';bc.fillRect(2,2,4,4);d.addLayer();const clip=d.activeCel(true), cc=clip.getContext('2d');cc.fillStyle='#00f';cc.fillRect(0,0,16,16);d.layer().clipped=true;d.addLayer();d.history.clear();App.fillSource='visible';App.fillScope='connected';App.fillThreshold=0;
+ App.fillAt(3,3,[0,255,0]);await new Promise(r=>setTimeout(r,75));let target=d.activeCel(false);ok(target && pixel(target,3,3)[1]===255 && pixel(target,1,1)[3]===0,'visible reference honors clipping and excludes background');d.history.undo();
+ App.fillAt(1,1,[0,255,0]);d.layers[0].visible=false;await new Promise(r=>setTimeout(r,75));ok(!d.history.canUndo() && pixel(target,1,1)[3]===0,'delayed fill cancels when reference visibility changes');d.layers[0].visible=true;
+ App.wandAt(1,1);App.view.selection={x:1,y:1,w:1,h:1};await new Promise(r=>setTimeout(r,75));ok(App.view.selection.w===1,'delayed wand does not overwrite a changed selection');App.view.selection=null;
+ App.fillAt(1,1,[0,255,0]);d.activeLayer=0;await new Promise(r=>setTimeout(r,75));ok(pixel(target,1,1)[3]===0 && !d.history.canUndo(),'delayed fill cancels when active layer changes');
+}
+{
+ const data={width:2,height:4097,data:new Uint8ClampedArray(2*4097*4)};for(let y=0;y<4097;y++)data.data[(y*2)*4+3]=255;
+ const r=Q.matchColorRegion(data,0,0,0,'all',null,null);ok(Q.selectionFromRegion(r,2,4097,0,0).error,'all-matching wand rejects selections exceeding 4096 runs');
+ const d=new Q.Doc({width:4096,height:4096}); App.doc=d;App.view={selection:null,color:[255,0,0],dirty:false,locked:false};App.fillSource='visible';App.fillScope='connected';App.fillAt(1,1);ok(!App.view.locked && !d.activeCel(false) && !d.history.canUndo(),'oversized visible sampling is refused before allocating a cel');
+}
+{
+ const d=setup(),cel=d.activeCel(true),c=cel.getContext('2d');c.fillStyle='#000';c.fillRect(0,0,16,16);d.history.clear();App.fillSource='active';App.fillScope='connected';App.fillThreshold=0;
+ const originalGet=c.getImageData.bind(c);let reads=0;c.getImageData=function(...args){reads++;if(reads===2)throw Error('memory');return originalGet(...args);};App.fillAt(2,2,[255,0,0]);await new Promise(r=>setTimeout(r,75));c.getImageData=originalGet;
+ ok(same(pixel(cel,2,2),[0,0,0,255]) && !d.history.canUndo() && !App.view.locked,'undo allocation failure leaves fill pixels and history unchanged');
+ App.fillSource='active';App.fillScope='connected';App.fillThreshold=12;
+}
 console.log(`all ${n} raster integration checks passed`);

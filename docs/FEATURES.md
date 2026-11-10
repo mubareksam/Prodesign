@@ -303,7 +303,7 @@ The supplied feature inventory is a roadmap, not a list of completed work.
   frame. Copy one non-empty current-layer cel to a range of frames with confirmation
   and undo; allocation is capped at 64 MiB per operation and locked/alpha-locked
   layers are protected. Other layers and frame metadata are unchanged.
-- The top colour swatch supports drag-and-drop flood fill on the active cel. Magic wand uses fill tolerance and a connected pixel mask, limited to 4096 horizontal runs; the dashed indicator shows only its bounds. It does not sample merged layers.
+- Fill, colour drop and Magic wand share device-local active-layer/visible-layer sampling and connected/all-matching choices. Visible sampling composites the current frame without background or playback transforms; fill edits only the active layer, respects selection and alpha lock, and is undoable. Wand replaces the selection, with a 4096-run limit and bounds-only indicator. New modes have a 4 MP and estimated 64 MiB temporary-memory limit (actual memory can be higher) and may pause the main thread; they are not separately marked reference layers.
 - Effects have a small approximate, downsampled current-cel preview that updates with the strength slider; applying edits pixels, not a persistent live effect.
 - Undoable per-frame layer effects: Gaussian-like blur (three box passes), horizontal motion blur, sharpen,
   bloom, glitch, pixelate, posterize, solarize, grayscale, invert, sepia,

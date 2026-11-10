@@ -1297,7 +1297,7 @@
     action('Draw rectangle',function () { chooseShape('select','Drag on the canvas to select a rectangle'); });
     action('Draw ellipse',function () { chooseShape('ellipse','Drag on the canvas to select an ellipse'); });
     action('Draw lasso',function () { chooseShape('lasso','Draw a closed selection around an area'); });
-    action('Magic wand',function () { v.tool='wand'; UI.syncBrushUi(); v.selectionDraft=null; Q.el('#btnFill').classList.remove('on'); Q.el('#btnEyedrop').classList.remove('on'); Q.hint('Tap connected pixels on the active layer · tolerance in Fill settings',3500); });
+    action('Magic wand',function () { v.tool='wand'; UI.syncBrushUi(); v.selectionDraft=null; Q.el('#btnFill').classList.remove('on'); Q.el('#btnEyedrop').classList.remove('on'); Q.hint('Tap matching pixels · sampling and tolerance in Fill settings',3500); });
     action('Select all',function () { v.selection={x:0,y:0,w:d.width,h:d.height}; v.dirty=true; Q.hint('Entire canvas selected',1600); });
     action('Invert selection',function () { const result=Q.invertSelection(v.selection,d.width,d.height); if(result.error) { Q.toast(result.error,3500); return; } v.selection=result.selection; v.selectionDraft=null; v.dirty=true; Q.hint('Selection inverted · dashed box shows bounds',2500); },ICON.invertSelection);
     action('Deselect',function () { v.selection=null; v.selectionDraft=null; if (v.tool === 'select' || v.tool === 'lasso' || v.tool === 'ellipse' || v.tool === 'wand') v.tool='brush'; v.dirty=true; });
@@ -1455,11 +1455,15 @@
 
   UI.fillSettings = function () {
     const card=Q.crel('div'); card.appendChild(Q.crel('h2',null,'Fill settings'));
-    card.appendChild(Q.crel('p','sub','Fill and Magic wand use connected pixels on the active layer. Higher tolerance includes similar colours. Drag the top colour swatch onto the canvas to fill.'));
+    card.appendChild(Q.crel('p','sub','Fill, colour drop and Magic wand share these settings. Choose the active layer or all visible layers as the colour reference, and connected or all matching pixels. Fill changes only the active layer; wand replaces the selection. The canvas background and playback transforms are not sampled.'));
     const row=Q.crel('div','field studio-field'); row.appendChild(Q.crel('label',null,'Tolerance'));
     const slider=Q.crel('input'); slider.type='range'; slider.min=0; slider.max=128; slider.value=app().fillThreshold; slider.setAttribute('aria-label','Fill tolerance');
     const val=Q.crel('div','val',slider.value); slider.addEventListener('input',function () { app().fillThreshold=Number(slider.value); Q.Store.meta('fillThreshold',app().fillThreshold); val.textContent=slider.value; });
     row.appendChild(slider); row.appendChild(val); card.appendChild(row);
+    function choice(label,key,options) { const r=Q.crel('div','field studio-field'); r.appendChild(Q.crel('label',null,label)); const select=Q.crel('select'); select.setAttribute('aria-label',label); options.forEach(function(p){const o=Q.crel('option');o.value=p[0];o.textContent=p[1];select.appendChild(o);}); select.value=app()[key]; select.addEventListener('change',function(){app()[key]=select.value;Q.Store.meta(key,select.value);}); r.appendChild(select); card.appendChild(r); }
+    choice('Sample layers','fillSource',[['active','Active layer'],['visible','All visible layers']]);
+    choice('Match area','fillScope',[['connected','Connected area'],['all','All matching pixels']]);
+    card.appendChild(Q.crel('p','sub','Visible-layer sampling and all-matching mode have a 4-megapixel / 64 MiB estimated temporary-memory limit and may be slow on large areas. Alpha lock restricts fill to existing non-transparent pixels; selection clips fill but not the wand.'));
     const actions=Q.crel('div','modal-actions'), done=Q.crel('button','btn primary','Done'); done.addEventListener('click',function () { UI.closeModal(); }); actions.appendChild(done); card.appendChild(actions); UI.openModal(card);
   };
 
@@ -2116,7 +2120,7 @@
     card.appendChild(Q.crel('p', 'sub', 'A paint, sketch and frame-by-frame animation studio for Android. Artwork is stored on this device only — nothing is uploaded.'));
     card.appendChild(Q.crel('p', 'sub', 'Developed by Qmer'));
     card.appendChild(Q.crel('p', 'sub', 'ቀለም (qalam) means “pen” or “ink”.'));
-    card.appendChild(Q.crel('p', 'sub', 'Version 5.8'));
+    card.appendChild(Q.crel('p', 'sub', 'Version 5.9'));
     const actions = Q.crel('div', 'modal-actions');
     const close = Q.crel('button', 'btn primary', 'Close');
     close.addEventListener('click', function () { UI.closeModal(); });

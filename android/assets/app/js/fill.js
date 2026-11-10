@@ -36,6 +36,45 @@
     }
     return maxX<0 ? null : {x:minX,y:minY,w:maxX-minX+1,h:maxY-minY+1};
   };
+  // Find either the connected region or all matching pixels in an immutable
+  // source image. One byte of state per pixel; connected search uses a bounded
+  // typed queue and never enqueues a pixel twice.
+  Q.matchColorRegion = function (image,sx,sy,threshold,scope,selectionMask,alphaBarrier) {
+    const w=image.width,h=image.height,data=image.data; sx=Math.floor(sx); sy=Math.floor(sy);
+    if(sx<0 || sy<0 || sx>=w || sy>=h || !['connected','all'].includes(scope)) return null;
+    const seed=sy*w+sx, si=seed*4, original=[data[si],data[si+1],data[si+2],data[si+3]], tol=Q.clamp(Number(threshold)||0,0,128), state=new Uint8Array(w*h);
+    function matches(n) {
+      if((selectionMask && !selectionMask[n]) || (alphaBarrier && !alphaBarrier[n*4+3])) return false;
+      const i=n*4,a=data[i+3]; if(Math.abs(a-original[3])>tol) return false;
+      if(a===0 && original[3]===0) return true;
+      return Math.abs(data[i]-original[0])<=tol && Math.abs(data[i+1]-original[1])<=tol && Math.abs(data[i+2]-original[2])<=tol;
+    }
+    if(!matches(seed)) return state;
+    if(scope==='all') { for(let i=0;i<state.length;i++) if(matches(i)) state[i]=2; return state; }
+    const queue=new Uint32Array(w*h); let read=0,write=0; queue[write++]=seed; state[seed]=2;
+    function visit(n) { if(state[n]) return; state[n]=1; if(matches(n)) { state[n]=2; queue[write++]=n; } }
+    while(read<write) { const n=queue[read++], x=n%w; if(x>0) visit(n-1); if(x+1<w) visit(n+1); if(n>=w) visit(n-w); if(n+w<state.length) visit(n+w); }
+    return state;
+  };
+  Q.fillColorRegion = function (target,region,rgb,preserveAlpha) {
+    if(!region) return null; const w=target.width,h=target.height,data=target.data; let minX=w,minY=h,maxX=-1,maxY=-1;
+    for(let n=0;n<region.length;n++) if(region[n]===2) {
+      const i=n*4, a=preserveAlpha ? data[i+3] : 255;
+      if(data[i]===rgb[0] && data[i+1]===rgb[1] && data[i+2]===rgb[2] && data[i+3]===a) continue;
+      data[i]=rgb[0]; data[i+1]=rgb[1]; data[i+2]=rgb[2]; data[i+3]=a;
+      const x=n%w,y=Math.floor(n/w); minX=Math.min(minX,x);minY=Math.min(minY,y);maxX=Math.max(maxX,x);maxY=Math.max(maxY,y);
+    }
+    return maxX<0 ? null : {x:minX,y:minY,w:maxX-minX+1,h:maxY-minY+1};
+  };
+  Q.selectionFromRegion = function (region,w,h,ox,oy) {
+    if(!region) return null; const runs=[]; let minX=w,minY=h,maxX=-1,maxY=-1;
+    for(let y=0;y<h;y++) for(let x=0;x<w;) {
+      if(region[y*w+x]!==2) {x++;continue;} const left=x; while(x<w && region[y*w+x]===2) x++;
+      if(runs.length>=4096) return {error:'Selection is too complex; lower tolerance or use lasso'};
+      runs.push({x:ox+left,y:oy+y,w:x-left}); minX=Math.min(minX,left);maxX=Math.max(maxX,x-1);minY=Math.min(minY,y);maxY=y;
+    }
+    return maxX<0 ? null : {x:ox+minX,y:oy+minY,w:maxX-minX+1,h:maxY-minY+1,runs:runs};
+  };
   // Replace matching non-transparent RGB pixels, including disconnected areas.
   // Alpha is never changed; the optional binary mask is local to image bounds.
   Q.recolorMatching = function (image, source, target, tolerance, mask) {

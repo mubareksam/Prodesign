@@ -450,7 +450,7 @@ async function run() {
 
   console.log('about');
   Q.UI.aboutSheet();
-  ok(doc.querySelector('#modalBody').textContent.includes('Developed by Qmer') && doc.querySelector('#modalBody').textContent.includes('Version 5.8'), 'About credits Qmer and shows current version');
+  ok(doc.querySelector('#modalBody').textContent.includes('Developed by Qmer') && doc.querySelector('#modalBody').textContent.includes('Version 5.9'), 'About credits Qmer and shows current version');
   Q.UI.closeModal();
 
   console.log('hardware back');
@@ -1573,6 +1573,15 @@ async function run() {
   Q.UI.savedPaletteDialog(); button('Clear palette').click(); Q.selectPalette(copy); click('#modalBody .btn.danger'); ok(Q.readSavedPalette().join()==='#ffffff','stale clear confirmation cannot clear a different palette'); Q.UI.closeModal();
   win.localStorage.setItem('qelem-palettes-v1','{broken'); Q.UI.savedPaletteDialog(); ok(doc.querySelector('#modalBody').textContent.includes('read only') && !!Q.paletteSets().error && !Q.writeSavedPalette([]),'corrupt multi-palette data is shown as read-only without overwriting it'); Q.UI.closeModal();
   ok(App.doc.history.undoStack.length===history,'palette management and HEX entry do not change artwork history'); win.localStorage.removeItem('qelem-palettes-v1'); win.localStorage.removeItem('qelem-palette');
+  }
+
+  {
+  console.log('5.9 fill sampling preferences');
+  App.createDoc(64,64,'Fill options'); Q.UI.fillSettings(); const source=doc.querySelector('[aria-label="Sample layers"]'), scope=doc.querySelector('[aria-label="Match area"]');
+  ok(source.value==='active' && scope.value==='connected' && doc.querySelector('#modalBody').textContent.includes('wand replaces'),'fill settings show compatible defaults and explain shared behavior');
+  source.value='visible';source.dispatchEvent(new win.Event('change',{bubbles:true})); scope.value='all';scope.dispatchEvent(new win.Event('change',{bubbles:true}));
+  ok(App.fillSource==='visible' && App.fillScope==='all' && Q.Store.meta('fillSource')==='visible' && Q.Store.meta('fillScope')==='all','fill settings persist'); Q.UI.closeModal(); App.init();await tick();
+  ok(App.fillSource==='visible' && App.fillScope==='all','fill settings restore on startup'); Q.Store.meta('fillSource','invalid');Q.Store.meta('fillScope','invalid');App.init();await tick();ok(App.fillSource==='active' && App.fillScope==='connected','invalid fill preferences use defaults');
   }
 
   await App.saveNow(false);

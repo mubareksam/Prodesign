@@ -8,11 +8,11 @@ brushes, layers with blend modes, a colour wheel, a frame timeline with onion sk
 Procreate's gesture vocabulary, PNG/GIF export and device-dependent MP4 export — all offline, with no account and
 no network permissions at all.
 
-- Package: `com.qalam.studio` · version 5.8 (versionCode 49)
+- Package: `com.qalam.studio` · version 5.9 (versionCode 50)
 - minSdk 26 (Android 8.0) · targetSdk 33 · armeabi-v7a/arm64/x86/x86_64 independent
   (everything is HTML/JS running inside the app's own `WebView`, so the APK has no
   native code)
-- APK: **`artifacts/Qelem-5.8.apk`** (~331 KB), signed with a v1+v2 scheme
+- APK: **`artifacts/Qelem-5.9.apk`** (~333 KB), signed with a v1+v2 scheme
 - The written analysis of Procreate that this app was specified from:
   [`docs/procreate-analysis.md`](procreate-analysis.md)
 
@@ -20,7 +20,7 @@ no network permissions at all.
 
 ## 1. Install
 
-1. Copy `artifacts/Qelem-5.8.apk` to the phone (USB, Drive, chat to yourself — anything).
+1. Copy `artifacts/Qelem-5.9.apk` to the phone (USB, Drive, chat to yourself — anything).
 2. Open it with the phone's file manager. Android will ask to allow installs from
    that app the first time ("Install unknown apps").
 3. Install and open **Qelem**. If an earlier Qalam version is already installed, Android should offer an update that preserves its data. Back up important artwork first. Android does not allow this app to silently uninstall itself; do not uninstall it unless you have backed up its local artwork.
@@ -476,15 +476,20 @@ Android WebView touch and physical-device layout still need testing.
   pixels are cropped, and resampling may soften pixels. The resulting raster cels
   are saved and exported, but pose settings are not stored: this is **not** a live
   editable keyframe track, a graphical preview, IK or a rigging system.
-- **Fill tool** — tap the bucket on the right rail, then tap an area. It fills the
-  connected pixels on the current layer with the selected colour at full opacity;
-  undo reverses the fill. **Menu → Fill settings** adjusts colour tolerance. It
-  does not sample outlines on other layers and may take time on large canvases.
-  Alternatively, drag the top colour swatch onto the canvas and release inside an
-  enclosed area to fill it. Tap the swatch normally to open the colour picker. Both
-  methods use the active cel and tolerance, honour locks and selection, and make
-  an undoable pixel edit. Gaps in outlines can cause colour to escape; line art on
-  other layers is not treated as a boundary.
+- **Fill and colour drop** — tap the bucket or drag the top colour swatch onto
+  the canvas. **Menu → Fill settings** controls tolerance, sample layers (active
+  or all visible) and match area (connected or all matching, including disconnected
+  areas). These settings also apply to Magic wand, persist on this device, and default
+  to active/connected for compatibility. Visible sampling composites the current frame
+  with layer visibility, opacity, blend and clipping, excluding canvas background and
+  playback-only motion/camera transforms. It is not a separately marked reference layer.
+  Fill edits only the active layer, respects its lock, alpha lock and current selection,
+  and is undoable. Alpha lock excludes transparent destination pixels and preserves
+  existing alpha. Gaps in outlines can cause colour to escape. New sampling modes are
+  limited to 4 megapixels and an estimated 64 MiB of temporary buffers (actual memory
+  may be higher), and may refuse smaller areas; the default mode retains its old limits.
+  Large operations run on the main thread and can pause the interface. Back up work
+  before updating. Older versions ignore the new preferences and use active/connected.
 - **Menu → Canvas background** — choose the current brush colour or enter a 3- or
   6-digit hex colour. The background applies to every frame, is saved and can be
   undone. It appears in normal exports but not transparent PNGs.
@@ -510,8 +515,9 @@ Android WebView touch and physical-device layout still need testing.
 - **Actions → Create & edit → Selection & transform** — choose **Draw rectangle**
   and drag, **Draw ellipse** and drag its bounding box, **Draw lasso** and trace a
   freehand outline, or choose **Magic wand**
-  and tap a connected colour on the active cel. Magic wand uses the Fill settings
-  tolerance, replaces the previous selection, and selects transparent areas too.
+  and tap a colour. Magic wand uses the same Fill settings sampling, area and
+  tolerance, replaces the previous selection (rather than clipping to it), and selects
+  transparent areas too.
   Its dashed outline shows the selection bounds only; edits use the exact pixel
   mask, including holes. Complex selections exceeding 4096 horizontal runs are
   refused rather than partially selected. The lasso closes from its last point to
@@ -679,7 +685,7 @@ tools/
   tests/gif_roundtrip.mjs    encodes a GIF and decodes it with an independent decoder
   tests/ui_smoke.mjs         jsdom boot + full UI drive (gallery -> export)
   tests/ui_layout_browser.mjs optional Chromium layout and interaction checks
-artifacts/Qelem-5.8.apk           the signed, installable artefact
+artifacts/Qelem-5.9.apk           the signed, installable artefact
 docs/procreate-analysis.md   the Procreate study this app was built from
 docs/qalam.md                this file
 ```
@@ -709,7 +715,7 @@ Design notes worth knowing before changing code:
 
 ```bash
 bash tools/fetch-toolchain.sh     # once per machine: JVM, apktool, aapt2, jars, npm
-bash tools/build.sh               # -> artifacts/Qelem-5.8.apk (signed + verified)
+bash tools/build.sh               # -> artifacts/Qelem-5.9.apk (signed + verified)
 bash tools/check_reference.sh     # optional: javac-check the Java mirrors
 ```
 
