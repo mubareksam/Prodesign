@@ -918,4 +918,28 @@ console.log('4.8 smudge, gradient and brush previews');
 
 }
 
+console.log('4.9 gradient alpha and smudge softness');
+{
+ const d=setup(), preview=createCanvas(16,16), ctx=preview.getContext('2d'), options={angle:90,alpha1:0,alpha2:1};
+ ok(Q.renderPaintFill(ctx,16,16,'gradient','#ff0000','#0000ff','angle',0.5,options),'custom angle and transparent stops render');
+ const top=pixel(preview,8,1),bottom=pixel(preview,8,14); ok(top[3]<bottom[3] && bottom[2]>bottom[0],'90-degree gradient fades from top to bottom');
+ ok(App.addPaintLayer('gradient','#ff0000','#0000ff','angle',0.5,options) && same(pixel(d.activeCel(false),8,1),top) && same(pixel(d.activeCel(false),8,14),bottom),'alpha gradient preview matches applied raster');
+ d.history.undo(); ok(d.layers.length===1,'transparent gradient layer undo works'); d.history.redo(); ok(d.layers.length===2 && same(pixel(d.activeCel(false),8,14),bottom),'transparent gradient layer redo restores pixels');
+ const transparentExport=d.flatten(0,{background:false}), opaqueExport=d.flatten(0,{background:d.bg}); ok(pixel(transparentExport,8,1)[3]===top[3] && pixel(opaqueExport,8,1)[3]===255,'transparent export keeps gradient alpha while normal export composites the background');
+
+ const before=d.layers.length; ok(!App.addPaintLayer('gradient','#f00','#00f','angle',0.5,{angle:181,alpha1:0,alpha2:1}) && d.layers.length===before,'invalid angle is refused');
+ ok(!App.addPaintLayer('gradient','#f00','#00f','angle',0.5,{angle:0,alpha1:-1,alpha2:1}) && d.layers.length===before,'invalid alpha is refused');
+ const zero=createCanvas(16,16); Q.renderPaintFill(zero.getContext('2d'),16,16,'gradient','#f00','#00f','radial',0.5,{alpha1:0,alpha2:0}); ok(pixel(zero,8,8)[3]===0 && pixel(zero,0,0)[3]===0,'fully transparent radial gradient remains transparent');
+
+ const solid=createCanvas(4,4); Q.renderPaintFill(solid.getContext('2d'),4,4,'solid','#336699','','',0.5,{alpha1:0.5}); const sp=pixel(solid,2,2); ok(sp[3]>=126 && sp[3]<=129 && sp[2]>sp[0],'solid layer preview supports opacity');
+ const horiz=createCanvas(16,16); Q.renderPaintFill(horiz.getContext('2d'),16,16,'gradient','#f00','#00f','angle',0.5,{angle:0}); ok(pixel(horiz,1,8)[0]>pixel(horiz,1,8)[2] && pixel(horiz,14,8)[2]>pixel(horiz,14,8)[0],'0-degree custom angle runs left to right');
+ const reverse=createCanvas(16,16); Q.renderPaintFill(reverse.getContext('2d'),16,16,'gradient','#f00','#00f','angle',0.5,{angle:180}); ok(pixel(reverse,1,8)[2]>pixel(reverse,1,8)[0] && pixel(reverse,14,8)[0]>pixel(reverse,14,8)[2],'180-degree custom angle reverses the gradient');
+}
+{
+ function sample(hardness) { const d=setup(), c=d.activeCel(true), ctx=c.getContext('2d'); ctx.fillStyle='#ff0000'; ctx.fillRect(0,0,8,16); ctx.fillStyle='#0000ff'; ctx.fillRect(8,0,8,16); d.history.clear(); const s=new Q.SmudgeStroke(d,8,1,null,hardness); s.begin({x:5,y:8}); s.add({x:10,y:8}); s.end(); return {d,c}; }
+ const hard=sample(1),soft=sample(0); const hardEdge=pixel(hard.c,9,5),softEdge=pixel(soft.c,9,5); ok(hardEdge[0]>softEdge[0] && softEdge[2]>hardEdge[2],'soft smudge edge mixes less at the brush boundary than hard edge');
+ const after=pixel(soft.c,9,8); soft.d.history.undo(); ok(same(pixel(soft.c,9,8),[0,0,255,255]),'soft smudge undo restores original'); soft.d.history.redo(); ok(same(pixel(soft.c,9,8),after),'soft smudge redo restores mixed result');
+ const cancel=sample(0), fresh=cancel.d, cel=cancel.c; fresh.history.clear(); const snapshot=[...cel.getContext('2d').getImageData(0,0,16,16).data]; const stroke=new Q.SmudgeStroke(fresh,8,0.5,{x:0,y:0,w:8,h:16},0); stroke.begin({x:4,y:8}); stroke.add({x:12,y:8}); stroke.cancel(); ok(same([...cel.getContext('2d').getImageData(0,0,16,16).data],snapshot) && fresh.history.undoStack.length===0,'soft smudge cancellation restores pixels');
+}
+
 console.log(`all ${n} raster integration checks passed`);

@@ -450,7 +450,7 @@ async function run() {
 
   console.log('about');
   Q.UI.aboutSheet();
-  ok(doc.querySelector('#modalBody').textContent.includes('Developed by Qmer') && doc.querySelector('#modalBody').textContent.includes('Version 4.8'), 'About credits Qmer and shows current version');
+  ok(doc.querySelector('#modalBody').textContent.includes('Developed by Qmer') && doc.querySelector('#modalBody').textContent.includes('Version 4.9'), 'About credits Qmer and shows current version');
   Q.UI.closeModal();
 
   console.log('hardware back');
@@ -1372,6 +1372,28 @@ async function run() {
   start.value='not-hex'; start.dispatchEvent(new win.Event('input',{bubbles:true})); ok(doc.querySelector('.canvas-error').textContent && preview.style.opacity==='0.25','invalid HEX dims preview and reports error'); Q.UI.closeModal();
   Q.UI.paintLayerDialog('solid'); ok(doc.querySelector('[aria-label="Solid colour preview"]') && doc.querySelector('[aria-label="Colour Hue"]'),'solid layer also has visual colour controls and preview'); doc.querySelector('[aria-label="Colour preset #007aff"]').click(); ok(doc.querySelector('#modalBody input[aria-label="Colour"]').value==='#007aff','solid layer palette updates HEX'); Q.UI.closeModal();
   Q.UI.paintLayerDialog('gradient'); const count=d.layers.length; d.addFrame(false); click('#modalBody .btn.primary'); ok(d.layers.length===count && doc.querySelector('.canvas-error').textContent.includes('changed'),'stale gradient target cannot create a layer on a different frame'); Q.UI.closeModal();
+  }
+
+  {
+  console.log('4.9 gradient, brush search and smudge controls');
+  App.createDoc(64,64,'Painting update'); const d=App.doc,v=App.view; d.activeCel(true); d.history.clear();
+  Q.UI.openTray('brushes'); let search=doc.querySelector('[aria-label="Search brushes"]'), category=doc.querySelector('[aria-label="Brush category"]');
+  ok(search && category && doc.querySelectorAll('#trayBody .brush-card:not(.hidden)').length===28,'brush library has accessible search and category filters');
+  search.value='chalk'; search.dispatchEvent(new win.Event('input',{bubbles:true})); let shown=doc.querySelectorAll('#trayBody .brush-card:not(.hidden)'); ok(shown.length===1 && shown[0].textContent.includes('Chalk'),'search filters brush names without changing artwork');
+  shown[0].click(); search=doc.querySelector('[aria-label="Search brushes"]'); category=doc.querySelector('[aria-label="Brush category"]'); ok(search.value==='chalk' && v.brush.id==='chalk' && doc.querySelectorAll('#trayBody .brush-card:not(.hidden)').length===1,'filter remains when selecting a brush');
+  search.value=''; search.dispatchEvent(new win.Event('input',{bubbles:true})); category.value='ERASER'; category.dispatchEvent(new win.Event('change',{bubbles:true})); shown=doc.querySelectorAll('#trayBody .brush-card:not(.hidden)'); ok(shown.length===2 && [...shown].every(card=>card.dataset.brushCategory==='ERASER'),'category shows only matching brush thumbnails');
+  search.value='nothing matches'; search.dispatchEvent(new win.Event('input',{bubbles:true})); ok(!doc.querySelectorAll('#trayBody .brush-card:not(.hidden)').length && doc.querySelector('#trayBody [role="status"]').textContent.includes('No brushes'),'empty search result is explained');
+  search.value=''; search.dispatchEvent(new win.Event('input',{bubbles:true})); category.value='all'; category.dispatchEvent(new win.Event('change',{bubbles:true})); Q.UI.closeTray();
+  Q.UI.openTray('menu'); const pref=Array.from(doc.querySelectorAll('#trayBody details')).find(x=>x.textContent.includes('Smudge edge')); const entry=Array.from(pref.querySelectorAll('button')).find(x=>x.textContent==='Smudge edge'); ok(entry && entry.querySelector('svg'),'smudge edge setting is discoverable in preferences'); entry.click();
+  let hardness=doc.querySelector('[aria-label="Smudge edge hardness"]'); ok(hardness.value==='100','smudge defaults to its original hard edge'); hardness.value='25'; hardness.dispatchEvent(new win.Event('input',{bubbles:true})); ok(v.smudgeHardness===0.25 && Q.Store.meta('smudgeHardness')===0.25 && d.history.undoStack.length===0,'smudge softness saves device preference without editing art'); Q.UI.closeModal(); Q.UI.closeTray();
+  click('#btnSmudge'); const canvas=doc.querySelector('#view'), a=v.toScreen(12,12); pointer(canvas,'pointerdown',a.x,a.y,{id:1700}); ok(v.stroke && v.stroke.hardness===0.25 && v.stroke.mask,'softness is captured by new smudge strokes'); pointer(canvas,'pointercancel',a.x,a.y,{id:1700});
+  App.init(); await tick(); ok(App.view.smudgeHardness===0.25,'smudge preference is restored at startup'); Q.UI.smudgePreferences(); Array.from(doc.querySelectorAll('#modalBody button')).find(b=>b.textContent==='Reset').click(); ok(App.view.smudgeHardness===1 && Q.Store.meta('smudgeHardness')===1,'smudge reset restores the hard edge'); Q.UI.closeModal();
+  App.createDoc(64,64,'Transparent fill'); const current=App.doc; current.history.clear(); Q.UI.paintLayerDialog('gradient'); const dir=doc.querySelector('[aria-label="Gradient direction"]'), angle=doc.querySelector('[aria-label="Gradient angle"]'), startA=doc.querySelector('[aria-label="Start colour opacity"]'), endA=doc.querySelector('[aria-label="End colour opacity"]');
+  ok(dir && angle && startA && endA && !visible(angle),'gradient endpoint opacity is available and custom angle initially hidden'); dir.value='angle'; dir.dispatchEvent(new win.Event('change',{bubbles:true})); angle.value='90'; angle.dispatchEvent(new win.Event('input',{bubbles:true})); startA.value='20'; startA.dispatchEvent(new win.Event('input',{bubbles:true})); endA.value='80'; endA.dispatchEvent(new win.Event('input',{bubbles:true})); ok(visible(angle) && angle.parentElement.textContent.includes('90°'),'custom angle can be adjusted and read');
+  Array.from(doc.querySelectorAll('#modalBody button')).find(b=>b.textContent==='Swap colours').click(); ok(startA.value==='80' && endA.value==='20','swap also exchanges endpoint opacity');
+  let captured=null; const old=App.addPaintLayer; App.addPaintLayer=function(...args){captured=args; return old(...args);}; click('#modalBody .btn.primary'); App.addPaintLayer=old;
+  ok(captured[3]==='angle' && captured[5].angle===90 && captured[5].alpha1===0.8 && captured[5].alpha2===0.2 && current.layers.length===2,'designer applies selected angle and alpha to an undoable layer'); App.undo(); ok(current.layers.length===1,'gradient creation is undoable');
+  Q.UI.paintLayerDialog('solid'); ok(doc.querySelector('[aria-label="Colour opacity"]'),'solid colour designer has opacity'); Q.UI.closeModal();
   }
 
   await App.saveNow(false);

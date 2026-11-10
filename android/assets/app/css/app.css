@@ -577,3 +577,7 @@ select, .select {
 :root[data-theme="light"] .paint-range.paint-hue::-webkit-slider-runnable-track { background: linear-gradient(to right,red,#ff0,#0f0,#0ff,#00f,#f0f,red); }
 :root[data-theme="light"] .paint-range.paint-saturation::-webkit-slider-runnable-track { background: linear-gradient(to right,#aaa,var(--hue-color)); }
 :root[data-theme="light"] .paint-range.paint-brightness::-webkit-slider-runnable-track { background: linear-gradient(to right,#000,var(--hue-color)); }
+/* Transparent fill previews show alpha without changing the actual canvas. */
+.paint-preview { background: repeating-conic-gradient(#ccc 0% 25%, #eee 0% 50%) 0 0 / 16px 16px; }
+.brush-filter { display: flex; flex-wrap: wrap; gap: 8px; margin: 10px 0; }
+.brush-filter input, .brush-filter select { min-width: 120px; flex: 1 1 120px; }

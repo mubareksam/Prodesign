@@ -21,6 +21,7 @@
     const brushHeight=Math.min(available,122+sliderHeight*2), toolsHeight=Math.min(available,326);
     return {available:available,sliderHeight:sliderHeight,brushTop:top+Math.round((available-brushHeight)*position/100),toolsTop:top+Math.round((available-toolsHeight)/2),brushHeight:brushHeight,toolsHeight:toolsHeight};
   };
+  Q.sanitizeSmudgeHardness = function (value) { return typeof value==='number' && Number.isFinite(value) ? Q.clamp(value,0,1) : 1; };
   Q.uid = function () { return Date.now().toString(36) + Math.random().toString(36).slice(2, 7); };
   Q.now = function () { return (window.performance && performance.now) ? performance.now() : Date.now(); };
   Q.raf = function (fn) { return window.requestAnimationFrame(fn); };

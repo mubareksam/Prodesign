@@ -15,6 +15,7 @@
   let tray = null;
   let timelineOpen = false;
   let timelineCategory = 'frames';
+  let brushSearch = '', brushCategory = 'all';
   let railPreferences={side:'left',position:50};
   let railLayoutFrame=0;
   let wheelState = { hue: 210, sat: 0.1, val: 0.12, drag: null };
@@ -445,6 +446,10 @@
     }
     brushSlider('Brush size in tray','traySize',Math.round(app().view.size),1,240,n=>app().setSize(n));
     brushSlider('Brush opacity in tray','trayOpacity',Math.round(app().view.opacity*100),1,100,n=>app().setOpacity(n/100));
+    const filterRow=Q.crel('div','brush-filter'), search=Q.crel('input','select'), categorySelect=Q.crel('select');
+    search.type='search'; search.placeholder='Search brushes'; search.setAttribute('aria-label','Search brushes'); search.value=brushSearch;
+    categorySelect.setAttribute('aria-label','Brush category'); [['all','All brushes'],['INK','Ink'],['PENCIL','Pencil'],['PAINT','Paint'],['ERASER','Eraser']].forEach(function(item){ const option=Q.crel('option'); option.value=item[0]; option.textContent=item[1]; categorySelect.appendChild(option); }); categorySelect.value=brushCategory; filterRow.appendChild(search); filterRow.appendChild(categorySelect); root.appendChild(filterRow);
+    const resultCount=Q.crel('div','layer-sub'); resultCount.setAttribute('role','status'); root.appendChild(resultCount);
     const grid = Q.crel('div', 'brush-grid');
     Q.BRUSHES.forEach(function (b) {
       const card = Q.crel('button', 'brush-card' + (b.id === app().view.brush.id ? ' on' : ''));
@@ -456,6 +461,7 @@
         b.engine === 'grain' ? '<path d="M5 19l3-7L16 4l4 4-8 8zM5 19l7-3M14 6l4 4"/>' :
         b.engine === 'soft' ? '<path d="M16 3c1 5 5 7 5 11a6 6 0 01-12 0c0-4 4-6 7-11zM6 16c0 3-1 4-3 5"/>' :
         '<path d="M12 3l7 7-8 8-6 1 1-6zM12 3l-2 8 3 3 6-4M5 19l-2 2"/>';
+      card.dataset.brushName=b.name.toLowerCase(); card.dataset.brushCategory=category;
       badge.innerHTML = icon(tip) + '<span>' + category + '</span>';
       card.appendChild(badge);
       card.appendChild(cv);
@@ -470,6 +476,12 @@
       });
     });
     root.appendChild(grid);
+    function filterBrushes() {
+      brushSearch=search.value.slice(0,100); brushCategory=categorySelect.value; const term=brushSearch.trim().toLowerCase(); let count=0;
+      grid.querySelectorAll('.brush-card').forEach(function(card) { const match=(!term || card.dataset.brushName.includes(term)) && (brushCategory==='all' || card.dataset.brushCategory===brushCategory); card.classList.toggle('hidden',!match); if(match) count++; });
+      resultCount.textContent=count ? count+' brush'+(count===1 ? '' : 'es') : 'No brushes match';
+    }
+    search.maxLength=100; search.addEventListener('input',filterBrushes); categorySelect.addEventListener('change',filterBrushes); filterBrushes();
 
     const head2 = Q.crel('div', 'tray-head');
     head2.style.marginTop = '12px';
@@ -581,27 +593,29 @@
       });
       function syncFromHex() { const rgb=Q.hexToRgb(hex.value); if(rgb) { const v=Q.rgbToHsv(...rgb); if(v[1]) controls[0].input.value=Math.round(v[0]); controls[1].input.value=Math.round(v[1]*100); controls[2].input.value=Math.round(v[2]*100); } refresh(); }
       hex.addEventListener('input',syncFromHex); hex.addEventListener('change',syncFromHex);
+      const alphaRow=Q.crel('div','field paint-colour-slider'); alphaRow.appendChild(Q.crel('label',null,'Opacity')); const alpha=Q.crel('input'); alpha.type='range'; alpha.min=0; alpha.max=100; alpha.value=100; alpha.setAttribute('aria-label',label+' opacity'); const alphaOut=Q.crel('span','val'); alphaRow.appendChild(alpha); alphaRow.appendChild(alphaOut); box.appendChild(alphaRow); alpha.addEventListener('input',refresh);
       const palette=Q.crel('div','paint-palette'); ['#000000','#ffffff','#ff3b30','#ff9500','#ffdf00','#34c759','#00bcd4','#007aff','#8a4dff','#ed4ca1'].forEach(function(color) { const b=Q.crel('button','paint-palette-swatch'); b.style.background=color; b.setAttribute('aria-label',label+' preset '+color); b.addEventListener('click',function(){hex.value=color; syncFromHex();}); palette.appendChild(b); }); box.appendChild(palette);
-      card.appendChild(box); return {hex,swatch,controls,syncFromHex};
+      card.appendChild(box); return {hex,swatch,controls,syncFromHex,alpha,alphaOut};
     }
     const first=colorField(kind==='solid' ? 'Colour' : 'Start colour',Q.rgbToHex(app().view.color));
     const second=kind==='gradient' ? colorField('End colour','#ffffff') : null;
-    let dir=null,mid=null;
+    let dir=null,mid=null,angle=null,angleRow=null;
     if (kind==='gradient') {
-      const row=Q.crel('div','field'); row.appendChild(Q.crel('label',null,'Direction')); dir=Q.crel('select'); dir.setAttribute('aria-label','Gradient direction'); [['horizontal','Horizontal'],['vertical','Vertical'],['diagonal','Diagonal'],['radial','Radial']].forEach(function (v) { const o=Q.crel('option'); o.value=v[0]; o.textContent=v[1]; dir.appendChild(o); }); row.appendChild(dir); card.appendChild(row); dir.addEventListener('change',refresh);
+      const row=Q.crel('div','field'); row.appendChild(Q.crel('label',null,'Direction')); dir=Q.crel('select'); dir.setAttribute('aria-label','Gradient direction'); [['horizontal','Horizontal'],['vertical','Vertical'],['diagonal','Diagonal'],['radial','Radial'],['angle','Custom angle']].forEach(function (v) { const o=Q.crel('option'); o.value=v[0]; o.textContent=v[1]; dir.appendChild(o); }); row.appendChild(dir); card.appendChild(row); dir.addEventListener('change',refresh);
+      angleRow=Q.crel('div','field'); angleRow.appendChild(Q.crel('label',null,'Angle')); angle=Q.crel('input'); angle.type='range'; angle.min=-180; angle.max=180; angle.step=1; angle.value=0; angle.setAttribute('aria-label','Gradient angle'); const angleVal=Q.crel('span','val'); angleRow.appendChild(angle); angleRow.appendChild(angleVal); angle._readout=angleVal; angle.addEventListener('input',refresh); card.appendChild(angleRow);
       const midrow=Q.crel('div','field'); midrow.appendChild(Q.crel('label',null,'Midpoint')); mid=Q.crel('input'); mid.type='range'; mid.min=10; mid.max=90; mid.value=50; mid.setAttribute('aria-label','Gradient midpoint'); const val=Q.crel('span','val'); midrow.appendChild(mid); midrow.appendChild(val); card.appendChild(midrow); mid.addEventListener('input',refresh); mid._readout=val;
-      const swap=Q.crel('button','btn ghost','Swap colours'); swap.addEventListener('click',function(){ const tmp=first.hex.value; first.hex.value=second.hex.value; second.hex.value=tmp; first.syncFromHex(); second.syncFromHex(); }); card.appendChild(swap);
+      const swap=Q.crel('button','btn ghost','Swap colours'); swap.addEventListener('click',function(){ const tmp=first.hex.value; first.hex.value=second.hex.value; second.hex.value=tmp; const alpha=first.alpha.value; first.alpha.value=second.alpha.value; second.alpha.value=alpha; first.syncFromHex(); second.syncFromHex(); }); card.appendChild(swap);
     }
     function refresh() {
-      [first,second].filter(Boolean).forEach(function(f){ const rgb=Q.hexToRgb(f.hex.value); if(rgb) f.swatch.style.background=Q.rgbToHex(rgb); f.controls.forEach((c,i)=>{c.out.textContent=c.input.value+(i ? '%' : '°');}); const hue=Q.rgbToHex(Q.hsvToRgb(Number(f.controls[0].input.value),1,1)); f.controls[1].input.style.setProperty('--hue-color',hue); f.controls[2].input.style.setProperty('--hue-color',hue); });
-      if(mid) mid._readout.textContent=mid.value+'%';
+      [first,second].filter(Boolean).forEach(function(f){ const rgb=Q.hexToRgb(f.hex.value); if(rgb) f.swatch.style.background=Q.rgbToHex(rgb); f.controls.forEach((c,i)=>{c.out.textContent=c.input.value+(i ? '%' : '°');}); f.alphaOut.textContent=f.alpha.value+'%'; f.swatch.style.opacity=String(Number(f.alpha.value)/100); const hue=Q.rgbToHex(Q.hsvToRgb(Number(f.controls[0].input.value),1,1)); f.controls[1].input.style.setProperty('--hue-color',hue); f.controls[2].input.style.setProperty('--hue-color',hue); });
+      if(mid) mid._readout.textContent=mid.value+'%'; if(angle) { angle._readout.textContent=angle.value+'°'; angleRow.classList.toggle('hidden',dir.value!=='angle'); }
       const ctx=preview.getContext('2d'); ctx.clearRect(0,0,preview.width,preview.height);
-      const valid=Q.renderPaintFill(ctx,preview.width,preview.height,kind,first.hex.value,second ? second.hex.value : '',dir ? dir.value : '',mid ? Number(mid.value)/100 : 0.5);
+      const valid=Q.renderPaintFill(ctx,preview.width,preview.height,kind,first.hex.value,second ? second.hex.value : '',dir ? dir.value : '',mid ? Number(mid.value)/100 : 0.5,{angle:angle ? Number(angle.value) : 0,alpha1:Number(first.alpha.value)/100,alpha2:second ? Number(second.alpha.value)/100 : 1});
       err.textContent=valid ? '' : 'Enter a 3- or 6-digit hex colour.'; preview.style.opacity=valid ? '1' : '0.25';
     }
     card.appendChild(err); const actions=Q.crel('div','modal-actions'), cancel=Q.crel('button','btn ghost','Cancel'), create=Q.crel('button','btn primary','Create layer');
     cancel.addEventListener('click',function () { UI.closeModal(); });
-    create.addEventListener('click',function () { if(app().doc!==target || target.frames[target.activeFrame]!==frame) { err.textContent='Artwork or frame changed; reopen this dialog.'; return; } if (!Q.hexToRgb(first.hex.value) || (second && !Q.hexToRgb(second.hex.value))) { err.textContent='Enter a 3- or 6-digit hex colour.'; return; } if (app().addPaintLayer(kind,first.hex.value,second ? second.hex.value : '',dir ? dir.value : '',mid ? Number(mid.value)/100 : 0.5)) UI.closeModal(); });
+    create.addEventListener('click',function () { if(app().doc!==target || target.frames[target.activeFrame]!==frame) { err.textContent='Artwork or frame changed; reopen this dialog.'; return; } if (!Q.hexToRgb(first.hex.value) || (second && !Q.hexToRgb(second.hex.value))) { err.textContent='Enter a 3- or 6-digit hex colour.'; return; } if (app().addPaintLayer(kind,first.hex.value,second ? second.hex.value : '',dir ? dir.value : '',mid ? Number(mid.value)/100 : 0.5,{angle:angle ? Number(angle.value) : 0,alpha1:Number(first.alpha.value)/100,alpha2:second ? Number(second.alpha.value)/100 : 1})) UI.closeModal(); });
     actions.appendChild(cancel); actions.appendChild(create); card.appendChild(actions); UI.openModal(card); refresh();
   };
 
@@ -1013,7 +1027,7 @@
       ['Transparent PNG frames',ICON.photo,()=>{UI.closeTray(); app().exportPngSequence(true);}], ['Export sprite sheet',ICON.photo,()=>UI.spriteSheetDialog()],
       ['Export MP4',ICON.film,()=>{UI.closeTray(); UI.mp4Dialog();}]
     ]);
-    group('Preferences', [ ['Interface appearance',ICON.appearance,()=>UI.themeDialog()], ['Pressure & smoothing',ICON.controls,()=>UI.pressurePreferences()], ['Brush slider layout',ICON.railLayout,()=>UI.railPreferencesDialog()], ['Hold gesture timing',ICON.gestureDelay,()=>UI.gesturePreferences()] ]);
+    group('Preferences', [ ['Smudge edge',ICON.controls,()=>UI.smudgePreferences()], ['Interface appearance',ICON.appearance,()=>UI.themeDialog()], ['Pressure & smoothing',ICON.controls,()=>UI.pressurePreferences()], ['Brush slider layout',ICON.railLayout,()=>UI.railPreferencesDialog()], ['Hold gesture timing',ICON.gestureDelay,()=>UI.gesturePreferences()] ]);
     group('File & help', [ ['Save now',ICON.save,()=>app().saveNow(true)], ['Gestures & help',ICON.sparkle,()=>UI.helpSheet()], ['About Qalam',ICON.layers,()=>UI.aboutSheet()] ]);
 
     const info = Q.crel('div', 'layer-sub');
@@ -1071,6 +1085,15 @@
     [['dark','Dark'],['light','Light']].forEach(function(pair){ const option=Q.crel('option'); option.value=pair[0]; option.textContent=pair[1]; select.appendChild(option); });
     select.value=document.documentElement.getAttribute('data-theme')==='light' ? 'light' : 'dark'; select.addEventListener('change',function(){ UI.setTheme(select.value,true); }); row.appendChild(select); card.appendChild(row);
     const actions=Q.crel('div','modal-actions'), reset=Q.crel('button','btn ghost','Reset'), done=Q.crel('button','btn primary','Done'); reset.addEventListener('click',function(){ UI.setTheme('dark',true); select.value='dark'; }); done.addEventListener('click',()=>UI.closeModal()); actions.appendChild(reset); actions.appendChild(done); card.appendChild(actions); UI.openModal(card);
+  };
+
+  UI.smudgePreferences = function () {
+    const v=app().view, card=Q.crel('div'); card.appendChild(Q.crel('h2',null,'Smudge edge'));
+    card.appendChild(Q.crel('p','sub','Set the edge hardness for future smudge strokes. Zero makes a soft falloff; 100% keeps the original hard edge. This device setting does not change existing artwork or painting brushes. The opacity slider still controls smudge strength.'));
+    const row=Q.crel('div','field studio-field'), slider=Q.crel('input'), out=Q.crel('span','val'); row.appendChild(Q.crel('label',null,'Hardness')); slider.type='range'; slider.min=0; slider.max=100; slider.value=Math.round(Q.sanitizeSmudgeHardness(v.smudgeHardness)*100); slider.setAttribute('aria-label','Smudge edge hardness');
+    function update() { v.smudgeHardness=Number(slider.value)/100; out.textContent=slider.value+'%'; Q.Store.meta('smudgeHardness',v.smudgeHardness); }
+    out.textContent=slider.value+'%'; slider.addEventListener('input',update); row.appendChild(slider); row.appendChild(out); card.appendChild(row);
+    const actions=Q.crel('div','modal-actions'), reset=Q.crel('button','btn ghost','Reset'), done=Q.crel('button','btn primary','Done'); reset.addEventListener('click',function(){ slider.value=100; update(); }); done.addEventListener('click',()=>UI.closeModal()); actions.appendChild(reset); actions.appendChild(done); card.appendChild(actions); UI.openModal(card);
   };
 
   UI.railPreferencesDialog = function () {
@@ -1886,7 +1909,7 @@
     card.appendChild(Q.crel('p', 'sub', 'A paint, sketch and frame-by-frame animation studio for Android. Artwork is stored on this device only — nothing is uploaded.'));
     card.appendChild(Q.crel('p', 'sub', 'Developed by Qmer'));
     card.appendChild(Q.crel('p', 'sub', 'ቀለም (qalam) means “pen” or “ink”.'));
-    card.appendChild(Q.crel('p', 'sub', 'Version 4.8'));
+    card.appendChild(Q.crel('p', 'sub', 'Version 4.9'));
     const actions = Q.crel('div', 'modal-actions');
     const close = Q.crel('button', 'btn primary', 'Close');
     close.addEventListener('click', function () { UI.closeModal(); });

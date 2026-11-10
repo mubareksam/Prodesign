@@ -458,14 +458,16 @@
 
   // A simple pixel-drag smudge, limited to one cel. It samples a small tile
   // before each dab and blends it under a circular, selection-clipped tip.
-  function SmudgeStroke(doc,size,strength,selection) {
-    this.doc=doc; this.size=Q.clamp(size,1,240); this.strength=Q.clamp(strength,0.01,1); this.selection=selection;
+  function SmudgeStroke(doc,size,strength,selection,hardness) {
+    this.doc=doc; this.size=Q.clamp(size,1,240); this.strength=Q.clamp(strength,0.01,1); this.selection=selection; this.hardness=Q.sanitizeSmudgeHardness(hardness);
     this.cel=null; this.ctx=null; this.dirty=null; this.len=0; this.lx=0; this.ly=0;
   }
   SmudgeStroke.prototype.begin=function(pt) {
     this.cel=this.doc.activeCel(false); if(!this.cel) throw Error('empty cel'); this.ctx=this.cel.getContext('2d');
     this.doc.history.beginPixels(this.cel); this.lx=pt.x; this.ly=pt.y;
     const n=Math.ceil(this.size)+2; this.tile=Q.canvas(n,n); this.tileCtx=this.tile.getContext('2d');
+    if(this.hardness<1) { this.mask=Q.canvas(n,n); const m=this.mask.getContext('2d'), g=m.createRadialGradient(n/2,n/2,0,n/2,n/2,this.size/2); g.addColorStop(0,'rgba(255,255,255,1)'); if(this.hardness>0) g.addColorStop(this.hardness,'rgba(255,255,255,1)'); g.addColorStop(1,'rgba(255,255,255,0)'); m.fillStyle=g; m.fillRect(0,0,n,n); }
+
   };
   SmudgeStroke.prototype.add=function(pt) {
     const d=this.doc, x=Q.clamp(pt.x,-this.size,d.width+this.size), y=Q.clamp(pt.y,-this.size,d.height+this.size);
@@ -476,6 +478,7 @@
       const nx=px+stepX,ny=py+stepY, left=Math.max(0,Math.floor(nx-radius-1)),top=Math.max(0,Math.floor(ny-radius-1)),right=Math.min(d.width,Math.ceil(nx+radius+1)),bottom=Math.min(d.height,Math.ceil(ny+radius+1));
       if(right>left && bottom>top) {
         const t=this.tileCtx; t.clearRect(0,0,tileSize,tileSize); t.drawImage(this.cel,px-tileSize/2,py-tileSize/2,tileSize,tileSize,0,0,tileSize,tileSize);
+        if(this.mask) { t.globalCompositeOperation='destination-in'; t.drawImage(this.mask,0,0); t.globalCompositeOperation='source-over'; }
         const c=this.ctx; c.save(); if(this.selection) { Q.selectionPath(c,this.selection); c.clip(); } c.beginPath(); c.arc(nx,ny,radius,0,Math.PI*2); c.clip(); c.globalCompositeOperation='source-over'; c.globalAlpha=this.strength; c.drawImage(this.tile,nx-tileSize/2,ny-tileSize/2); c.restore();
         if(!this.dirty) this.dirty={x:left,y:top,w:right-left,h:bottom-top};
         else { const r=this.dirty, rx=Math.max(r.x+r.w,right),by=Math.max(r.y+r.h,bottom); r.x=Math.min(r.x,left); r.y=Math.min(r.y,top); r.w=rx-r.x; r.h=by-r.y; }

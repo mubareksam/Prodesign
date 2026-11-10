@@ -92,6 +92,8 @@ ok(crowded.sliderHeight===80 && crowded.brushHeight===80 && crowded.toolsHeight=
 const sane=Q.sanitizeRailPreferences({side:'other',position:Infinity}), clamped=Q.sanitizeRailPreferences({side:'right',position:-10});
 ok(sane.side==='left' && sane.position===50 && clamped.side==='right' && clamped.position===0, 'saved rail preferences are sanitized');
 
+ok(Q.sanitizeSmudgeHardness(undefined)===1 && Q.sanitizeSmudgeHardness(NaN)===1 && Q.sanitizeSmudgeHardness(-1)===0 && Q.sanitizeSmudgeHardness(2)===1, 'smudge edge preferences are validated');
+
 console.log('colour harmony suggestions');
 const harmonies=Q.colorHarmonies(0,1,1), muted=Q.colorHarmonies(210,0,0);
 ok(harmonies.length===5 && harmonies[2].rgb.join(',')==='0,255,255' && harmonies[3].rgb.join(',')==='0,0,255' && harmonies[4].rgb.join(',')==='0,255,0','complement and triadic colours use the correct hue rotations');

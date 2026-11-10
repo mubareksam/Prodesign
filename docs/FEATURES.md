@@ -6,12 +6,14 @@ The supplied feature inventory is a roadmap, not a list of completed work.
 ## Available now
 
 - The Layers Add menu offers blank and imported-image layers as well as solid
-  colour and two-colour horizontal, vertical, diagonal or radial gradient raster
+  colour and two-colour horizontal, vertical, diagonal, radial or custom-angle gradient raster
   layers. HSV sliders, presets and HEX controls update a scaled preview; gradients
-  have a midpoint and swap control. These fill only the active frame and can be
-  undone; no live editable stops, transparency or vector fill is provided.
+  have a midpoint and swap control; solid and gradient endpoint opacity support
+  transparency. These fill only the active frame and can be undone; no live
+  editable stops or vector fill is provided.
 - Basic circular pixel-drag smudge on the active cel, with size and opacity as
-  strength; selection clips the destination and each moved stroke can be undone.
+  strength and a device-local adjustable soft/hard edge; selection clips the
+  destination and each moved stroke can be undone.
   It refuses hidden, locked, alpha-locked or empty cels; does not use brush texture,
   pressure, smoothing, symmetry, QuickShape or hold eyedropper. Not Procreate's
   smudge engine. Pinch cancels a finger smudge; real-device latency is untested.
@@ -19,6 +21,7 @@ The supplied feature inventory is a roadmap, not a list of completed work.
   rail contains smudge and other tools. Rails compact and scroll in short layouts.
 - Brush library has 28 presets and generated sample strokes using the actual preset
   engine. Erasers are displayed as painted marks; texture/spray is stochastic.
+  Search and category filters combine and remain for the app session.
 - Categorized icon-based animation tools and expandable Actions groups reduce
   clutter. Effect thumbnails are generated offline from illustrative sample art,
   not a live preview. Real-device layout and touch testing remain necessary.
@@ -209,7 +212,7 @@ The supplied feature inventory is a roadmap, not a list of completed work.
 ## Not yet implemented
 
 Snapping/drawing assist for grids and perspective, camera references, layer masks/groups, automatic selection,
-feathered selection, interactive transform handles and custom pivots, cross-layer ColorDrop/reference fill, smudge, advanced filters and liquify, typography,
+feathered selection, interactive transform handles and custom pivots, cross-layer ColorDrop/reference fill, advanced brush-based smudge, advanced filters and liquify, typography,
 DPI settings, timelapse, gallery stacks, PSD/Procreate/PDF/TIFF compatibility, brush
 import/export, and most advanced colour-management and accessibility features.
 Apple Pencil-specific controls are not applicable on Android. See the original

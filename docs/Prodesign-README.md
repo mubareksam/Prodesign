@@ -4,20 +4,20 @@ Developed by **Qmer**. An offline painting and frame-animation studio for Androi
 brushes, layers, a colour wheel, a frame timeline with onion skin, Procreate's gesture
 vocabulary, and PNG/GIF export. No account, no ads, no network permission.
 
-**Download:** [`Qalam-4.8.apk`](../artifacts/Qalam-4.8.apk) (~311 KB)
+**Download:** [`Qalam-4.9.apk`](../artifacts/Qalam-4.9.apk) (~313 KB)
 
 | | |
 |---|---|
 | Package | `com.qalam.studio` |
-| Version | 4.8 (versionCode 39) |
+| Version | 4.9 (versionCode 40) |
 | Requires | Android 8.0+ (minSdk 26), built for targetSdk 33 |
 | Permissions | `VIBRATE` only — no internet, no storage, no location |
 | Signing | APK Signature Scheme v1 + v2, self-signed with a public test key |
-| SHA-256 | `b958220662813e0bbe5354f440946ed712de19396959a9cb9f3596d6159c7982` |
+| SHA-256 | `18395d13fa2e1c37141a5f91fd0385f06b4dfc5c5e3d6169c4a4ff14c06c2c13` |
 
 ## Install
 
-1. Download `Qalam-4.8.apk` to the phone (or copy it over USB).
+1. Download `Qalam-4.9.apk` to the phone (or copy it over USB).
 2. Open it from the file manager. Android will ask you to allow installs from that
    app the first time ("Install unknown apps") — allow it, then install.
 3. Open **Qalam**.
@@ -38,12 +38,13 @@ Transforms currently require a rectangle. Precise transform provides numeric dim
 **Brushes** — 28 presets, including: Studio pen, Inking pen, Monoline, Technical pencil,
 6B pencil, Marker, Airbrush, Charcoal, Watercolour, Hard eraser, Soft eraser. Stylus
 pressure drives width and opacity; speed drives taper; translucency accumulates so a
-stroke never darkens where it crosses itself.
+stroke never darkens where it crosses itself. Search and category filters help find presets.
 
 **Smudge and visual fills** — drag with the hand icon to blend existing pixels
 on the active cel using the size and opacity sliders. Layers → Add offers solid
 and two-colour gradient controls with visual HSV sliders, palette and preview;
-gradients also have direction, swap and midpoint. Fills are raster, not editable
+gradients also have direction, custom angle, endpoint opacity, swap and midpoint.
+Smudge edge hardness is adjustable in Actions → Preferences. Fills are raster, not editable
 live gradients. Smudge is a basic pixel-drag tool, not Procreate's brush-based engine.
 
 **Cut, copy & paste** — use Actions or swipe three fingers down. Copy from the

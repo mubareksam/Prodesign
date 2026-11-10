@@ -8,11 +8,11 @@ brushes, layers with blend modes, a colour wheel, a frame timeline with onion sk
 Procreate's gesture vocabulary, PNG/GIF export and device-dependent MP4 export — all offline, with no account and
 no network permissions at all.
 
-- Package: `com.qalam.studio` · version 4.8 (versionCode 39)
+- Package: `com.qalam.studio` · version 4.9 (versionCode 40)
 - minSdk 26 (Android 8.0) · targetSdk 33 · armeabi-v7a/arm64/x86/x86_64 independent
   (everything is HTML/JS running inside the app's own `WebView`, so the APK has no
   native code)
-- APK: **`artifacts/Qalam-4.8.apk`** (~311 KB), signed with a v1+v2 scheme
+- APK: **`artifacts/Qalam-4.9.apk`** (~313 KB), signed with a v1+v2 scheme
 - The written analysis of Procreate that this app was specified from:
   [`docs/procreate-analysis.md`](procreate-analysis.md)
 
@@ -20,7 +20,7 @@ no network permissions at all.
 
 ## 1. Install
 
-1. Copy `artifacts/Qalam-4.8.apk` to the phone (USB, Drive, chat to yourself — anything).
+1. Copy `artifacts/Qalam-4.9.apk` to the phone (USB, Drive, chat to yourself — anything).
 2. Open it with the phone's file manager. Android will ask to allow installs from
    that app the first time ("Install unknown apps").
 3. Install and open **Qalam**. If an earlier Qalam version is already installed, Android should offer an update that preserves its data. Back up important artwork first. Android does not allow this app to silently uninstall itself; do not uninstall it unless you have backed up its local artwork.
@@ -68,7 +68,7 @@ Everything is autosaved on the device (`IndexedDB`, with a `localStorage` fallba
 The top bar provides **Gallery, Undo, Redo, Timeline, Effects** and **Actions**.
 Side rails provide brushes, size/opacity, colour, eyedropper, fill, smudge, eraser, fit and layers.
 
-- **Brush tray** — 28 presets, with labelled ink, pencil, paint and eraser icons and sample stroke thumbnails. Thumbnails are generated using each preset’s brush engine; erasers are shown as painted marks.
+- **Brush tray** — 28 presets, with labelled ink, pencil, paint and eraser icons and sample stroke thumbnails. Thumbnails are generated using each preset’s brush engine; erasers are shown as painted marks. Search by brush name or choose an ink, pencil, paint or eraser category; both filters combine and remain until cleared or the app restarts.
   Select a brush and open **Brush studio** to adjust spacing, flow, opacity, edge
   hardness, pressure response and stabilization. Settings are saved per preset on
   this device. The sliders icon in the brush tray opens **Brush size presets**:
@@ -88,7 +88,9 @@ Side rails provide brushes, size/opacity, colour, eyedropper, fill, smudge, eras
   strokes retain palm rejection. QuickShape, hold eyedropper, symmetry, pressure,
   brush texture and smoothing do not apply to this basic pixel-drag smudge. It can
   create an undo step on an entirely transparent region. It is not Procreate's
-  brush-based smudge, and large tips may be slower on a phone.
+  brush-based smudge, and large tips may be slower on a phone. Actions → Preferences
+  → Smudge edge sets hardness from 0% (soft falloff) to 100% (hard, the default).
+  Changes are saved on this device and apply to new strokes; Reset restores 100%.
 - **Colour harmonies** — tap the three-circle icon in the Colour tray to see
   five clickable hue suggestions: two analogous (±30°), a complement (180°)
   and two triadic (±120°). The suggestions use the current colour's hue, with
@@ -216,14 +218,17 @@ Side rails provide brushes, size/opacity, colour, eyedropper, fill, smudge, eras
   Alpha lock does not prevent layer/frame deletion or undo/redo. It persists and
   is copied when duplicating a layer.
 - **Layers → Add (+)** opens choices for a blank layer, image import, a solid
-  colour or a horizontal, vertical, diagonal or radial two-colour gradient. Adjust
-  each colour using hue, saturation and brightness sliders, colour presets or 3- or
+  colour or a horizontal, vertical, diagonal, radial or custom-angle two-colour
+  gradient. Adjust each colour and its opacity using sliders, colour presets or 3- or
   6-digit HEX. The live small preview changes as you edit. Gradient controls also
-  include direction, colour swap and midpoint (10–90%). Preview is scaled down;
+  include direction, colour/opacity swap, midpoint (10–90%) and a custom angle
+  from −180° to 180° (0° left to right, 90° top to bottom). Transparent parts
+  appear over a checkerboard in the preview. Preview is scaled down;
   exact pixel colours may differ slightly due to rounding and display scaling.
   Creation fills a new ordinary raster layer on the current frame only, is saved
-  and undoable. It is not a live editable fill; transparent colours, arbitrary
-  angles, more than two endpoint colours and draggable on-canvas stops are absent.
+  and undoable. Transparent pixels are retained in transparent PNG exports; regular
+  exports composite the background. It is not a live editable fill; more than two
+  endpoint colours and draggable on-canvas stops are absent.
 - **Animation categories** use icon buttons: Frames, Settings, and Guides & audio.
   Tap a category to show its tools; play, duplicate frame and FPS remain in the header.
   Actions are expandable categories. Buttons expose accessible names and tooltips.
@@ -549,7 +554,7 @@ android/
     css/app.css              dark touch UI
     js/core.js               DOM/colour/canvas helpers, toasts, native bridge
     js/doc.js                Doc (layers, frames, cels, thumbnails) + History
-    js/brushes.js            28 presets, procedural sprites, Q.Stroke engine
+    js/brushes.js            28 presets, procedural sprites, stroke and smudge engines
     js/gif.js                quantiser, LZW, GifWriter
     js/effects.js            undoable pixel effect algorithms
     js/fill.js               scanline flood fill
@@ -568,11 +573,11 @@ tools/
   verify_apk.py              re-parses the APK: zip, arsc, dex, v2 signature
   make_icons.py              icon source -> all mipmap densities + adaptive icon
   apksign/sign.mjs           v1+v2 signer
-  tests/engine_smoke.mjs     156 engine checks (history, brushes, doc, GIF, …)
+  tests/engine_smoke.mjs     engine checks (history, brushes, doc, GIF, …)
   tests/pixel_integration.mjs real raster and animation export checks
   tests/gif_roundtrip.mjs    encodes a GIF and decodes it with an independent decoder
   tests/ui_smoke.mjs         jsdom boot + full UI drive (gallery -> export)
-artifacts/Qalam-4.8.apk           the signed, installable artefact
+artifacts/Qalam-4.9.apk           the signed, installable artefact
 docs/procreate-analysis.md   the Procreate study this app was built from
 docs/qalam.md                this file
 ```
@@ -602,7 +607,7 @@ Design notes worth knowing before changing code:
 
 ```bash
 bash tools/fetch-toolchain.sh     # once per machine: JVM, apktool, aapt2, jars, npm
-bash tools/build.sh               # -> artifacts/Qalam-4.8.apk (signed + verified)
+bash tools/build.sh               # -> artifacts/Qalam-4.9.apk (signed + verified)
 bash tools/check_reference.sh     # optional: javac-check the Java mirrors
 ```
 
@@ -642,7 +647,7 @@ custom tips/grains, dual brushes and import/export are not implemented. Guide
 snapping, adjustable vanishing-point placement, rectangle/arc QuickShape, persistent
 image references, automatic selection beyond Magic Wand, feathered masks, interactive
 transform handles, layer masks/groups, text, cross-layer reference fill,
-smudge, timelapse, PSD and many other requested features remain unimplemented. Frame labels are not full nested frame groups; PNG sequences and sprite sheets
+advanced brush-based smudge, timelapse, PSD and many other requested features remain unimplemented. Frame labels are not full nested frame groups; PNG sequences and sprite sheets
 contain one image per frame without hold metadata. MP4 availability depends on the
 WebView and has not been verified on a physical Android phone. See
 [feature coverage](FEATURES.md) for details.

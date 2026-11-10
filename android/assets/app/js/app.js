@@ -50,6 +50,7 @@
     const threshold = Q.Store.meta('fillThreshold');
     if (typeof threshold === 'number') App.fillThreshold = Q.clamp(threshold, 0, 128);
     const pressure=Q.Store.meta('globalPressure'), smoothing=Q.Store.meta('globalSmoothing');
+    v.smudgeHardness=Q.sanitizeSmudgeHardness(Q.Store.meta('smudgeHardness'));
     v.globalPressure=Number.isFinite(pressure) ? Q.clamp(pressure,0.5,2) : 1;
     v.globalSmoothing=Number.isFinite(smoothing) ? Q.clamp(smoothing,0,0.9) : 0;
     Q.restoreBrushSettings(Q.Store.meta('brushSettings'));
@@ -265,27 +266,35 @@
   };
 
   // Shared renderer keeps the small preview and final raster mathematically aligned.
-  Q.renderPaintFill = function (c,w,h,kind,first,second,direction,midpoint) {
-    const a=Q.hexToRgb(first), b=Q.hexToRgb(second);
-    if (!a || !['solid','gradient'].includes(kind) || (kind==='gradient' && (!b || !['horizontal','vertical','diagonal','radial'].includes(direction)))) return false;
+  Q.paintFillOptions = function (options) {
+    options=options || {}; const angle=options.angle == null ? 0 : Number(options.angle), alpha1=options.alpha1 == null ? 1 : Number(options.alpha1), alpha2=options.alpha2 == null ? 1 : Number(options.alpha2);
+    if(!Number.isFinite(angle) || Math.abs(angle)>180 || !Number.isFinite(alpha1) || alpha1<0 || alpha1>1 || !Number.isFinite(alpha2) || alpha2<0 || alpha2>1) return null;
+    return {angle,alpha1,alpha2};
+  };
+  Q.renderPaintFill = function (c,w,h,kind,first,second,direction,midpoint,options) {
+    const a=Q.hexToRgb(first), b=Q.hexToRgb(second), o=Q.paintFillOptions(options);
+    if (!a || !o || !['solid','gradient'].includes(kind) || (kind==='gradient' && (!b || !['horizontal','vertical','diagonal','radial','angle'].includes(direction)))) return false;
     const mid=midpoint == null ? 0.5 : Number(midpoint); if(!Number.isFinite(mid) || mid<0.1 || mid>0.9) return false;
-    if(kind==='solid') c.fillStyle=Q.rgbToHex(a);
+    if(kind==='solid') c.fillStyle=Q.rgba(a,o.alpha1);
     else {
-      let g; if(direction==='radial') g=c.createRadialGradient(w/2,h/2,0,w/2,h/2,Math.hypot(w,h)/2);
+      let g;
+      if(direction==='radial') g=c.createRadialGradient(w/2,h/2,0,w/2,h/2,Math.hypot(w,h)/2);
+      else if(direction==='angle') { const t=o.angle*Math.PI/180, dx=Math.cos(t),dy=Math.sin(t), length=(Math.abs(w*dx)+Math.abs(h*dy))/2; g=c.createLinearGradient(w/2-dx*length,h/2-dy*length,w/2+dx*length,h/2+dy*length); }
       else g=c.createLinearGradient(0,0,direction==='vertical' ? 0 : w,direction==='horizontal' ? 0 : h);
-      g.addColorStop(0,Q.rgbToHex(a)); g.addColorStop(mid,Q.rgbToHex(a.map((v,i)=>(v+b[i])/2))); g.addColorStop(1,Q.rgbToHex(b)); c.fillStyle=g;
+      const sum=o.alpha1+o.alpha2, middle=a.map((v,i)=>sum ? (v*o.alpha1+b[i]*o.alpha2)/sum : (v+b[i])/2);
+      g.addColorStop(0,Q.rgba(a,o.alpha1)); g.addColorStop(mid,Q.rgba(middle.map(Math.round),sum/2)); g.addColorStop(1,Q.rgba(b,o.alpha2)); c.fillStyle=g;
     }
     c.fillRect(0,0,w,h); return true;
   };
   // Fill a new raster layer on the current frame; prepare it before changing history.
-  App.addPaintLayer = function (kind,first,second,direction,midpoint) {
+  App.addPaintLayer = function (kind,first,second,direction,midpoint,options) {
     App.stopPlay(); const d=App.doc;
     if (!d || !Q.hexToRgb(first) || (kind==='gradient' && !Q.hexToRgb(second)) || !['solid','gradient'].includes(kind)) { Q.toast('Enter valid hex colours',4000); return false; }
-    if (kind==='gradient' && !['horizontal','vertical','diagonal','radial'].includes(direction)) { Q.toast('Choose a gradient direction',4000); return false; }
-    if (midpoint!=null && (!Number.isFinite(Number(midpoint)) || Number(midpoint)<0.1 || Number(midpoint)>0.9)) { Q.toast('Choose a valid midpoint',4000); return false; }
+    if (kind==='gradient' && !['horizontal','vertical','diagonal','radial','angle'].includes(direction)) { Q.toast('Choose a gradient direction',4000); return false; }
+    if ((midpoint!=null && (!Number.isFinite(Number(midpoint)) || Number(midpoint)<0.1 || Number(midpoint)>0.9)) || !Q.paintFillOptions(options)) { Q.toast('Choose a valid midpoint, angle and opacity',4000); return false; }
     try {
       const cv=Q.canvas(d.width,d.height), c=cv.getContext('2d');
-      if(!Q.renderPaintFill(c,d.width,d.height,kind,first,second,direction,midpoint)) return false;
+      if(!Q.renderPaintFill(c,d.width,d.height,kind,first,second,direction,midpoint,options)) return false;
       d.insertImageLayer(cv,kind==='solid' ? 'Solid colour' : 'Gradient');
       App.view.dirty=true; Q.UI.syncDoc(); Q.UI.refreshTimeline(); App.markDirty(); Q.toast('Layer added · Undo to remove'); return true;
     } catch(e) { Q.toast('Could not create this layer on this device',4000); return false; }

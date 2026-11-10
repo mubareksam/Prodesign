@@ -28,6 +28,7 @@
     this.opacity = 1;
     this.globalPressure = 1;
     this.globalSmoothing = 0;
+    this.smudgeHardness = 1;
     this.tool = 'brush';
     this.onDocChange = null;
     this.onStrokeEnd = null;
@@ -537,7 +538,7 @@
     this.strokePointerType = e.pointerType || 'touch';
     const brushOpacity = this.opacity * (this.brush.opacity == null ? 1 : this.brush.opacity);
     try {
-      this.stroke = this.tool==='smudge' ? new Q.SmudgeStroke(doc,this.size,this.opacity,this.selection) : new Q.Stroke(doc, this.brush, this.color, this.size, brushOpacity, this.selection, this.globalSmoothing);
+      this.stroke = this.tool==='smudge' ? new Q.SmudgeStroke(doc,this.size,this.opacity,this.selection,this.smudgeHardness) : new Q.Stroke(doc, this.brush, this.color, this.size, brushOpacity, this.selection, this.globalSmoothing);
       this.stroke.begin({ x: p.x, y: p.y, pressure: this._pressure(e), t: Q.now() });
     } catch(err) { this.stroke=null; Q.toast('Could not start stroke on this device',4000); return; }
     this._lastStampTime = Q.now();
