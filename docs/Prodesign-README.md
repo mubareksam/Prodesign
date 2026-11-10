@@ -4,20 +4,20 @@ Developed by **Qmer**. An offline painting and frame-animation studio for Androi
 brushes, layers, a colour wheel, a frame timeline with onion skin, Procreate's gesture
 vocabulary, and PNG/GIF export. No account, no ads, no network permission.
 
-**Download:** [`Qalam-3.4.apk`](../artifacts/Qalam-3.4.apk) (~289 KB)
+**Download:** [`Qalam-3.5.apk`](../artifacts/Qalam-3.5.apk) (~291 KB)
 
 | | |
 |---|---|
 | Package | `com.qalam.studio` |
-| Version | 3.4 (versionCode 25) |
+| Version | 3.5 (versionCode 26) |
 | Requires | Android 8.0+ (minSdk 26), built for targetSdk 33 |
 | Permissions | `VIBRATE` only — no internet, no storage, no location |
 | Signing | APK Signature Scheme v1 + v2, self-signed with a public test key |
-| SHA-256 | `83b1debefbe4b80ae82cade9cd8795a705a6dc8ba6864416a71602f374b0a960` |
+| SHA-256 | `4bfd7387e88d49295f5f4da87594394c793df81e5c92c9b902c4babdc9e9ec7c` |
 
 ## Install
 
-1. Download `Qalam-3.4.apk` to the phone (or copy it over USB).
+1. Download `Qalam-3.5.apk` to the phone (or copy it over USB).
 2. Open it from the file manager. Android will ask you to allow installs from that
    app the first time ("Install unknown apps") — allow it, then install.
 3. Open **Qalam**.
@@ -39,6 +39,11 @@ Transforms currently require a rectangle; there is no feathering, live transform
 6B pencil, Marker, Airbrush, Charcoal, Watercolour, Hard eraser, Soft eraser. Stylus
 pressure drives width and opacity; speed drives taper; translucency accumulates so a
 stroke never darkens where it crosses itself.
+
+**Shortcuts** — hold a layer eye to solo/restore; hold the colour swatch to swap
+with the previous colour; hold the eraser to match the current brush. Up to six
+brush sizes can be saved in the brush tray. Solo changes saved visibility and also
+affects exports until restored; a clipped layer keeps its base visible.
 
 **Layers** — add, duplicate, reorder, merge down, clear, delete, rename; per-layer
 opacity and 16 blend modes (Normal, Multiply, Screen, Overlay, Darken, Lighten, Color

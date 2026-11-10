@@ -121,17 +121,19 @@
     const swatch=el('#btnColor'); let colorDrag=null, suppressColorClick=false;
     swatch.addEventListener('pointerdown',function (e) {
       if (!app().doc || !app().view || app().view.locked || (e.button!=null && e.button!==0)) return;
-      colorDrag={id:e.pointerId,x:e.clientX,y:e.clientY,moved:false,color:app().view.color.slice(),doc:app().doc};
+      colorDrag={id:e.pointerId,x:e.clientX,y:e.clientY,moved:false,held:false,color:app().view.color.slice(),doc:app().doc};
+      const current=colorDrag; current.timer=setTimeout(function(){ if(colorDrag===current && !current.moved) current.held=true; },600);
       try { swatch.setPointerCapture(e.pointerId); } catch(err) {}
     });
     swatch.addEventListener('pointermove',function (e) {
       if(!colorDrag || colorDrag.id!==e.pointerId) return;
-      if(Math.hypot(e.clientX-colorDrag.x,e.clientY-colorDrag.y)>8) colorDrag.moved=true;
+      if(Math.hypot(e.clientX-colorDrag.x,e.clientY-colorDrag.y)>8) { colorDrag.moved=true; colorDrag.held=false; clearTimeout(colorDrag.timer); }
       if(colorDrag.moved) { e.preventDefault(); let dot=document.getElementById('colorDropGhost'); if(!dot) { dot=Q.crel('div','color-drop-ghost'); dot.id='colorDropGhost'; document.body.appendChild(dot); } dot.style.background=Q.rgbToHex(colorDrag.color); dot.style.left=e.clientX+'px'; dot.style.top=e.clientY+'px'; }
     });
     function finishColorDrag(e) {
-      if(!colorDrag || colorDrag.id!==e.pointerId) return; const drag=colorDrag; colorDrag=null;
+      if(!colorDrag || colorDrag.id!==e.pointerId) return; const drag=colorDrag; colorDrag=null; clearTimeout(drag.timer);
       const ghost=document.getElementById('colorDropGhost'); if(ghost) ghost.remove();
+      if(drag.held && !drag.moved) { suppressColorClick=true; setTimeout(function(){ suppressColorClick=false; },500); if(e.type!=='pointercancel' && app().doc===drag.doc) app().swapPreviousColor(); return; }
       if(!drag.moved) return; suppressColorClick=true; setTimeout(function(){ suppressColorClick=false; },500);
       if(e.type==='pointercancel' || app().doc!==drag.doc || app().view.locked) return;
       const cv=app().view.canvas, r=cv.getBoundingClientRect(), hit=document.elementFromPoint(e.clientX,e.clientY);
@@ -140,6 +142,13 @@
     }
     swatch.addEventListener('pointerup',finishColorDrag); swatch.addEventListener('pointercancel',finishColorDrag);
     swatch.addEventListener('click', function () { if(suppressColorClick) { suppressColorClick=false; return; } UI.toggleTray('color'); });
+    const eraser=el('#btnEraser'); let erasePress=null, suppressEraserClick=false;
+    eraser.addEventListener('pointerdown',function(e) { if(e.button!=null && e.button!==0) return; const p={id:e.pointerId,x:e.clientX,y:e.clientY,held:false}; erasePress=p; p.timer=setTimeout(()=>{ if(erasePress===p) p.held=true; },600); try { eraser.setPointerCapture(e.pointerId); } catch(err) {} });
+    eraser.addEventListener('pointermove',function(e) { if(erasePress && e.pointerId===erasePress.id && Math.hypot(e.clientX-erasePress.x,e.clientY-erasePress.y)>8) { clearTimeout(erasePress.timer); erasePress.held=false; erasePress.moved=true; } });
+    function finishEraser(e) { if(!erasePress || e.pointerId!==erasePress.id) return; const p=erasePress; erasePress=null; clearTimeout(p.timer); if(p.held || p.moved || e.type==='pointercancel') { suppressEraserClick=true; setTimeout(()=>{suppressEraserClick=false;},500); if(p.held && !p.moved && e.type!=='pointercancel') app().useEraser(true); } }
+    eraser.addEventListener('pointerup',finishEraser); eraser.addEventListener('pointercancel',finishEraser);
+    eraser.addEventListener('click',function() { if(suppressEraserClick) { suppressEraserClick=false; return; } app().useEraser(false); });
+    eraser.addEventListener('contextmenu',function(e){e.preventDefault();});
     el('#btnEyedrop').addEventListener('click', function () {
       const v = app().view;
       v.tool = v.tool === 'eyedrop' ? 'brush' : 'eyedrop';
@@ -280,6 +289,7 @@
     const sw = Q.el('#btnColor');
     sw.style.background = Q.rgbToHex(v.color);
     Q.el('#btnBrush').classList.toggle('on', tray === 'brushes');
+    Q.el('#btnEraser').classList.toggle('on',!!v.brush.eraser); Q.el('#btnEraser').setAttribute('aria-pressed',v.brush.eraser ? 'true' : 'false');
   };
 
   UI.syncHistory = function () {
@@ -348,7 +358,7 @@
   /* ── brushes ────────────────────────────────────────────── */
 
   function buildBrushes(root) {
-    root.appendChild(trayHead('Brush library', [chip('Brush studio', false, function () { UI.brushStudio(); }, ICON.wrench)]));
+    root.appendChild(trayHead('Brush library', [iconButton('Brush size presets',ICON.controls,function () { UI.sizePresetsDialog(); }),chip('Brush studio', false, function () { UI.brushStudio(); }, ICON.wrench)]));
     const grid = Q.crel('div', 'brush-grid');
     Q.BRUSHES.forEach(function (b) {
       const card = Q.crel('button', 'brush-card' + (b.id === app().view.brush.id ? ' on' : ''));
@@ -384,6 +394,7 @@
     const r1 = Q.crel('input');
     r1.type = 'range'; r1.min = '0'; r1.max = '100';
     r1.value = Math.round((app().view.brush.pressureSize || 0) * 100);
+    if (app().view.brush.syncedEraser) { r1.disabled=true; r1.title='Switch back to the painting brush to edit pressure'; }
     const v1 = Q.crel('div', 'val', String(r1.value));
     r1.addEventListener('input', function () {
       app().view.brush.pressureSize = parseInt(r1.value, 10) / 100;
@@ -397,9 +408,24 @@
     void fitCanvasToBox;
   }
 
+  UI.sizePresetsDialog = function () {
+    const stored=Q.Store.meta('sizePresets'); let presets=Array.isArray(stored) ? [...new Set(stored.filter(v=>Number.isInteger(v) && v>=1 && v<=240))].slice(0,6) : [];
+    const card=Q.crel('div'); card.appendChild(Q.crel('h2',null,'Brush size presets'));
+    card.appendChild(Q.crel('p','sub','Save up to six sizes on this device. Tap a size to use it for the current brush; sizes are shared by all brushes.'));
+    const list=Q.crel('div','size-preset-list'); card.appendChild(list);
+    function render() {
+      list.innerHTML=''; if(!presets.length) list.appendChild(Q.crel('p','sub','No saved sizes yet.'));
+      presets.forEach(function(size) { const row=Q.crel('div','size-preset-row'), use=Q.crel('button','btn ghost',size+' px'), remove=Q.crel('button','mini-btn'); remove.innerHTML=icon(ICON.trash); remove.setAttribute('aria-label','Remove size '+size); use.setAttribute('aria-label','Use size '+size); use.addEventListener('click',function(){ app().setSize(size); UI.closeModal(); Q.toast('Brush size '+size); }); remove.addEventListener('click',function(){ presets=presets.filter(v=>v!==size); Q.Store.meta('sizePresets',presets); render(); }); row.appendChild(use); row.appendChild(remove); list.appendChild(row); });
+    }
+    render(); const error=Q.crel('p','canvas-error'); error.setAttribute('role','alert'); card.appendChild(error);
+    const actions=Q.crel('div','modal-actions'), add=Q.crel('button','btn primary','Save current'), close=Q.crel('button','btn ghost','Close');
+    add.addEventListener('click',function(){ const size=Math.round(app().view.size); if(presets.includes(size)) { error.textContent='This size is already saved.'; return; } if(presets.length>=6) { error.textContent='Remove a size before adding another.'; return; } presets.push(size); Q.Store.meta('sizePresets',presets); error.textContent=''; render(); }); close.addEventListener('click',()=>UI.closeModal()); actions.appendChild(close); actions.appendChild(add); card.appendChild(actions); UI.openModal(card);
+  };
+
   // A focused, local brush editor: adjustments are saved per preset on this device.
   UI.brushStudio = function () {
     const brush = app().view.brush;
+    if (brush.syncedEraser) { Q.toast('Switch back to the painting brush to edit its settings'); return; }
     const card = Q.crel('div');
     card.appendChild(Q.crel('h2', null, 'Brush studio · ' + brush.name));
     card.appendChild(Q.crel('p', 'sub', 'Tune this brush. Changes are saved on this device.'));
@@ -472,6 +498,7 @@
     root = root || Q.el('#trayBody');
     root.innerHTML = '';
 
+    if (d.solo) { const restore=Q.crel('button','btn ghost','Restore layer visibility'); restore.addEventListener('click',function(){ app().restoreSolo(); }); root.appendChild(restore); const note=Q.crel('p','sub','Solo is active. Restoring returns saved visibility for existing layers; changes made while soloed are replaced. A clipped layer keeps its base visible.'); root.appendChild(note); }
     const addBtn=iconButton('Add layer or image',ICON.plus,function () { UI.addLayerDialog(); });
     const dupBtn=iconButton('Duplicate layer',ICON.copy,function () { app().duplicateLayer(); });
     const mergeBtn=iconButton('Merge layer down',ICON.merge,function () { app().mergeDownLayer(d.activeLayer); });
@@ -489,17 +516,19 @@
 
       const meta = Q.crel('div', 'layer-meta');
       meta.appendChild(Q.crel('div', 'layer-name', escapeHtml(layer.name)));
-      const sub = Q.crel('div', 'layer-sub', Math.round(layer.opacity * 100) + '% · ' + (layer.clipped ? 'Normal (clipped)' : blendLabel(layer.blend)) + (layer.locked ? ' · Locked' : '') + (layer.alphaLocked ? ' · Alpha locked' : ''));
+      const sub = Q.crel('div', 'layer-sub', Math.round(layer.opacity * 100) + '% · ' + (layer.clipped ? 'Normal (clipped)' : blendLabel(layer.blend)) + (layer.locked ? ' · Locked' : '') + (layer.alphaLocked ? ' · Alpha locked' : '') + (d.solo && d.solo.target===layer.id ? ' · Solo' : ''));
       meta.appendChild(sub);
       row.appendChild(meta);
 
       const tools = Q.crel('div', 'layer-tools');
       const eye = Q.crel('button', 'mini-btn', icon(layer.visible ? ICON.eye : ICON.eyeOff));
-      eye.addEventListener('click', function (e) {
-        e.stopPropagation();
-        app().setLayerProp(i, 'visible', !layer.visible);
-        buildLayers(root);
-      });
+      eye.setAttribute('aria-label',(layer.visible ? 'Hide ' : 'Show ')+layer.name); eye.title='Tap visibility · hold to solo or restore'; if(d.solo && d.solo.target===layer.id) eye.classList.add('on');
+      let press=null, suppressEye=false;
+      eye.addEventListener('pointerdown',function(e){ e.stopPropagation(); const p={id:e.pointerId,x:e.clientX,y:e.clientY,held:false,layerId:layer.id}; press=p; p.timer=setTimeout(()=>{ if(press===p) p.held=true; },600); try { eye.setPointerCapture(e.pointerId); } catch(err) {} });
+      eye.addEventListener('pointermove',function(e){ if(press && e.pointerId===press.id && Math.hypot(e.clientX-press.x,e.clientY-press.y)>8) { clearTimeout(press.timer); press.moved=true; press.held=false; } });
+      function finishEye(e){ if(!press || e.pointerId!==press.id) return; e.stopPropagation(); const p=press; press=null; clearTimeout(p.timer); if(p.held || p.moved || e.type==='pointercancel') { suppressEye=true; setTimeout(()=>{suppressEye=false;},500); if(p.held && !p.moved && e.type!=='pointercancel' && app().doc===d && d.layers[i] && d.layers[i].id===p.layerId) app().toggleSolo(i); } }
+      eye.addEventListener('pointerup',finishEye); eye.addEventListener('pointercancel',finishEye); eye.addEventListener('contextmenu',e=>e.preventDefault());
+      eye.addEventListener('click', function (e) { e.stopPropagation(); if(suppressEye) { suppressEye=false; return; } app().setLayerProp(i, 'visible', !layer.visible); buildLayers(root); });
       tools.appendChild(eye);
 
       const more = Q.crel('button', 'mini-btn', '<svg viewBox="0 0 24 24"><circle cx="5" cy="12" r="1.6"/><circle cx="12" cy="12" r="1.6"/><circle cx="19" cy="12" r="1.6"/></svg>');
@@ -598,6 +627,7 @@
       b.addEventListener('click', function () { UI.closeModal(); fn(); });
       return b;
     };
+    actions.appendChild(mk(d.solo && d.solo.target===layer.id ? 'Restore visibility' : 'Solo layer', ICON.eye, function () { app().toggleSolo(i); }));
     actions.appendChild(mk(layer.locked ? 'Unlock layer' : 'Lock layer', ICON.sparkle, function () { app().setLayerProp(i, 'locked', !layer.locked); }));
     actions.appendChild(mk(layer.alphaLocked ? 'Unlock alpha' : 'Alpha lock', ICON.sparkle, function () { app().setLayerProp(i, 'alphaLocked', !layer.alphaLocked); }));
     actions.appendChild(mk(layer.clipped ? 'Release clipping mask' : 'Clipping mask', ICON.layers, function () { app().setLayerClipped(i,!layer.clipped); }));
@@ -1483,6 +1513,9 @@
       ['Long press', 'Pick a colour (eyedropper)'],
       ['Hold at the end of a stroke', 'Snap a line, circle or ellipse; drag another finger to move, then lift the first to commit'],
       ['Drag the colour swatch', 'Drop on the active layer to flood fill'],
+      ['Hold the colour swatch', 'Swap with your previous colour'],
+      ['Hold a layer eye', 'Solo that layer; hold again to restore'],
+      ['Eraser', 'Tap to toggle eraser; hold to match the current brush'],
       ['Magic wand', 'Select connected pixels via Selection & transform'],
       ['Drag a layer row sideways', 'Change layer opacity'],
       ['Double-tap a frame', 'Duplicate, reorder or delete it']

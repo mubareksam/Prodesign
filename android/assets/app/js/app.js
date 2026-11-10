@@ -11,7 +11,9 @@
     recent: [],
     autosaveTimer: 0,
     ready: false,
-    fillThreshold: 12
+    fillThreshold: 12,
+    previousColor: null,
+    lastPaintBrush: null
   });
 
   /* ── boot ───────────────────────────────────────────────── */
@@ -48,6 +50,8 @@
     const savedRecent = Q.Store.meta('recent');
     if (savedRecent && savedRecent.length) App.recent = savedRecent;
     if (savedBrush) v.brush = Q.brushById(savedBrush);
+    App.lastPaintBrush = v.brush.eraser ? Q.BRUSHES.find(b=>!b.eraser) : v.brush;
+    App.previousColor = Q.hexToRgb(Q.Store.meta('previousColor'));
     v.size = v.brush.size;
     v.color = Q.hexToRgb(Q.Store.meta('color')) || [24, 24, 26];
     v.opacity = 1;
@@ -163,6 +167,7 @@
 
   App.setBrush = function (id) {
     const b = Q.brushById(id);
+    if (!b.eraser) App.lastPaintBrush=b;
     App.view.brush = b;
     App.view.tool = 'brush';
     Q.el('#btnFill').classList.remove('on'); Q.el('#btnEyedrop').classList.remove('on');
@@ -183,11 +188,32 @@
   };
 
   App.setColor = function (rgb) {
-    App.view.color = rgb;
+    const v=App.view; if (Q.rgbToHex(v.color)!==Q.rgbToHex(rgb)) { App.previousColor=v.color.slice(); Q.Store.meta('previousColor',Q.rgbToHex(App.previousColor)); }
+    v.color = rgb.slice();
     Q.Store.meta('color', Q.rgbToHex(rgb));
     Q.UI.syncBrushUi();
     App.pushRecentColor();
   };
+
+  App.swapPreviousColor = function () {
+    if (!App.previousColor || Q.rgbToHex(App.previousColor)===Q.rgbToHex(App.view.color)) { Q.toast('Choose another colour first'); return false; }
+    App.setColor(App.previousColor); Q.toast('Switched to previous colour'); return true;
+  };
+  App.useEraser = function (sync) {
+    const v=App.view;
+    if (sync) {
+      const source=v.brush.eraser ? App.lastPaintBrush : v.brush;
+      if (!source || source.eraser) { Q.toast('Choose a painting brush first'); return; }
+      App.lastPaintBrush=source; v.brush={...source,eraser:true,syncedEraser:true}; Q.toast('Eraser matched to '+source.name);
+    } else if (v.brush.eraser) { v.brush=App.lastPaintBrush || Q.BRUSHES.find(b=>!b.eraser); Q.toast('Painting brush'); }
+    else { App.lastPaintBrush=v.brush; v.brush=Q.brushById('eraser'); Q.toast('Eraser'); }
+    v.tool='brush'; Q.el('#btnFill').classList.remove('on'); Q.el('#btnEyedrop').classList.remove('on'); Q.UI.syncBrushUi();
+  };
+  App.toggleSolo = function (index) {
+    const d=App.doc; if(!d || !d.toggleSolo(index)) return; App.view.dirty=true; Q.UI.syncDoc(); App.markDirty();
+    Q.toast(d.solo && d.layer(index).clipped ? 'Solo includes the clipping base' : d.solo ? 'Layer soloed · hold eye again to restore' : 'Visibility restored',3000);
+  };
+  App.restoreSolo = function () { if(!App.doc || !App.doc.restoreSolo()) return; App.view.dirty=true; Q.UI.syncDoc(); App.markDirty(); Q.toast('Visibility restored'); };
 
   App.pushRecentColor = function () {
     const c = App.view.color;

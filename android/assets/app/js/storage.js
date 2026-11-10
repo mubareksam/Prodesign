@@ -178,6 +178,7 @@
       guide: doc.guide,
       motionGuide:doc.motionGuide, motionGuideVisible:doc.motionGuideVisible,
       audioTrack:doc.audioTrack, cameraEnabled:doc.cameraEnabled, cameraKeys:doc.cameraKeys.map(k=>({...k})),
+      solo:doc.solo ? {target:doc.solo.target,visibility:doc.solo.visibility.map(v=>({...v}))} : null,
       frameCount: doc.frames.length,
       layers: doc.layers.map(function (l) {
         return { id: l.id, name: l.name, visible: l.visible, opacity: l.opacity, blend: l.blend, assisted: !!l.assisted, locked: !!l.locked, alphaLocked: !!l.alphaLocked, clipped: !!l.clipped, motionEnabled:!!l.motionEnabled, motionKeys:(l.motionKeys || []).map(k=>({...k})) };
@@ -221,6 +222,11 @@
       return { id: l.id || Q.uid(), name: l.name || 'Layer', visible: l.visible !== false, opacity: l.opacity == null ? 1 : l.opacity, blend: l.blend || 'source-over', assisted: !!l.assisted, locked: !!l.locked, alphaLocked: !!l.alphaLocked, clipped: !!l.clipped, motionEnabled:!!l.motionEnabled, motionKeys:Q.sanitizeLayerMotion(l,doc.width,doc.height) };
     });
     if (!doc.layers.length) doc.layers = [Q.makeLayer('Layer 1')];
+    if (rec.solo && typeof rec.solo.target==='string' && Array.isArray(rec.solo.visibility)) {
+      const ids=new Set(doc.layers.map(l=>l.id)), seen=new Set(), visibility=[];
+      rec.solo.visibility.slice(0,Math.max(1024,doc.layers.length)).forEach(v=>{ if(v && typeof v.id==='string' && ids.has(v.id) && !seen.has(v.id) && typeof v.visible==='boolean') { visibility.push({id:v.id,visible:v.visible}); seen.add(v.id); } });
+      if(visibility.length) doc.solo={target:rec.solo.target,visibility:visibility};
+    }
 
     const frames = [];
     for (let i = 0; i < (rec.frameCount || 1); i++) {

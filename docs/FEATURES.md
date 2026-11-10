@@ -92,6 +92,8 @@ The supplied feature inventory is a roadmap, not a list of completed work.
   refused. Effects calculate within the bounding rectangle then mask output, so
   blur can sample outside a lasso or wand mask. Selections are not saved or feathered and the
   outline is not restored by pixel undo. No live transform preview.
+- Layer solo saves and restores per-layer visibility in one undoable operation; it persists across save/reopen. Clipped solo keeps its base visible. Manual visibility edits made during solo are replaced on restoration; newly added layers are left unchanged. Solo affects exports and thumbnails while active.
+- Hold the colour swatch to swap the previous colour; drag still performs colour drop. The eraser button toggles an eraser or, on hold, creates a temporary copy of the current paint brush's texture and dynamics. Brush tray offers up to six device-local size presets shared across brushes.
 - Alpha lock lets brush painting, fill and effects recolour existing layer pixels
   without changing their alpha. It is saved per layer and copied on duplication.
   Erasing, clear, flip, move/scale and merge require unlocking alpha first; it does

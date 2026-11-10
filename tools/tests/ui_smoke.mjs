@@ -1040,6 +1040,34 @@ async function run() {
   click('#modalBody .btn.ghost'); ok(App.doc.history.undoStack.length===before, 'cancelling effect preview does not alter history');
   }
 
+  {
+  console.log('3.5 workflow shortcuts');
+  App.createDoc(64,64,'Shortcuts'); App.doc.addLayer(); App.doc.addLayer(); App.doc.layer(2).visible=false; App.doc.history.clear();
+  Q.UI.openTray('layers'); let eye=doc.querySelector('[aria-label="Hide Layer 2"]') || doc.querySelectorAll('.layer-tools .mini-btn')[2];
+  const target=App.doc.layers[1]; eye=Array.from(doc.querySelectorAll('.layer-tools .mini-btn')).find(b=>b.getAttribute('aria-label')==='Hide '+target.name);
+  ok(!!eye && eye.title.includes('hold'),'layer eye explains solo shortcut');
+  pointer(eye,'pointerdown',10,10,{id:401}); await wait(650); pointer(eye,'pointerup',10,10,{id:401});
+  ok(!!App.doc.solo && App.doc.solo.target===target.id && App.doc.layers.map(l=>l.visible).join(',')==='false,true,false', 'holding layer eye solos without a stray visibility toggle');
+  await App.saveNow(false); const loaded=await Q.Store.load(App.doc.id); ok(!!loaded.solo && loaded.solo.target===target.id && loaded.restoreSolo() && loaded.layers.map(l=>l.visible).join(',')==='true,true,false', 'solo visibility snapshot survives save and reopening');
+  click('#trayBody button.btn.ghost'); ok(!App.doc.solo && App.doc.layers.map(l=>l.visible).join(',')==='true,true,false','visible restore action reinstates prior layer visibility');
+  const tapEye=Array.from(doc.querySelectorAll('.layer-tools .mini-btn')).find(b=>b.getAttribute('aria-label')==='Hide '+App.doc.layers[1].name); tapEye.click(); ok(!App.doc.layers[1].visible && !App.doc.solo,'ordinary eye tap still toggles only one layer'); App.undo();
+  App.undo(); ok(!!App.doc.solo,'solo restore can be undone'); App.redo(); ok(!App.doc.solo,'solo restore can be redone'); Q.UI.closeTray();
+  const sw=doc.querySelector('#btnColor'); App.setColor([200,0,0]); App.setColor([0,0,200]);
+  pointer(sw,'pointerdown',10,10,{id:402}); await wait(650); pointer(sw,'pointerup',10,10,{id:402}); click('#btnColor');
+  ok(Q.rgbToHex(App.view.color)==='#c80000' && Q.rgbToHex(App.previousColor)==='#0000c8','holding colour swatch swaps to previous colour without opening picker');
+  pointer(sw,'pointerdown',10,10,{id:403}); await wait(650); pointer(sw,'pointerup',10,10,{id:403}); click('#btnColor'); ok(Q.rgbToHex(App.view.color)==='#0000c8','holding colour again swaps back');
+  App.setBrush('pencil'); const source=App.view.brush, size=App.view.size; const er=doc.querySelector('#btnEraser');
+  pointer(er,'pointerdown',10,10,{id:404}); await wait(650); pointer(er,'pointerup',10,10,{id:404}); click('#btnEraser');
+  ok(App.view.brush.eraser && App.view.brush.syncedEraser && App.view.brush.engine===source.engine && App.view.size===size && er.getAttribute('aria-pressed')==='true', 'holding eraser matches the current brush without changing its size');
+  click('#btnEraser'); ok(App.view.brush===source && !App.view.brush.eraser,'tapping eraser returns to the previous painting brush');
+  click('#btnEraser'); ok(App.view.brush.eraser && !App.view.brush.syncedEraser,'tapping eraser toggles the standard hard eraser'); click('#btnEraser');
+  App.setSize(37); Q.UI.openTray('brushes'); click('[aria-label="Brush size presets"]'); let buttons=()=>Array.from(doc.querySelectorAll('#modalBody button')); buttons().find(b=>b.textContent==='Save current').click();
+  ok(JSON.stringify(Q.Store.meta('sizePresets')).includes('37') && !!doc.querySelector('[aria-label="Use size 37"]'),'brush size can be saved'); buttons().find(b=>b.textContent==='Save current').click(); ok(doc.querySelector('.canvas-error').textContent.includes('already'),'duplicate size presets are rejected');
+  for(let size of [10,20,30,40,50]) { App.setSize(size); buttons().find(b=>b.textContent==='Save current').click(); } App.setSize(60); buttons().find(b=>b.textContent==='Save current').click(); ok(doc.querySelector('.canvas-error').textContent.includes('Remove a size') && Q.Store.meta('sizePresets').length===6,'size presets enforce the six-size limit');
+  App.setSize(12); click('[aria-label="Use size 37"]'); ok(App.view.size===37,'saved size can be applied to the current brush');
+  Q.UI.sizePresetsDialog(); click('[aria-label="Remove size 37"]'); ok(!Q.Store.meta('sizePresets').includes(37),'saved sizes can be removed'); Q.UI.closeModal(); Q.UI.closeTray();
+  }
+
   await App.saveNow(false);
   console.log(failures ? `\n${failures} check(s) FAILED` : '\nall UI checks passed');
   process.exit(failures ? 1 : 0);

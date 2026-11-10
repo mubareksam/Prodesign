@@ -102,7 +102,7 @@
     notify() { if (this.onchange) this.onchange(); }
     structSnapshot() {
       const d = this.doc;
-      return { layers: d.layers.map(copyLayer), frames: d.frames.map(f => ({cels: f.cels.slice(), duration: f.duration || 1, group: f.group || '', skipped: !!f.skipped})), activeLayer: d.activeLayer, activeFrame: d.activeFrame, bg: d.bg, playRange: d.playRange ? {...d.playRange} : null, motionGuide:d.motionGuide.map(p=>({...p})), motionGuideVisible:d.motionGuideVisible, cameraEnabled:d.cameraEnabled, cameraKeys:d.cameraKeys.map(k=>({...k})), audioTrack:d.audioTrack ? {...d.audioTrack} : null };
+      return { layers: d.layers.map(copyLayer), frames: d.frames.map(f => ({cels: f.cels.slice(), duration: f.duration || 1, group: f.group || '', skipped: !!f.skipped})), activeLayer: d.activeLayer, activeFrame: d.activeFrame, bg: d.bg, playRange: d.playRange ? {...d.playRange} : null, motionGuide:d.motionGuide.map(p=>({...p})), motionGuideVisible:d.motionGuideVisible, cameraEnabled:d.cameraEnabled, cameraKeys:d.cameraKeys.map(k=>({...k})), audioTrack:d.audioTrack ? {...d.audioTrack} : null, solo:d.solo ? {target:d.solo.target,visibility:d.solo.visibility.map(v=>({...v}))} : null };
     }
     applyStruct(s) {
       const d = this.doc;
@@ -110,6 +110,7 @@
       d.bg = s.bg || '#ffffff'; d.playRange = s.playRange ? {...s.playRange} : null;
       d.motionGuide = (s.motionGuide || []).map(p=>({...p})); d.motionGuideVisible=!!s.motionGuideVisible;
       d.audioTrack = s.audioTrack ? {...s.audioTrack} : null;
+      d.solo = s.solo ? {target:s.solo.target,visibility:s.solo.visibility.map(v=>({...v}))} : null;
       d.cameraEnabled=!!s.cameraEnabled; d.cameraKeys=(s.cameraKeys || []).map(k=>({...k}));
       d.activeLayer = Q.clamp(s.activeLayer, 0, d.layers.length - 1); d.activeFrame = Q.clamp(s.activeFrame, 0, d.frames.length - 1);
     }
@@ -162,6 +163,7 @@
       this.onionIncludeSkipped = !!opts.onionIncludeSkipped; this.onionLayerOnly = !!opts.onionLayerOnly;
       this.onionOriginalColor = !!opts.onionOriginalColor; this.onionAbove = !!opts.onionAbove;
       this.onionPrevColor = opts.onionPrevColor || '#ff5a7a'; this.onionNextColor = opts.onionNextColor || '#4fd1c5'; this.guide = Object.assign({type:'off', symmetry:'off', spacing:100, horizon:0.5, spread:0.5}, opts.guide || {});
+      this.solo=null;
       this.layers = [makeLayer('Layer 1')]; this.frames = [{ cels:[null], duration:1, group:'' }]; this.activeFrame = 0; this.activeLayer = 0;
       this.history = new History(this); this.dirty = true;
     }
@@ -492,6 +494,20 @@
       if (!this._clipBuffer || this._clipBuffer.width!==this.width || this._clipBuffer.height!==this.height) this._clipBuffer=Q.canvas(this.width,this.height);
       const g=this._clipBuffer.getContext('2d'); g.setTransform(1,0,0,1,0,0); g.globalAlpha=1; g.globalCompositeOperation='source-over'; g.clearRect(0,0,this.width,this.height);
       return g;
+    }
+    restoreSolo() {
+      if (!this.solo) return false;
+      this.history.struct(function () { const visibility=new Map(this.solo.visibility.map(v=>[v.id,v.visible])); this.layers.forEach(l=>{ if (visibility.has(l.id)) l.visible=visibility.get(l.id); }); this.solo=null; }); return true;
+    }
+    toggleSolo(index) {
+      const layer=this.layers[index]; if (!layer) return false;
+      if (this.solo && this.solo.target===layer.id) return this.restoreSolo();
+      this.history.struct(function () {
+        if (!this.solo) this.solo={target:layer.id,visibility:this.layers.map(l=>({id:l.id,visible:!!l.visible}))};
+        else { const old=new Set(this.solo.visibility.map(v=>v.id)); this.layers.forEach(l=>{ if(!old.has(l.id)) this.solo.visibility.push({id:l.id,visible:!!l.visible}); }); this.solo.target=layer.id; }
+        const base=layer.clipped ? this.clipBase(index) : -1;
+        this.layers.forEach((l,i)=>{ l.visible=i===index || i===base; });
+      }); return true;
     }
     setLayerProp(i,key,value) { if (this.layers[i]) return this.history.struct(function () { this.layers[i][key]=value; }); }
     setLayerPropLive(i,key,value) { if (this.layers[i]) this.layers[i][key]=value; }

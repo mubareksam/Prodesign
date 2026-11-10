@@ -8,11 +8,11 @@ brushes, layers with blend modes, a colour wheel, a frame timeline with onion sk
 Procreate's gesture vocabulary, PNG/GIF export and device-dependent MP4 export — all offline, with no account and
 no network permissions at all.
 
-- Package: `com.qalam.studio` · version 3.4 (versionCode 25)
+- Package: `com.qalam.studio` · version 3.5 (versionCode 26)
 - minSdk 26 (Android 8.0) · targetSdk 33 · armeabi-v7a/arm64/x86/x86_64 independent
   (everything is HTML/JS running inside the app's own `WebView`, so the APK has no
   native code)
-- APK: **`artifacts/Qalam-3.4.apk`** (~289 KB), signed with a v1+v2 scheme
+- APK: **`artifacts/Qalam-3.5.apk`** (~291 KB), signed with a v1+v2 scheme
 - The written analysis of Procreate that this app was specified from:
   [`docs/procreate-analysis.md`](procreate-analysis.md)
 
@@ -20,7 +20,7 @@ no network permissions at all.
 
 ## 1. Install
 
-1. Copy `artifacts/Qalam-3.4.apk` to the phone (USB, Drive, chat to yourself — anything).
+1. Copy `artifacts/Qalam-3.5.apk` to the phone (USB, Drive, chat to yourself — anything).
 2. Open it with the phone's file manager. Android will ask to allow installs from
    that app the first time ("Install unknown apps").
 3. Install and open **Qalam**. If an earlier Qalam version is already installed, Android should offer an update that preserves its data. Back up important artwork first. Android does not allow this app to silently uninstall itself; do not uninstall it unless you have backed up its local artwork.
@@ -63,14 +63,30 @@ Bottom bar: **Gallery · Layer · Brush · Colour · Timeline · Menu** (plus **
 - **Brush tray** — 20 presets, with labelled ink, pencil, paint and eraser icons.
   Select a brush and open **Brush studio** to adjust spacing, flow, opacity, edge
   hardness, pressure response and stabilization. Settings are saved per preset on
-  this device. This is a basic editor, not the full Procreate Brush Studio.
+  this device. The sliders icon in the brush tray opens **Brush size presets**:
+  save, reuse or remove up to six sizes shared across all brushes on this device.
+  The eraser icon on the right rail toggles the hard eraser and your previous
+  painting brush. Hold it, then release, to make an eraser using a copy of the
+  current painting brush's texture and dynamics; tap to return. The matched eraser
+  keeps the current size and opacity, is temporary and does not change the original
+  brush. Switch back to the painting brush to edit its settings. Erasing is blocked
+  on alpha-locked layers. This is a basic editor, not the full Procreate Brush Studio.
 - **Colour tray** — HSB wheel with a value/saturation square, HEX entry, 24 swatches
-  and the 12 most recent colours.
+  and the 12 most recent colours. Hold the top colour swatch still, then release,
+  to swap the current and previous colours. Moving it instead still starts colour
+  drop fill; tapping it opens the colour tray. The previous colour is stored locally.
 - **Layers tray** — add, duplicate, merge down, clear, delete, reorder (▲▼), rename,
   opacity and 16 blend modes (Normal, Multiply, Screen, Overlay, Darken, Lighten,
   Color dodge/burn, Hard/Soft light, Difference, Exclusion, Hue, Saturation, Color,
   Luminosity). Rows show a live thumbnail and an eye toggle. Open a layer's
-  three-dot menu to lock or unlock it. Lock prevents painting, fill, effects,
+  three-dot menu to lock or unlock it. Hold a layer's eye, then release, to solo it;
+  hold the same eye again or use **Restore layer visibility** to restore the previous
+  visibility pattern. The layer options also offer solo. Solo and restore are undoable
+  and saved, including their visibility snapshot. If the soloed layer is clipped,
+  its base remains visible so the clipping works. Changing layer visibility during
+  solo is overwritten when the snapshot is restored; newly added layers are left as
+  they are. Solo affects playback, exports and gallery previews while active.
+  Use the three-dot menu to lock or unlock a layer. Lock prevents painting, fill, effects,
   transforms, clearing, deleting or merging that layer; it does not prevent
   visibility, reordering, renaming, opacity changes, undo/redo or deleting a frame.
   Lock is saved per layer, across all its frames. **Alpha lock** in the same menu
@@ -302,9 +318,12 @@ Bottom bar: **Gallery · Layer · Brush · Colour · Timeline · Menu** (plus **
 | Two fingers pinch / twist | Zoom / rotate |
 | **Three-finger tap** | Undo |
 | **Four-finger tap** | Redo |
+| Hold layer eye, then release | Solo that layer or restore prior visibility |
+| Hold colour swatch, then release | Swap current and previous colour |
+| Hold eraser, then release | Match eraser to the current painting brush |
 | **Long-press on the canvas** | Eyedropper — picks the colour under the pen, no paint left behind |
 | Hold still at the end of a stroke | **QuickShape** — snaps to a line, circle or ellipse; while still holding, drag a second finger to move the preview. Lift the original finger or stylus to commit. The preview is a simple outline; the committed shape uses the selected brush. |
-| Pen down + finger down | Finger is ignored while a stylus stroke is running (palm rejection) |
+| Pen down + finger down | Finger is ignored during a stylus stroke, except after QuickShape snaps for moving its preview |
 | Android back button | Closes a dialog/tray, then returns to the gallery; one more press exits |
 
 ## 5. Export
@@ -389,7 +408,7 @@ tools/
   tests/pixel_integration.mjs real raster and animation export checks
   tests/gif_roundtrip.mjs    encodes a GIF and decodes it with an independent decoder
   tests/ui_smoke.mjs         jsdom boot + full UI drive (gallery -> export)
-artifacts/Qalam-3.4.apk           the signed, installable artefact
+artifacts/Qalam-3.5.apk           the signed, installable artefact
 docs/procreate-analysis.md   the Procreate study this app was built from
 docs/qalam.md                this file
 ```
@@ -419,7 +438,7 @@ Design notes worth knowing before changing code:
 
 ```bash
 bash tools/fetch-toolchain.sh     # once per machine: JVM, apktool, aapt2, jars, npm
-bash tools/build.sh               # -> artifacts/Qalam-3.4.apk (signed + verified)
+bash tools/build.sh               # -> artifacts/Qalam-3.5.apk (signed + verified)
 bash tools/check_reference.sh     # optional: javac-check the Java mirrors
 ```
 

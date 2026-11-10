@@ -698,4 +698,31 @@ function ikOptions(overrides={}) { return {upper:0,lower:1,start:0,end:2,root:{x
  view._down(ev('pointerdown',3,10,10)); view._move(ev('pointermove',3,40,10)); view._disarmHold(); view._quickShape(); view._up(ev('pointercancel',3,40,10)); ok(!view.quickShape && d.history.undoStack.length===0 && pixel(cel,15,10)[3]===0, 'cancelled quickshape does not commit pixels or history');
 }
 
+{
+ const d=setup(); const c0=d.activeCel(true); c0.getContext('2d').fillStyle='#ff0000'; c0.getContext('2d').fillRect(0,0,16,16);
+ d.addLayer(); const c1=d.activeCel(true); c1.getContext('2d').fillStyle='#0000ff'; c1.getContext('2d').fillRect(0,0,8,16);
+ d.addLayer(); d.layer(2).visible=false; d.history.clear(); const ids=d.layers.map(l=>l.id);
+ d.toggleSolo(1); ok(d.layers.map(l=>l.visible).join(',')==='false,true,false' && d.solo.target===ids[1] && d.history.undoStack.length===1, 'solo hides other layers in one history entry');
+ let rendered=createCanvas(16,16); d.composite(rendered.getContext('2d'),0); ok(same(pixel(rendered,3,3),[0,0,255,255]) && pixel(rendered,12,3)[3]===0,'solo changes the real composite');
+ d.history.undo(); ok(d.layers.map(l=>l.visible).join(',')==='true,true,false' && !d.solo,'undo restores pre-solo visibility and state');
+ d.history.redo(); ok(d.layers.map(l=>l.visible).join(',')==='false,true,false' && d.solo.target===ids[1],'redo restores solo and state');
+ d.toggleSolo(0); ok(d.layers.map(l=>l.visible).join(',')==='true,false,false','switching solo layers preserves original visibility snapshot');
+ d.moveLayer(0,1); d.restoreSolo(); ok(d.layers.find(l=>l.id===ids[0]).visible && d.layers.find(l=>l.id===ids[1]).visible && !d.layers.find(l=>l.id===ids[2]).visible,'restore follows layer identity after reordering');
+ d.history.undo(); ok(!!d.solo && d.layers.find(l=>l.id===ids[0]).visible,'undo restore reinstates solo state');
+ d.addLayer(); const added=d.layer().id; d.restoreSolo(); ok(d.layers.find(l=>l.id===added).visible && d.layers.find(l=>l.id===ids[1]).visible, 'restore leaves newly added layers untouched and restores original layers');
+}
+{
+ const d=setup(); d.activeCel(true).getContext('2d').fillRect(0,0,10,10); d.addLayer(); d.activeCel(true).getContext('2d').fillRect(0,0,5,5); d.setLayerClipped(1,true); d.history.clear();
+ d.toggleSolo(1); ok(d.layer(0).visible && d.layer(1).visible, 'soloing clipped layer also keeps its base visible');
+ const cv=createCanvas(16,16); d.composite(cv.getContext('2d'),0); ok(pixel(cv,2,2)[3]===255,'clipped layer remains compositable while soloed');
+ d.restoreSolo(); ok(!d.solo && d.history.undoStack.length===2,'clipped solo can be restored');
+}
+{
+ const d=setup(), cel=d.activeCel(true); cel.getContext('2d').fillStyle='#ff0000';cel.getContext('2d').fillRect(0,0,16,16);
+ const source={...pen,flow:0.5,pressureSize:0.7,spacing:0.3}, clone={...source,eraser:true,syncedEraser:true};
+ const stroke=new Q.Stroke(d,clone,[255,0,0],8,0.6,{x:0,y:0,w:8,h:16}); stroke.begin({x:6,y:8,pressure:1,t:1});stroke.end();
+ ok(pixel(cel,6,8)[3]<255 && pixel(cel,9,8)[3]===255 && !source.eraser,'matched eraser uses brush flow and respects selection without mutating the paint preset');
+ d.history.undo(); ok(pixel(cel,6,8)[3]===255,'matched eraser is undoable');
+}
+
 console.log(`all ${n} raster integration checks passed`);
