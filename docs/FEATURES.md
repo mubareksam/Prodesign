@@ -322,6 +322,19 @@ The supplied feature inventory is a roadmap, not a list of completed work.
   higher; preview and final rendering can pause on the main thread. Off-canvas
   pixels are cropped, edges can alias, and this is not perspective-correct or full
   Procreate warp. Numeric and standalone transforms still require rectangles.
+- Gradient Map remaps raw cel luminance through three editable fixed colour stops,
+  with four starting presets, endpoint reverse, strength and a downsampled cel-only
+  preview. Apply edits one current-frame layer, clips to selection, preserves alpha
+  and is undoable. Transparent pixels are skipped; hidden/locked layers are refused.
+  It is destructive, not a live adjustment layer or gradient library. Maximum 4 MP
+  and estimated 64 MiB temporary buffers; actual memory may be higher, and applying
+  can block on large areas.
+- Colour-drop indicator positions are frame-coalesced and animated, with reduced-
+  motion support. The default connected active-layer fill scans in event-loop slices
+  before committing, while the canvas remains locked. Pixel readback/commit and
+  visible/all-matching sampling can still block. Size/opacity input avoids unrelated
+  brush UI updates; Effects strength previews are throttled. These are implementation
+  improvements, not a physical Android latency guarantee.
 - Fill, colour drop and Magic wand share device-local active-layer/visible-layer sampling and connected/all-matching choices. Visible sampling composites the current frame without background or playback transforms; fill edits only the active layer, respects selection and alpha lock, and is undoable. Wand replaces the selection, with a 4096-run limit and bounds-only indicator. New modes have a 4 MP and estimated 64 MiB temporary-memory limit (actual memory can be higher) and may pause the main thread; they are not separately marked reference layers.
 - Effects have a small approximate, downsampled current-cel preview that updates with the strength slider; applying edits pixels, not a persistent live effect.
 - Undoable per-frame layer effects: Gaussian-like blur (three box passes), horizontal motion blur, sharpen,

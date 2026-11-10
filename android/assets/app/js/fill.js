@@ -2,39 +2,40 @@
 (function () {
   'use strict';
   const Q = window.Q;
-  Q.floodFill = function (image, sx, sy, rgb, threshold, preserveAlpha, mask) {
-    const w=image.width, h=image.height, data=image.data;
-    sx=Math.floor(sx); sy=Math.floor(sy);
-    if (sx < 0 || sy < 0 || sx >= w || sy >= h) return null;
-    const start=(sy*w+sx)*4, original=[data[start],data[start+1],data[start+2],data[start+3]];
-    if (preserveAlpha && original[3] === 0) return null;
-    const tol=Q.clamp(Number(threshold) || 0,0,128);
-    if (tol === 0 && original[3] === 255 && original[0] === rgb[0] && original[1] === rgb[1] && original[2] === rgb[2]) return null;
-    const visited=new Uint8Array(w*h), stack=[sy*w+sx];
-    let minX=w,minY=h,maxX=-1,maxY=-1;
-    function matches(index) {
-      if (visited[index] || (mask && !mask[index])) return false;
-      const i=index*4, a=data[i+3];
-      if ((preserveAlpha && a === 0) || Math.abs(a-original[3]) > tol) return false;
-      if (a === 0 && original[3] === 0) return true;
-      return Math.abs(data[i]-original[0])<=tol && Math.abs(data[i+1]-original[1])<=tol && Math.abs(data[i+2]-original[2])<=tol;
-    }
-    while (stack.length) {
-      const seed=stack.pop(), y=Math.floor(seed/w), x=seed%w;
-      if (!matches(seed)) continue;
-      let left=x,right=x;
-      while (left>0 && matches(y*w+left-1)) left--;
-      while (right+1<w && matches(y*w+right+1)) right++;
-      let up=false,down=false;
-      for (let px=left;px<=right;px++) {
-        const index=y*w+px, i=index*4; visited[index]=1;
-        data[i]=rgb[0]; data[i+1]=rgb[1]; data[i+2]=rgb[2]; if (!preserveAlpha) data[i+3]=255;
-        if (y>0) { const can=matches(index-w); if (can && !up) stack.push(index-w); up=can; }
-        if (y+1<h) { const can=matches(index+w); if (can && !down) stack.push(index+w); down=can; }
+  // A scanline job can be processed in slices, so a large ColorDrop yields to
+  // the event loop without mutating the actual cel until the job is complete.
+  Q.createFloodFillJob = function (image,sx,sy,rgb,threshold,preserveAlpha,mask) {
+    const w=image.width,h=image.height,data=image.data; sx=Math.floor(sx); sy=Math.floor(sy);
+    const job={done:false,result:null,step:step};
+    if(sx<0 || sy<0 || sx>=w || sy>=h) {job.done=true;return job;}
+    const start=(sy*w+sx)*4,original=[data[start],data[start+1],data[start+2],data[start+3]],tol=Q.clamp(Number(threshold)||0,0,128);
+    if((preserveAlpha && original[3]===0) || (tol===0 && original[3]===255 && original[0]===rgb[0] && original[1]===rgb[1] && original[2]===rgb[2])) {job.done=true;return job;}
+    const visited=new Uint8Array(w*h),stack=[sy*w+sx];let minX=w,minY=h,maxX=-1,maxY=-1;
+    function matches(n) {if(visited[n] || (mask && !mask[n]))return false;const i=n*4,a=data[i+3];if((preserveAlpha && a===0)||Math.abs(a-original[3])>tol)return false;if(a===0 && original[3]===0)return true;return Math.abs(data[i]-original[0])<=tol && Math.abs(data[i+1]-original[1])<=tol && Math.abs(data[i+2]-original[2])<=tol;}
+    function step(maxSeeds,deadline) {
+      let count=0;
+      while(stack.length && count<maxSeeds && (count===0 || Q.now()<deadline)) {
+        count++;const seed=stack.pop(),y=Math.floor(seed/w),x=seed%w;if(!matches(seed))continue;
+        let left=x,right=x;while(left>0 && matches(y*w+left-1))left--;while(right+1<w && matches(y*w+right+1))right++;
+        let up=false,down=false;
+        for(let px=left;px<=right;px++) {const n=y*w+px,i=n*4;visited[n]=1;data[i]=rgb[0];data[i+1]=rgb[1];data[i+2]=rgb[2];if(!preserveAlpha)data[i+3]=255;
+          if(y>0){const can=matches(n-w);if(can&&!up)stack.push(n-w);up=can;}if(y+1<h){const can=matches(n+w);if(can&&!down)stack.push(n+w);down=can;}}
+        minX=Math.min(minX,left);maxX=Math.max(maxX,right);minY=Math.min(minY,y);maxY=Math.max(maxY,y);
       }
-      minX=Math.min(minX,left); maxX=Math.max(maxX,right); minY=Math.min(minY,y); maxY=Math.max(maxY,y);
+      if(!stack.length){job.done=true;job.result=maxX<0 ? null : {x:minX,y:minY,w:maxX-minX+1,h:maxY-minY+1};}
+      return job.done;
     }
-    return maxX<0 ? null : {x:minX,y:minY,w:maxX-minX+1,h:maxY-minY+1};
+    return job;
+  };
+  Q.floodFill = function (image,sx,sy,rgb,threshold,preserveAlpha,mask) {
+    const job=Q.createFloodFillJob(image,sx,sy,rgb,threshold,preserveAlpha,mask);while(!job.done)job.step(Infinity,Infinity);return job.result;
+  };
+  Q.floodFillAsync = function (image,sx,sy,rgb,threshold,preserveAlpha,mask,isValid) {
+    return new Promise(function(resolve,reject) {
+      let job;try {job=Q.createFloodFillJob(image,sx,sy,rgb,threshold,preserveAlpha,mask);} catch(err){reject(err);return;}
+      function run() {try {if(isValid && !isValid()) {reject(new Error('fill cancelled'));return;}if(!job.done)job.step(64,Q.now()+8);if(job.done)resolve(job.result);else setTimeout(run,0);}catch(err){reject(err);}}
+      run();
+    });
   };
   // Find either the connected region or all matching pixels in an immutable
   // source image. One byte of state per pixel; connected search uses a bounded

@@ -450,7 +450,7 @@ async function run() {
 
   console.log('about');
   Q.UI.aboutSheet();
-  ok(doc.querySelector('#modalBody').textContent.includes('Developed by Qmer') && doc.querySelector('#modalBody').textContent.includes('Version 6.2'), 'About credits Qmer and shows current version');
+  ok(doc.querySelector('#modalBody').textContent.includes('Developed by Qmer') && doc.querySelector('#modalBody').textContent.includes('Version 6.3'), 'About credits Qmer and shows current version');
   Q.UI.closeModal();
 
   console.log('hardware back');
@@ -1066,7 +1066,7 @@ async function run() {
   App.fillAt=oldFill; doc.elementFromPoint=oldHit;
   const before=App.doc.history.undoStack.length; Q.UI.effectsDialog(); const slider=doc.querySelector('[aria-label="Effect strength"]'); const samples=counts.getImageData;
   slider.value='15'; slider.dispatchEvent(new win.Event('input',{bubbles:true})); slider.value='85'; slider.dispatchEvent(new win.Event('input',{bubbles:true}));
-  ok(!!doc.querySelector('canvas[aria-label="Current layer effect preview"]') && counts.getImageData>=samples+2 && doc.querySelector('#modalBody').textContent.includes('85%') && App.doc.history.undoStack.length===before, 'effect slider updates a non-destructive current-layer preview');
+  await wait(100); ok(!!doc.querySelector('canvas[aria-label="Current layer effect preview"]') && counts.getImageData===samples+1 && doc.querySelector('#modalBody').textContent.includes('85%') && App.doc.history.undoStack.length===before, 'effect slider coalesces preview updates without changing artwork');
   click('#modalBody .btn.ghost'); ok(App.doc.history.undoStack.length===before, 'cancelling effect preview does not alter history');
   }
 
@@ -1593,6 +1593,20 @@ async function run() {
   const flip=doc.querySelector('[aria-label="Flip source horizontally"]');ok(flip && flip.querySelector('svg') && flip.getAttribute('aria-pressed')==='false','canvas flip has an accessible non-emoji icon');flip.click();ok(v.meshTransform.flipX && flip.getAttribute('aria-pressed')==='true','canvas flip toggles the pending transform');[...doc.querySelectorAll('.mesh-toolbar button')].find(b=>b.textContent==='Reset').click();ok(!v.meshTransform.flipX && flip.getAttribute('aria-pressed')==='false','reset clears the pending flip');
   [...doc.querySelectorAll('.mesh-toolbar button')].find(b=>b.textContent==='Cancel').click();ok(!v.meshTransform && !doc.querySelector('.mesh-toolbar') && d.history.undoStack.length===0,'cancel removes the temporary transform without history');
   Q.UI.canvasTransform(); mode && (mode.value='distort'); pointer(doc.querySelector('#btnLayers'),'pointerdown',5,5,{id:2400});ok(!v.meshTransform && !doc.querySelector('.mesh-toolbar'),'other toolbar actions cancel pending transform');
+  }
+
+  {
+  console.log('6.3 interaction and Gradient Map');
+  App.createDoc(64,64,'Gradient Map');const d=App.doc,v=App.view;d.activeCel(true);d.history.clear();
+  Q.UI.effectsDialog();const launch=doc.querySelector('[aria-label="Open Gradient Map"]');ok(launch,'Gradient Map is discoverable in Effects');launch.click();await wait(25);
+  let colors=['Shadows','Midtones','Highlights'].map(x=>doc.querySelector(`[aria-label="${x} HEX"]`));ok(colors.every(Boolean) && doc.querySelector('[aria-label="Gradient Map artwork preview"]') && doc.querySelector('.gradient-map-bar').style.background,'gradient map displays editable stops and a preview');
+  [...doc.querySelectorAll('#modalBody button')].find(b=>b.textContent==='Ocean').click();ok(colors[0].value==='#0c2042' && colors[2].value==='#d1f3d7','gradient preset sets three colours');[...doc.querySelectorAll('#modalBody button')].find(b=>b.textContent==='Reverse').click();ok(colors[0].value==='#d1f3d7' && colors[2].value==='#0c2042','gradient reverse swaps endpoint colours');
+  colors[0].value='invalid';colors[0].dispatchEvent(new win.Event('input',{bubbles:true}));[...doc.querySelectorAll('#modalBody button')].find(b=>b.textContent==='Apply Gradient Map').click();ok(doc.querySelector('#modalBody [role="alert"]').textContent.includes('HEX') && d.history.undoStack.length===0,'invalid gradient input is rejected without edits');colors[0].value='#000';colors[0].dispatchEvent(new win.Event('input',{bubbles:true}));
+  d.layer().locked=true;[...doc.querySelectorAll('#modalBody button')].find(b=>b.textContent==='Apply Gradient Map').click();ok(doc.querySelector('#modalBody [role="alert"]').textContent.includes('unlock'),'locked layer is rejected before apply');d.layer().locked=false;Q.UI.closeModal();
+  Q.UI.gradientMapDialog();d.addLayer();[...doc.querySelectorAll('#modalBody button')].find(b=>b.textContent==='Apply Gradient Map').click();ok(doc.querySelector('#modalBody [role="alert"]').textContent.includes('changed'),'gradient dialog rejects changed targets');Q.UI.closeModal();
+  const size=doc.querySelector('#sizeSlider'), opacity=doc.querySelector('#opacitySlider'), oldSync=Q.UI.syncBrushUi;let syncCount=0;Q.UI.syncBrushUi=()=>{syncCount++;};for(let i=1;i<=100;i++){size.value=String(i);size.dispatchEvent(new win.Event('input',{bubbles:true}));opacity.value=String(i);opacity.dispatchEvent(new win.Event('input',{bubbles:true}));}Q.UI.syncBrushUi=oldSync;
+  ok(syncCount===0 && v.size===100 && v.opacity===1 && doc.querySelector('#sizeVal').textContent==='100' && doc.querySelector('#opacityVal').textContent==='100','rapid slider inputs update exact values without refreshing unrelated brush controls');
+  const sw=doc.querySelector('#btnColor');pointer(sw,'pointerdown',10,10,{id:2501});pointer(sw,'pointermove',25,25,{id:2501});for(let i=0;i<20;i++)pointer(sw,'pointermove',30+i,60+i,{id:2501});await wait(35);let ghost=doc.querySelector('#colorDropGhost');ok(ghost && ghost.style.transform.includes('49px,79px') && ghost.style.left==='' && ghost.style.top==='','colour drag follows latest pointer using compositor transform');pointer(sw,'lostpointercapture',49,79,{id:2501});ok(!doc.querySelector('#colorDropGhost'),'lost pointer capture removes pending colour indicator');
   }
 
   await App.saveNow(false);

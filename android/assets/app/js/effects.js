@@ -165,6 +165,18 @@
     }
     return image;
   };
+  // Three-stop luminance gradient map; transparent pixels and alpha are untouched.
+  Q.gradientMap = function (image,colors,strength,mask) {
+    if(!Array.isArray(colors) || colors.length!==3 || colors.some(c=>!Array.isArray(c) || c.length!==3 || c.some(n=>!Number.isInteger(n) || n<0 || n>255)) || !Number.isFinite(strength) || strength<0 || strength>1) throw new Error('Invalid gradient map');
+    const lut=new Uint8ClampedArray(256*3);
+    for(let n=0;n<256;n++) {const t=n/255*2,i=t<1 ? 0 : 1,f=t-i;for(let c=0;c<3;c++)lut[n*3+c]=colors[i][c]*(1-f)+colors[i+1][c]*f;}
+    const d=image.data,w=image.width,h=image.height;let minX=w,minY=h,maxX=-1,maxY=-1;
+    for(let n=0;n<w*h;n++) {const i=n*4;if(!d[i+3] || (mask && !mask[n]) || strength===0)continue;const l=Math.round(0.2126*d[i]+0.7152*d[i+1]+0.0722*d[i+2])*3;
+      const r=Math.round(d[i]+(lut[l]-d[i])*strength),g=Math.round(d[i+1]+(lut[l+1]-d[i+1])*strength),b=Math.round(d[i+2]+(lut[l+2]-d[i+2])*strength);if(r===d[i] && g===d[i+1] && b===d[i+2])continue;
+      d[i]=r;d[i+1]=g;d[i+2]=b;const x=n%w,y=Math.floor(n/w);minX=Math.min(minX,x);minY=Math.min(minY,y);maxX=Math.max(maxX,x);maxY=Math.max(maxY,y);
+    }
+    return maxX<0 ? null : {x:minX,y:minY,w:maxX-minX+1,h:maxY-minY+1};
+  };
   // Offline representative sample: previews use the same pixel effect engine,
   // but deliberately do not claim to be a live preview of the artwork.
   Q.effectPreviewCanvas = function (type) {

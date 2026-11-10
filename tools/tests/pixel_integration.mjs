@@ -1217,4 +1217,68 @@ console.log('6.2 direct flip controls');
 {
  const d=setup(),cel=d.activeCel(true),ctx=cel.getContext('2d');ctx.fillStyle='#f00';ctx.fillRect(1,1,6,6);App.view.selection={x:1,y:1,w:6,h:6,runs:[{x:1,y:1,w:2},{x:1,y:2,w:2},{x:1,y:3,w:2},{x:1,y:4,w:2},{x:1,y:5,w:2},{x:1,y:6,w:6}]};d.history.clear();App.beginCanvasTransform();const t=App.view.meshTransform;t.flipX=true;t.sampling='nearest';ok(!App.applyCanvasTransform().error && pixel(cel,1,1)[3]===0 && pixel(cel,5,1)[0]===255 && pixel(cel,3,1)[0]===255,'masked flip cuts only selected source and composites onto untouched destination');const s=App.view.selection,m=Q.selectionMask(s);ok(!!m && !m[0] && !!m[5],'masked flip mirrors the hard selection footprint');
 }
+console.log('6.3 gradient mapping');
+{
+ const im={width:4,height:1,data:new Uint8ClampedArray([0,0,0,255,128,128,128,128,255,255,255,255,200,20,20,0])}, colors=[[0,0,255],[0,255,0],[255,0,0]];
+ const r=Q.gradientMap(im,colors,1,null);ok(r && same([...im.data.slice(0,4)],[0,0,255,255]) && im.data[5]>250 && same([...im.data.slice(8,12)],[255,0,0,255]),'gradient maps shadows, midtones and highlights');ok(im.data[7]===128 && same([...im.data.slice(12,16)],[200,20,20,0]),'gradient preserves alpha and ignores transparent pixels');
+ const half={width:1,height:1,data:new Uint8ClampedArray([0,0,0,255])};Q.gradientMap(half,colors,0.5,null);ok(same([...half.data],[0,0,128,255]),'gradient strength blends with original colour');const untouched={width:1,height:1,data:new Uint8ClampedArray([0,0,0,255])};ok(!Q.gradientMap(untouched,colors,0,null) && !Q.gradientMap(untouched,colors,1,new Uint8Array([0])),'zero strength and mask exclusions make no changes');
+}
+{
+ const d=setup(),cel=d.activeCel(true),c=cel.getContext('2d');c.fillStyle='#000';c.fillRect(0,0,16,16);c.clearRect(4,4,4,4);c.fillStyle='rgba(255,255,255,0.5)';c.fillRect(4,4,4,4);d.history.clear();App.view.selection=Q.ellipseSelection({x:2,y:2},{x:10,y:10},16,16);d.layer().alphaLocked=true;const alpha=pixel(cel,5,5)[3],before=[...c.getImageData(0,0,16,16).data],target=App.gradientMapTarget(),colors=[[0,0,255],[0,255,0],[255,0,0]];
+ ok(App.applyGradientMap(target,colors,1).started,'gradient starts against the captured target');await new Promise(r=>setTimeout(r,80));ok(pixel(cel,5,5)[0]>200 && pixel(cel,5,5)[3]===alpha && same(pixel(cel,2,2),[0,0,0,255]) && d.history.undoStack.length===1,'gradient respects elliptical selection and preserves alpha lock');d.history.undo();ok(c.getImageData(0,0,16,16).data.every((v,i)=>v===before[i]),'gradient undo restores exact pixels');d.history.redo();ok(pixel(cel,5,5)[0]>200,'gradient redo reapplies mapped pixels');
+ App.view.selection=null;d.history.clear();let t=App.gradientMapTarget();d.layer().locked=true;ok(App.applyGradientMap(t,colors,1).error && !d.history.canUndo(),'gradient refuses locked layers');d.layer().locked=false;t=App.gradientMapTarget();d.addLayer();ok(App.applyGradientMap(t,colors,1).error,'gradient rejects a stale layer');
+}
+{
+ const d=setup(),cel=d.activeCel(true),c=cel.getContext('2d');c.fillStyle='#000';c.fillRect(0,0,16,16);d.history.clear();App.view.selection={x:1,y:1,w:8,h:8};let t=App.gradientMapTarget();const colors=[[0,0,255],[0,255,0],[255,0,0]];ok(App.applyGradientMap(t,colors,1).started,'gradient operation can be scheduled');App.view.selection.x=2;await new Promise(r=>setTimeout(r,80));ok(same(pixel(cel,4,4),[0,0,0,255]) && !d.history.canUndo() && !App.view.locked,'stale gradient selection cancels atomically and unlocks view');
+ App.view.selection=null;t=App.gradientMapTarget();ok(App.applyGradientMap(t,colors,0).started,'zero-strength gradient can be requested');await new Promise(r=>setTimeout(r,80));ok(!d.history.canUndo() && same(pixel(cel,4,4),[0,0,0,255]),'zero-strength gradient adds no history');
+ const old=c.getImageData.bind(c);let reads=0;c.getImageData=function(...args){if(++reads===2)throw Error('memory');return old(...args);};t=App.gradientMapTarget();App.applyGradientMap(t,colors,1);await new Promise(r=>setTimeout(r,80));c.getImageData=old;ok(!d.history.canUndo() && same(pixel(cel,4,4),[0,0,0,255]) && !App.view.locked,'gradient undo-allocation failure leaves artwork untouched');
+}
+{
+ const big=new Q.Doc({width:4096,height:2048});big.activeCel(true);App.doc=big;App.view={selection:null,locked:false};const target=App.gradientMapTarget(),result=App.applyGradientMap(target,[[0,0,0],[128,128,128],[255,255,255]],1);ok(result.error && result.error.includes('4 MP') && !big.history.canUndo() && !App.view.locked,'gradient refuses oversized area before editing or locking');
+}
+console.log('6.3 cooperative connected fill');
+{
+  const referenceFloodFill = function (image, sx, sy, rgb, threshold, preserveAlpha, mask) {
+    const w=image.width, h=image.height, data=image.data;
+    sx=Math.floor(sx); sy=Math.floor(sy);
+    if (sx < 0 || sy < 0 || sx >= w || sy >= h) return null;
+    const start=(sy*w+sx)*4, original=[data[start],data[start+1],data[start+2],data[start+3]];
+    if (preserveAlpha && original[3] === 0) return null;
+    const tol=Q.clamp(Number(threshold) || 0,0,128);
+    if (tol === 0 && original[3] === 255 && original[0] === rgb[0] && original[1] === rgb[1] && original[2] === rgb[2]) return null;
+    const visited=new Uint8Array(w*h), stack=[sy*w+sx];
+    let minX=w,minY=h,maxX=-1,maxY=-1;
+    function matches(index) {
+      if (visited[index] || (mask && !mask[index])) return false;
+      const i=index*4, a=data[i+3];
+      if ((preserveAlpha && a === 0) || Math.abs(a-original[3]) > tol) return false;
+      if (a === 0 && original[3] === 0) return true;
+      return Math.abs(data[i]-original[0])<=tol && Math.abs(data[i+1]-original[1])<=tol && Math.abs(data[i+2]-original[2])<=tol;
+    }
+    while (stack.length) {
+      const seed=stack.pop(), y=Math.floor(seed/w), x=seed%w;
+      if (!matches(seed)) continue;
+      let left=x,right=x;
+      while (left>0 && matches(y*w+left-1)) left--;
+      while (right+1<w && matches(y*w+right+1)) right++;
+      let up=false,down=false;
+      for (let px=left;px<=right;px++) {
+        const index=y*w+px, i=index*4; visited[index]=1;
+        data[i]=rgb[0]; data[i+1]=rgb[1]; data[i+2]=rgb[2]; if (!preserveAlpha) data[i+3]=255;
+        if (y>0) { const can=matches(index-w); if (can && !up) stack.push(index-w); up=can; }
+        if (y+1<h) { const can=matches(index+w); if (can && !down) stack.push(index+w); down=can; }
+      }
+      minX=Math.min(minX,left); maxX=Math.max(maxX,right); minY=Math.min(minY,y); maxY=Math.max(maxY,y);
+    }
+    return maxX<0 ? null : {x:minX,y:minY,w:maxX-minX+1,h:maxY-minY+1};
+  };
+ let seed=12345;const rnd=()=>{seed=(seed*1664525+1013904223)>>>0;return seed;};let identical=true;
+ for(let trial=0;trial<16;trial++) {const w=39,h=23,data=new Uint8ClampedArray(w*h*4),mask=new Uint8Array(w*h);for(let i=0;i<w*h;i++){data[i*4]=rnd()%4*40;data[i*4+1]=rnd()%3*45;data[i*4+2]=rnd()%3*50;data[i*4+3]=rnd()%2?255:0;mask[i]=rnd()%5?1:0;}const a={width:w,height:h,data:new Uint8ClampedArray(data)},b={width:w,height:h,data:new Uint8ClampedArray(data)},legacy={width:w,height:h,data:new Uint8ClampedArray(data)},x=rnd()%w,y=rnd()%h,alpha=!!(trial%2),tol=trial%3*20,ma=trial%2?mask:null;const old=referenceFloodFill(legacy,x,y,[90,80,70],tol,alpha,ma),one=Q.floodFill(a,x,y,[90,80,70],tol,alpha,ma),two=await Q.floodFillAsync(b,x,y,[90,80,70],tol,alpha,ma,()=>true);if(JSON.stringify(old)!==JSON.stringify(two) || JSON.stringify(one)!==JSON.stringify(two) || !a.data.every((v,i)=>v===b.data[i] && v===legacy.data[i]))identical=false;}
+ for(let trial=0;trial<6;trial++) {const w=100,h=100,source=new Uint8ClampedArray(w*h*4),mask=new Uint8Array(w*h).fill(1);for(let y=0;y<h;y++)for(let x=0;x<w;x++){const n=y*w+x,i=n*4;source[i]=x<75?30:150;source[i+1]=50;source[i+2]=80;source[i+3]=(x>35 && x<45 && y>20 && y<80)?0:255;if(x>20 && x<30 && y>30 && y<65)mask[n]=0;}const a={width:w,height:h,data:new Uint8ClampedArray(source)},b={width:w,height:h,data:new Uint8ClampedArray(source)},m=trial%2?mask:null,alpha=trial%3===0,tol=trial%2?20:0,old=referenceFloodFill(a,10,10,[200,90,50],tol,alpha,m),fresh=await Q.floodFillAsync(b,10,10,[200,90,50],tol,alpha,m,()=>true);if(JSON.stringify(old)!==JSON.stringify(fresh)||!a.data.every((v,i)=>v===b.data[i]))identical=false;}
+ ok(identical,'sliced fill matches the 6.2 algorithm across colours, masks and alpha lock');
+ const image={width:256,height:1024,data:new Uint8ClampedArray(256*1024*4)};let heartbeat=false;setTimeout(()=>heartbeat=true,0);const rect=await Q.floodFillAsync(image,0,0,[255,0,0],0,false,null,()=>true);ok(heartbeat && rect.w===256 && rect.h===1024 && image.data.at(-1)===255,'large connected fill yields to the event loop and completes');
+}
+{
+ const d=new Q.Doc({width:256,height:256});App.doc=d;App.view={selection:{x:0,y:0,w:256,h:256},color:[255,0,0],dirty:false,locked:false};const cel=d.activeCel(true);d.history.clear();App.fillSource='active';App.fillScope='connected';App.fillThreshold=0;const old=Q.createFloodFillJob;Q.createFloodFillJob=function(...args){const job=old(...args),step=job.step;let first=true;job.step=function(...s){const result=step(...s);if(first){first=false;App.view.selection.x=1;}return result;};return job;};App.fillAt(10,10);await new Promise(r=>setTimeout(r,180));Q.createFloodFillJob=old;ok(pixel(cel,10,10)[3]===0 && !d.history.canUndo() && !App.view.locked,'selection changed during sliced fill prevents commit and unlocks');
+}
 console.log(`all ${n} raster integration checks passed`);

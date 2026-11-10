@@ -4,20 +4,20 @@ Developed by **Qmer**. An offline painting and frame-animation studio for Androi
 brushes, layers, a colour wheel, a frame timeline with onion skin, Procreate's gesture
 vocabulary, and PNG/JPEG/GIF export. No account, no ads, no network permission.
 
-**Download:** [`Qelem-6.2.apk`](../artifacts/Qelem-6.2.apk) (~339 KB)
+**Download:** [`Qelem-6.3.apk`](../artifacts/Qelem-6.3.apk) (~343 KB)
 
 | | |
 |---|---|
 | Package | `com.qalam.studio` |
-| Version | 6.2 (versionCode 53) |
+| Version | 6.3 (versionCode 54) |
 | Requires | Android 8.0+ (minSdk 26), built for targetSdk 33 |
 | Permissions | `VIBRATE` only — no internet, no storage, no location |
 | Signing | APK Signature Scheme v1 + v2, self-signed with a public test key |
-| SHA-256 | `7e702d0e0f0c76db0d7a5a802e2013d38387ad8b29187c8b68798e32feab5d77` |
+| SHA-256 | `6f77acfcd7efca722018ed091d46117cca9c5653b2e1617bef6b70166175a33a` |
 
 ## Install
 
-1. Download `Qelem-6.2.apk` to the phone (or copy it over USB).
+1. Download `Qelem-6.3.apk` to the phone (or copy it over USB).
 2. Open it from the file manager. Android will ask you to allow installs from that
    app the first time ("Install unknown apps") — allow it, then install.
 3. Open **Qelem**.
@@ -44,6 +44,18 @@ with Smooth or Pixelated sampling and undo restores pixels. Switching styles pre
 the grid; a Distort corner move rebuilds its interior. This raster operation has a
 2 MP and estimated 64 MiB limit, may block on large areas, and is not a full or
 perspective-correct warp.
+
+**Gradient Map** — recolour shadows, midtones and highlights with three fixed,
+editable colour stops, starting presets, reverse and strength. A small active-cel
+preview is approximate; Apply is destructive and undoable, respects selection and
+preserves alpha. The affected area has a 4 MP / estimated 64 MiB limit; this is not
+a live adjustment layer or a full gradient library.
+
+**Interaction** — colour-drop movement is frame-coalesced and the default connected
+fill yields between scan batches; size/opacity sliders update less unrelated UI and
+Effects strength previews are throttled. The canvas remains locked during fill;
+readback, commit and other sampling modes may still pause. Actual Android touch
+performance remains untested.
 
 **Fill sampling** — fill, colour drop and Magic wand can sample the active layer or
 the visible-layer composite, and match connected or all similar pixels. Fill edits

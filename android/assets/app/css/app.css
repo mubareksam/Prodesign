@@ -774,3 +774,22 @@ button:focus-visible, input:focus-visible, select:focus-visible, summary:focus-v
 .mesh-flips { grid-column:1 / -1; display:flex; gap:6px; align-items:center; }
 .mesh-flips .mesh-flip { width:40px; height:40px; color:#f4f4f8; border:1px solid #777; }
 .mesh-flips .mesh-flip[aria-pressed="true"] { background:#ffcf32; color:#1c1c1c; }
+
+/* Keep the colour-drop cursor on the compositor; never animate its position. */
+.color-drop-ghost { top:0; left:0; will-change:transform; box-shadow:0 3px 12px #000a,0 0 0 3px #ffd14c88; }
+.color-drop-ghost::after { content:""; position:absolute; inset:-7px; border:2px solid #ffe79f; border-radius:50%; opacity:.65; animation:drop-pulse 1.1s ease-out infinite; }
+@keyframes drop-pulse { from {transform:scale(.8);opacity:.65;} to {transform:scale(1.32);opacity:0;} }
+@media (prefers-reduced-motion:reduce) { .color-drop-ghost::after { animation:none; opacity:.4; } }
+
+.gradient-presets { display:flex; flex-wrap:wrap; gap:6px; margin:8px 0; }
+.gradient-stops { display:grid; gap:6px; }
+.gradient-stop { display:flex; align-items:center; gap:7px; min-width:0; }
+.gradient-stop label { width:80px; flex:none; font-size:12px; }
+.gradient-stop input[type=color] { width:44px; height:44px; padding:2px; flex:none; }
+.gradient-stop input[type=text] { flex:1; min-width:0; }
+.gradient-map-bar { height:20px; border-radius:5px; margin:10px 0; border:1px solid #aaa; }
+
+/* Indeterminate colour-fill activity; the fill does not report a percentage. */
+.fill-progress #progressFill { width:32% !important; will-change:transform; animation:fill-activity 1s ease-in-out infinite alternate; }
+@keyframes fill-activity { from {transform:translateX(0);} to {transform:translateX(212%);} }
+@media (prefers-reduced-motion:reduce) { .fill-progress #progressFill { animation:none; width:100% !important; } }

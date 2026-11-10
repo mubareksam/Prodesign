@@ -151,22 +151,31 @@
       const current=colorDrag; current.timer=setTimeout(function(){ if(colorDrag===current && !current.moved) current.held=true; },600);
       try { swatch.setPointerCapture(e.pointerId); } catch(err) {}
     });
+    function positionColorGhost(drag) {
+      drag.frame=0; if(colorDrag!==drag || !drag.ghost) return;
+      drag.ghost.style.transform='translate3d('+drag.lastX+'px,'+drag.lastY+'px,0) translate(-50%,-50%)';
+    }
     swatch.addEventListener('pointermove',function (e) {
       if(!colorDrag || colorDrag.id!==e.pointerId) return;
-      if(Math.hypot(e.clientX-colorDrag.x,e.clientY-colorDrag.y)>8) { colorDrag.moved=true; colorDrag.held=false; clearTimeout(colorDrag.timer); }
-      if(colorDrag.moved) { e.preventDefault(); let dot=document.getElementById('colorDropGhost'); if(!dot) { dot=Q.crel('div','color-drop-ghost'); dot.id='colorDropGhost'; document.body.appendChild(dot); } dot.style.background=Q.rgbToHex(colorDrag.color); dot.style.left=e.clientX+'px'; dot.style.top=e.clientY+'px'; }
+      const drag=colorDrag;
+      if(Math.hypot(e.clientX-drag.x,e.clientY-drag.y)>8) { drag.moved=true; drag.held=false; clearTimeout(drag.timer); }
+      if(drag.moved) {
+        e.preventDefault(); drag.lastX=e.clientX;drag.lastY=e.clientY;
+        if(!drag.ghost) {drag.ghost=Q.crel('div','color-drop-ghost');drag.ghost.id='colorDropGhost';drag.ghost.style.background=Q.rgbToHex(drag.color);document.body.appendChild(drag.ghost);positionColorGhost(drag);}
+        else if(!drag.frame) drag.frame=requestAnimationFrame(function(){positionColorGhost(drag);});
+      }
     });
     function finishColorDrag(e) {
       if(!colorDrag || colorDrag.id!==e.pointerId) return; const drag=colorDrag; colorDrag=null; clearTimeout(drag.timer);
-      const ghost=document.getElementById('colorDropGhost'); if(ghost) ghost.remove();
-      if(drag.held && !drag.moved) { suppressColorClick=true; setTimeout(function(){ suppressColorClick=false; },500); if(e.type!=='pointercancel' && app().doc===drag.doc) app().swapPreviousColor(); return; }
+      if(drag.frame) cancelAnimationFrame(drag.frame); if(drag.ghost) drag.ghost.remove();
+      if(drag.held && !drag.moved) { suppressColorClick=true; setTimeout(function(){ suppressColorClick=false; },500); if(e.type!=='pointercancel' && e.type!=='lostpointercapture' && app().doc===drag.doc) app().swapPreviousColor(); return; }
       if(!drag.moved) return; suppressColorClick=true; setTimeout(function(){ suppressColorClick=false; },500);
-      if(e.type==='pointercancel' || app().doc!==drag.doc || app().view.locked) return;
+      if(e.type==='pointercancel' || e.type==='lostpointercapture' || app().doc!==drag.doc || app().view.locked) return;
       const cv=app().view.canvas, r=cv.getBoundingClientRect(), hit=document.elementFromPoint(e.clientX,e.clientY);
       if(e.clientX<r.left || e.clientX>=r.right || e.clientY<r.top || e.clientY>=r.bottom || hit!==cv) { Q.toast('Drop on the canvas to fill'); return; }
       const p=app().view.toDoc(e.clientX-r.left,e.clientY-r.top); app().fillAt(p.x,p.y,drag.color);
     }
-    swatch.addEventListener('pointerup',finishColorDrag); swatch.addEventListener('pointercancel',finishColorDrag);
+    swatch.addEventListener('pointerup',finishColorDrag); swatch.addEventListener('pointercancel',finishColorDrag); swatch.addEventListener('lostpointercapture',finishColorDrag);
     swatch.addEventListener('click', function () { if(suppressColorClick) { suppressColorClick=false; return; } UI.toggleTray('color'); });
     const eraser=el('#btnEraser'); let erasePress=null, suppressEraserClick=false;
     eraser.addEventListener('pointerdown',function(e) { if(e.button!=null && e.button!==0) return; const p={id:e.pointerId,x:e.clientX,y:e.clientY,held:false}; erasePress=p; p.timer=setTimeout(()=>{ if(erasePress===p) p.held=true; },600); try { eraser.setPointerCapture(e.pointerId); } catch(err) {} });
@@ -346,17 +355,19 @@
     if (timelineOpen) buildTimeline();
   };
 
+  // Slider input is frequent: only update the readouts and the other slider,
+  // and never rewrite the active range when it already has the desired value.
+  UI.syncBrushSliders = function () {
+    const v=app().view, size=String(Math.round(v.size)),opacity=String(Math.round(v.opacity*100));
+    function value(id,n) {const e=Q.el(id);if(e && e.value!==n)e.value=n;}
+    function text(id,n) {const e=Q.el(id);if(e && e.textContent!==n)e.textContent=n;}
+    value('#sizeSlider',size);text('#sizeVal',size);value('#opacitySlider',opacity);text('#opacityVal',opacity);
+    value('#traySizeSlider',size);text('#traySizeValue',size);value('#trayOpacitySlider',opacity);text('#trayOpacityValue',opacity+'%');
+  };
   UI.syncBrushUi = function () {
-    const v = app().view;
-    Q.el('#sizeSlider').value = Math.round(v.size);
-    Q.el('#sizeVal').textContent = Math.round(v.size);
-    Q.el('#opacitySlider').value = Math.round(v.opacity * 100);
-    Q.el('#opacityVal').textContent = Math.round(v.opacity * 100);
+    const v = app().view; UI.syncBrushSliders();
     const sw = Q.el('#btnColor');
     sw.style.background = Q.rgbToHex(v.color);
-    const traySize=Q.el('#traySizeSlider'), trayOpacity=Q.el('#trayOpacitySlider');
-    if(traySize) { traySize.value=Math.round(v.size); Q.el('#traySizeValue').textContent=Math.round(v.size); }
-    if(trayOpacity) { trayOpacity.value=Math.round(v.opacity*100); Q.el('#trayOpacityValue').textContent=Math.round(v.opacity*100)+'%'; }
     Q.el('#btnBrush').classList.toggle('on', tray === 'brushes');
     Q.el('#btnSmudge').classList.toggle('on',v.tool==='smudge'); Q.el('#btnSmudge').setAttribute('aria-pressed',v.tool==='smudge' ? 'true' : 'false');
     Q.el('#btnEraser').classList.toggle('on',!!v.brush.eraser); Q.el('#btnEraser').setAttribute('aria-pressed',v.brush.eraser ? 'true' : 'false');
@@ -1495,9 +1506,39 @@
     const actions=Q.crel('div','modal-actions'), done=Q.crel('button','btn primary','Done'); done.addEventListener('click',function () { UI.closeModal(); }); actions.appendChild(done); card.appendChild(actions); UI.openModal(card);
   };
 
+  UI.gradientMapDialog = function () {
+    const target=app().gradientMapTarget();if(!target) return;
+    const card=Q.crel('div');card.appendChild(Q.crel('h2',null,'Gradient Map'));card.appendChild(Q.crel('p','sub','Map shadows, midtones and highlights to three colours. Preview shows only the active cel and is approximate. Apply affects the current frame and selection, preserves alpha and can be undone.'));
+    const presets=Q.crel('div','gradient-presets');presets.setAttribute('role','group');presets.setAttribute('aria-label','Gradient Map presets');card.appendChild(presets);
+    const stops=Q.crel('div','gradient-stops'),inputs=[];card.appendChild(stops);
+    const gradient=Q.crel('div','gradient-map-bar');gradient.setAttribute('aria-label','Gradient colour preview');card.appendChild(gradient);
+    const error=Q.crel('div','canvas-error');error.setAttribute('role','alert');card.appendChild(error);
+    let schedule=function(){};
+    ['Shadows','Midtones','Highlights'].forEach(function(label,i) {
+      const row=Q.crel('div','gradient-stop');row.appendChild(Q.crel('label',null,label));const picker=Q.crel('input');picker.type='color';picker.setAttribute('aria-label',label+' colour picker');const text=Q.crel('input','select');text.type='text';text.maxLength=7;text.setAttribute('aria-label',label+' HEX');text.autocomplete='off';row.appendChild(picker);row.appendChild(text);stops.appendChild(row);inputs.push({picker,text});
+      picker.addEventListener('input',function(){text.value=picker.value;schedule();});text.addEventListener('input',function(){const rgb=Q.hexToRgb(text.value);if(rgb)picker.value=Q.rgbToHex(rgb);schedule();});
+    });
+    function setColors(colors) {inputs.forEach((v,i)=>{v.text.value=colors[i];v.picker.value=colors[i];});schedule();}
+    [['Sunset',['#241c63','#e95c52','#ffdb8a']],['Ocean',['#0c2042','#128d9b','#d1f3d7']],['Ink',['#101025','#827ab3','#f7f5e8']],['Neutral',['#000000','#808080','#ffffff']]].forEach(function(p){const b=Q.crel('button','chip',p[0]);b.type='button';b.addEventListener('click',()=>setColors(p[1]));presets.appendChild(b);});
+    const reverse=Q.crel('button','chip','Reverse');reverse.type='button';reverse.addEventListener('click',function(){const a=inputs[0].text.value,b=inputs[2].text.value;inputs[0].text.value=b;inputs[2].text.value=a;for(const v of inputs){const c=Q.hexToRgb(v.text.value);if(c)v.picker.value=Q.rgbToHex(c);}schedule();});presets.appendChild(reverse);
+    const row=Q.crel('div','field studio-field');row.appendChild(Q.crel('label',null,'Strength'));const amount=Q.crel('input');amount.type='range';amount.min=0;amount.max=100;amount.value=100;amount.setAttribute('aria-label','Gradient Map strength');const val=Q.crel('div','val','100%');row.appendChild(amount);row.appendChild(val);card.appendChild(row);
+    const preview=Q.canvas(192,192);preview.className='effect-live-preview';preview.setAttribute('aria-label','Gradient Map artwork preview');card.appendChild(preview);const status=Q.crel('p','sub','');card.appendChild(status);
+    const original=Q.canvas(192,192);let ready=false,pending=0;
+    try {if(target.cel){const d=target.doc,f=Math.min(192/d.width,192/d.height);original.width=preview.width=Math.max(1,Math.round(d.width*f));original.height=preview.height=Math.max(1,Math.round(d.height*f));original.getContext('2d').drawImage(target.cel,0,0,original.width,original.height);ready=true;} else status.textContent='Draw on this layer first.';} catch(err){status.textContent='Preview unavailable on this device.';}
+    function colors() {return inputs.map(v=>Q.hexToRgb(v.text.value));}
+    function update() {
+      pending=0;if(!card.isConnected)return;const cs=colors();if(cs.some(c=>!c)){error.textContent='Enter valid 3- or 6-digit HEX colours.';return;}error.textContent='';const hex=cs.map(Q.rgbToHex);gradient.style.background='linear-gradient(90deg,'+hex.join(',')+')';if(!ready)return;
+      try {const scratch=Q.canvas(original.width,original.height),sc=scratch.getContext('2d');sc.drawImage(original,0,0);const image=sc.getImageData(0,0,scratch.width,scratch.height);Q.gradientMap(image,cs,Number(amount.value)/100,null);sc.putImageData(image,0,0);const c=preview.getContext('2d');c.clearRect(0,0,preview.width,preview.height);c.drawImage(original,0,0);c.save();if(target.selection){c.scale(preview.width/target.doc.width,preview.height/target.doc.height);Q.selectionPath(c,target.selection);c.clip();c.setTransform(1,0,0,1,0,0);}c.clearRect(0,0,preview.width,preview.height);c.drawImage(scratch,0,0);c.restore();status.textContent='Approximate current-cel preview; other layers are not shown.';}catch(err){status.textContent='Preview unavailable on this device.';}
+    }
+    schedule=function(){if(!pending)pending=requestAnimationFrame(update);};amount.addEventListener('input',function(){val.textContent=amount.value+'%';schedule();});
+    const actions=Q.crel('div','modal-actions'),cancel=Q.crel('button','btn ghost','Cancel'),apply=Q.crel('button','btn primary','Apply Gradient Map');cancel.addEventListener('click',UI.closeModal);
+    apply.addEventListener('click',function(){const cs=colors(),strength=Number(amount.value)/100;if(cs.some(c=>!c)){error.textContent='Enter valid 3- or 6-digit HEX colours.';return;}const check=app().validateGradientMap(target,cs,strength);if(check.error){error.textContent=check.error;return;}if(app().view.locked){error.textContent='Wait for the current operation.';return;}UI.closeModal();UI.closeTray();const result=app().applyGradientMap(target,cs,strength);if(result.error)Q.toast(result.error,4000);});actions.appendChild(cancel);actions.appendChild(apply);card.appendChild(actions);UI.openModal(card);setColors(['#241c63','#e95c52','#ffdb8a']);
+  };
+
   UI.effectsDialog = function () {
     const card = Q.crel('div'); card.appendChild(Q.crel('h2', null, 'Effects'));
     card.appendChild(Q.crel('p', 'sub', 'Applies to the selected layer and current frame. The change can be undone.'));
+    const mapButton=Q.crel('button','btn ghost');mapButton.innerHTML=icon(ICON.gradient);mapButton.appendChild(document.createTextNode('Gradient Map'));mapButton.setAttribute('aria-label','Open Gradient Map');mapButton.addEventListener('click',function(){UI.closeModal();UI.gradientMapDialog();});card.appendChild(mapButton);
     card.appendChild(Q.crel('p','sub','Adjust strength to preview the current cel below. The small preview is approximate; Apply processes the original pixels. Thumbnails use an offline sample.'));
     const options=[['blur','Gaussian-like blur'],['motion','Motion blur'],['sharpen','Sharpen'],['bloom','Bloom'],['glitch','Glitch'],['pixelate','Pixelate'],['posterize','Posterize'],['solarize','Solarize'],['grayscale','Grayscale'],['invert','Invert'],['sepia','Sepia'],['brightness','Brightness'],['saturation','Saturation'],['contrast','Contrast'],['hue','Hue shift'],['noise','Noise'],['chromatic','Chromatic shift'],['halftone','Halftone'],['threshold','Threshold']];
     let selected='blur';
@@ -1507,7 +1548,7 @@
       const b=Q.crel('button','effect-card'+(option[0]===selected ? ' on' : '')); b.setAttribute('data-effect',option[0]); b.setAttribute('aria-label',option[1]); b.setAttribute('aria-pressed',option[0]===selected ? 'true' : 'false');
       try { b.appendChild(Q.effectPreviewCanvas(option[0])); } catch(e) { b.appendChild(Q.crel('div','effect-fallback')); }
       b.appendChild(Q.crel('span',null,option[1])); b.addEventListener('click',function () {
-        selected=option[0]; selectedName.textContent='Selected: '+option[1]; refreshEffectPreview();
+        selected=option[0]; selectedName.textContent='Selected: '+option[1]; scheduleEffectPreview();
         grid.querySelectorAll('.effect-card').forEach(function (item) { const active=item===b; item.classList.toggle('on',active); item.setAttribute('aria-pressed',active ? 'true' : 'false'); });
       }); grid.appendChild(b);
     }); card.appendChild(grid);
@@ -1529,9 +1570,10 @@
         previewStatus.textContent='Approximate preview of this cel; blur radius is shown at preview scale.';
       } catch(e) { previewStatus.textContent='Preview is unavailable on this device.'; }
     }
+    let effectTimer=0; function scheduleEffectPreview() {if(effectTimer)return;effectTimer=setTimeout(function(){effectTimer=0;if(preview.isConnected)refreshEffectPreview();},60);}
     const amountRow=Q.crel('div','field studio-field'); amountRow.appendChild(Q.crel('label',null,'Strength'));
     const amount=Q.crel('input'); amount.type='range'; amount.min=0; amount.max=100; amount.value=50; amount.setAttribute('aria-label','Effect strength');
-    const value=Q.crel('div','val','50%'); amount.addEventListener('input',function () { value.textContent=amount.value+'%'; refreshEffectPreview(); });
+    const value=Q.crel('div','val','50%'); amount.addEventListener('input',function () { value.textContent=amount.value+'%'; scheduleEffectPreview(); });
     amountRow.appendChild(amount); amountRow.appendChild(value); card.appendChild(amountRow); refreshEffectPreview();
     const actions=Q.crel('div','modal-actions'), cancel=Q.crel('button','btn ghost','Cancel'), apply=Q.crel('button','btn primary','Apply');
     cancel.addEventListener('click',function () { UI.closeModal(); });
@@ -2148,7 +2190,7 @@
     card.appendChild(Q.crel('p', 'sub', 'A paint, sketch and frame-by-frame animation studio for Android. Artwork is stored on this device only — nothing is uploaded.'));
     card.appendChild(Q.crel('p', 'sub', 'Developed by Qmer'));
     card.appendChild(Q.crel('p', 'sub', 'ቀለም (qalam) means “pen” or “ink”.'));
-    card.appendChild(Q.crel('p', 'sub', 'Version 6.2'));
+    card.appendChild(Q.crel('p', 'sub', 'Version 6.3'));
     const actions = Q.crel('div', 'modal-actions');
     const close = Q.crel('button', 'btn primary', 'Close');
     close.addEventListener('click', function () { UI.closeModal(); });

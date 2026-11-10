@@ -198,12 +198,12 @@
 
   App.setSize = function (n) {
     App.view.size = Q.clamp(n, 1, 240);
-    Q.UI.syncBrushUi();
+    Q.UI.syncBrushSliders();
   };
 
   App.setOpacity = function (v) {
     App.view.opacity = Q.clamp(v, 0.01, 1);
-    Q.UI.syncBrushUi();
+    Q.UI.syncBrushSliders();
   };
 
   App.setColor = function (rgb) {
@@ -907,23 +907,25 @@
   App.fillAt = function (x, y, droppedColor) {
     const d=App.doc,v=App.view; if(!d || !v || v.locked || x<0 || y<0 || x>=d.width || y>=d.height) return;
     const layer=d.layer(); if(!layer || !layer.visible) { Q.toast('This layer is hidden'); return; } if(layer.locked) { Q.toast('This layer is locked'); return; }
-    const selection=v.selection, bounds=selection ? {...selection} : {x:0,y:0,w:d.width,h:d.height};
+    const selection=v.selection, selectionSignature=selection ? JSON.stringify(selection) : null, bounds=selection ? {...selection} : {x:0,y:0,w:d.width,h:d.height};
     if(x<bounds.x || y<bounds.y || x>=bounds.x+bounds.w || y>=bounds.y+bounds.h) { Q.toast('Tap inside the selection'); return; }
     const source=App.fillSource==='visible' ? 'visible' : 'active', scope=App.fillScope==='all' ? 'all' : 'connected';
     if(!fillMemoryAllowed(d,bounds,source,scope,selection)) { Q.toast('Fill exceeds the sampling memory limit',4000); return; }
     const originalCel=d.activeCel(false), color=(droppedColor || v.color).slice(), tolerance=App.fillThreshold, alphaLocked=!!layer.alphaLocked, frame=d.activeFrame, frameObj=d.frames[frame], layerIndex=d.activeLayer;
     const state=captureFillState(d,frame,source); v.locked=true; Q.UI.progress('Filling',source==='visible' ? 'Sampling visible layers…' : 'Processing the current layer…',0);
-    const progressNode=document.getElementById ? document.getElementById('progressCard') : null;
-    setTimeout(function () { try {
-      if(App.doc!==d || App.view!==v || d.frames[frame]!==frameObj || d.activeFrame!==frame || d.activeLayer!==layerIndex || d.layer()!==layer || d.activeCel(false)!==originalCel || v.selection!==selection || !layer.visible || layer.locked || !!layer.alphaLocked!==alphaLocked || !fillStateUnchanged(d,frame,state)) { Q.toast('Fill cancelled'); return; }
+    const progressNode=document.getElementById ? document.getElementById('progressCard') : null; if(progressNode && progressNode.classList) progressNode.classList.add('fill-progress');
+    function valid() {return App.doc===d && App.view===v && d.frames[frame]===frameObj && d.activeFrame===frame && d.activeLayer===layerIndex && d.layer()===layer && d.activeCel(false)===originalCel && v.selection===selection && layer.visible && !layer.locked && !!layer.alphaLocked===alphaLocked && !App.playing && fillStateUnchanged(d,frame,state);}
+    setTimeout(async function () { try {
+      if(!valid()) { Q.toast('Fill cancelled'); return; }
       const image=fillSourceImage(d,frame,originalCel,bounds,'active'), mask=Q.selectionMask(bounds);
       let rect;
-      if(source==='active' && scope==='connected') rect=Q.floodFill(image,x-bounds.x,y-bounds.y,color,tolerance,alphaLocked,mask);
+      if(source==='active' && scope==='connected') rect=await Q.floodFillAsync(image,x-bounds.x,y-bounds.y,color,tolerance,alphaLocked,mask,valid);
       else {
         const ref=source==='active' ? image : fillSourceImage(d,frame,originalCel,bounds,'visible');
         const region=Q.matchColorRegion(ref,x-bounds.x,y-bounds.y,tolerance,scope,mask,alphaLocked ? image.data : null);
         rect=Q.fillColorRegion(image,region,color,alphaLocked);
       }
+      if(!valid() || (selection && JSON.stringify(selection)!==selectionSignature)) { Q.toast('Fill cancelled'); return; }
       if(rect) {
         const changed={x:rect.x+bounds.x,y:rect.y+bounds.y,w:rect.w,h:rect.h};
         // Acquire undo pixels before committing. A failed read or write cannot
@@ -934,7 +936,7 @@
         d.history.push({type:'pixels',f:frame,l:layerIndex,rect:changed,before:before}); v.dirty=true; App.markDirty();
       }
       Q.toast(rect ? 'Filled · Undo to revert' : 'Nothing to fill');
-    } catch (err) { Q.toast('Could not fill this canvas',4000); }
+    } catch (err) { Q.toast(err && err.message==='fill cancelled' ? 'Fill cancelled' : 'Could not fill this canvas',4000); }
     finally { closeFillProgress(progressNode); if(App.view===v && App.doc===d && !App.playing) v.locked=false; }
     },40);
   };
@@ -977,6 +979,35 @@
       } catch(err) { Q.toast('Could not recolour on this device',4000); }
       finally { if(!progressNode || document.getElementById('progressCard')===progressNode) Q.UI.endProgress(); if(App.view===v && App.doc===d && !App.playing) v.locked=false; }
     },40);
+    return {started:true};
+  };
+
+  App.gradientMapTarget = function () {
+    const d=App.doc,v=App.view;if(!d || !v) return null;const s=v.selection;
+    return {doc:d,frame:d.frames[d.activeFrame],layer:d.layer(),cel:d.activeCel(false),selection:s,signature:s ? JSON.stringify(s) : null,bounds:s ? {x:s.x,y:s.y,w:s.w,h:s.h} : {x:0,y:0,w:d.width,h:d.height},undo:d.history.undoStack.slice(),redo:d.history.redoStack.slice()};
+  };
+  App.validateGradientMap = function (t,colors,strength) {
+    const d=App.doc,v=App.view;
+    if(!t || !d || !v || t.doc!==d || d.frames[d.activeFrame]!==t.frame || d.layer()!==t.layer || d.activeCel(false)!==t.cel || v.selection!==t.selection || (t.selection && JSON.stringify(t.selection)!==t.signature) || App.playing) return {error:'Artwork or selection changed; reopen Gradient Map'};
+    if(!t.cel || !t.layer.visible || t.layer.locked) return {error:'Show and unlock a layer with artwork first'};
+    if(!Array.isArray(colors) || colors.length!==3 || colors.some(c=>!Array.isArray(c) || c.length!==3 || c.some(n=>!Number.isInteger(n) || n<0 || n>255)) || !Number.isFinite(strength) || strength<0 || strength>1) return {error:'Enter valid HEX colours and strength'};
+    const r=t.bounds;if(![r.x,r.y,r.w,r.h].every(Number.isInteger) || r.x<0 || r.y<0 || r.w<1 || r.h<1 || r.x+r.w>d.width || r.y+r.h>d.height) return {error:'Invalid selection bounds'};
+    if(r.w*r.h>4*1024*1024 || (Q.complexSelection(t.selection) ? 24 : 12)*r.w*r.h>64*1024*1024) return {error:'Gradient Map exceeds the 4 MP or estimated 64 MiB limit'};
+    const h=d.history;if(h.undoStack.length!==t.undo.length || h.redoStack.length!==t.redo.length || t.undo.some((e,i)=>e!==h.undoStack[i]) || t.redo.some((e,i)=>e!==h.redoStack[i])) return {error:'Artwork changed; reopen Gradient Map'};
+    return {};
+  };
+  App.applyGradientMap = function (target,colors,strength) {
+    const v=App.view;if(!v || v.locked) return {error:'Wait for the current operation'};
+    const check=App.validateGradientMap(target,colors,strength);if(check.error)return check;
+    const d=App.doc,r=target.bounds, chosen=colors.map(c=>c.slice());v.locked=true;Q.UI.progress('Gradient Map','Mapping colours on the current layer…',0);const node=document.getElementById ? document.getElementById('progressCard') : null;
+    setTimeout(function(){try {
+      const valid=App.validateGradientMap(target,chosen,strength);if(valid.error){Q.toast(valid.error,4000);return;}
+      const ctx=target.cel.getContext('2d'), image=ctx.getImageData(r.x,r.y,r.w,r.h),mask=target.selection ? Q.selectionMask(target.selection) : null, rect=Q.gradientMap(image,chosen,strength,mask);
+      if(rect) {const changed={x:r.x+rect.x,y:r.y+rect.y,w:rect.w,h:rect.h},before=ctx.getImageData(changed.x,changed.y,changed.w,changed.h);
+        try {ctx.putImageData(image,r.x,r.y,rect.x,rect.y,rect.w,rect.h);} catch(err){try {ctx.putImageData(before,changed.x,changed.y);} catch(ignore){} throw err;}
+        d.history.push({type:'pixels',f:d.activeFrame,l:d.activeLayer,rect:changed,before:before});v.dirty=true;App.markDirty();}
+      Q.toast(rect ? 'Gradient Map applied · Undo to restore' : 'No pixels changed',3000);
+    }catch(err){Q.toast('Could not apply Gradient Map on this device',4000);}finally{closeFillProgress(node);if(App.doc===d && App.view===v && !App.playing)v.locked=false;}},40);
     return {started:true};
   };
 
