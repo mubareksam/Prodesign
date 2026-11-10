@@ -106,7 +106,7 @@
   Q.BRUSH_DEFAULTS = Q.BRUSHES.map(function (b) { return Object.assign({}, b); });
   Q.restoreBrushSettings = function (saved) {
     if (!saved || typeof saved !== 'object') return;
-    const fields = ['spacing', 'flow', 'opacity', 'hardness', 'grain', 'pressureSize', 'pressureAlpha', 'streamline'];
+    const fields = ['spacing', 'flow', 'opacity', 'hardness', 'grain', 'pressureSize', 'pressureAlpha', 'streamline', 'scatter', 'jitter', 'velocitySize', 'taperIn'];
     Q.BRUSHES.forEach(function (brush) {
       const settings = saved[brush.id];
       if (!settings || typeof settings !== 'object') return;
@@ -116,6 +116,61 @@
     });
   };
 
+  // Custom profiles are independent copies of existing engines, not imported
+  // tips. Keep defaults separately so Reset returns to the copied profile.
+  const customKey='qelem-custom-brushes', customFields=['hardness','size','opacity','flow','spacing','pressureSize','pressureAlpha','velocitySize','taperIn','jitter','scatter','streamline','grain'];
+  let customRecords=[];
+  function validValue(key,v) { return typeof v==='number' && Number.isFinite(v) && v>=(key==='size' ? 1 : key==='spacing' ? 0.02 : 0) && v<=(key==='size' ? 240 : key==='streamline' ? 0.9 : 1); }
+  function cleanProfile(p) {
+    if(!p || typeof p!=='object' || !['fill','soft','grain'].includes(p.engine) || typeof p.eraser!=='boolean') return null;
+    const clean={engine:p.engine,eraser:p.eraser};
+    for(const key of customFields) { if(!validValue(key,p[key])) return null; clean[key]=p[key]; }
+    return clean;
+  }
+  function profile(b) {
+    const p={engine:b.engine,eraser:!!b.eraser};
+    for(const key of customFields) { let n=b[key]; if(!Number.isFinite(n)) n=key==='size' ? 14 : key==='spacing' ? 0.06 : key==='grain' && b.engine==='grain' ? 0.7 : 0; p[key]=Q.clamp(n,key==='size' ? 1 : key==='spacing' ? 0.02 : 0,key==='size' ? 240 : key==='streamline' ? 0.9 : 1); } return p;
+  }
+  function saveCustom(records) { try { localStorage.setItem(customKey,JSON.stringify(records)); return true; } catch(e) { return false; } }
+  function register(rec) { const b={...rec.current,id:rec.id,name:rec.name,custom:true}; Q.BRUSHES.push(b); return b; }
+  Q.restoreCustomBrushes = function () {
+    Q.BRUSHES=Q.BRUSHES.filter(b=>!b.custom); customRecords=[];
+    let input; try { input=JSON.parse(localStorage.getItem(customKey) || '[]'); } catch(e) { return; }
+    if(!Array.isArray(input)) return; const seen=new Set(Q.BRUSHES.map(b=>b.id));
+    for(const rec of input.slice(0,100)) {
+      if(!rec || typeof rec.id!=='string' || !/^custom-[a-z0-9]{1,40}$/.test(rec.id) || seen.has(rec.id) || typeof rec.name!=='string' || !rec.name.trim() || rec.name.length>40) continue;
+      const base=cleanProfile(rec.base), current=cleanProfile(rec.current); if(!base || !current || base.engine!==current.engine || base.eraser!==current.eraser) continue;
+      const clean={id:rec.id,name:rec.name.trim(),base:base,current:current}; seen.add(rec.id); customRecords.push(clean); register(clean); if(customRecords.length===24) break;
+    }
+  };
+  Q.createCustomBrush = function (source) {
+    if(!source || source.syncedEraser || !Q.BRUSHES.includes(source)) return {error:'Choose a library brush first'};
+    if(customRecords.length>=24) return {error:'Custom brush limit reached (24)'};
+    const id='custom-'+Q.uid(); if(Q.BRUSHES.some(b=>b.id===id) || !/^custom-[a-z0-9]{1,40}$/.test(id)) return {error:'Could not create a unique brush ID'};
+    const base=profile(source), rec={id:id,name:source.name.slice(0,35)+' copy',base:base,current:{...base}}, next=customRecords.concat(rec);
+    if(!saveCustom(next)) return {error:'Could not save custom brush on this device'}; customRecords=next; return {brush:register(rec)};
+  };
+  Q.updateCustomBrush = function (brush,key,value) {
+    const index=customRecords.findIndex(r=>r.id===brush.id); if(index<0 || !customFields.includes(key) || !validValue(key,value)) return false;
+    const next=customRecords.slice(), old=next[index]; next[index]={...old,current:{...old.current,[key]:value}};
+    if(!saveCustom(next)) return false; customRecords=next; brush[key]=value; return true;
+  };
+  Q.renameCustomBrush = function (brush,name) {
+    name=typeof name==='string' ? name.trim() : ''; const index=customRecords.findIndex(r=>r.id===brush.id);
+    if(index<0 || !name || name.length>40) return false; const next=customRecords.slice(); next[index]={...next[index],name:name};
+    if(!saveCustom(next)) return false; customRecords=next; brush.name=name; return true;
+  };
+  Q.resetCustomBrush = function (brush) {
+    const index=customRecords.findIndex(r=>r.id===brush.id); if(index<0) return false;
+    const next=customRecords.slice(), old=next[index]; next[index]={...old,current:{...old.base}};
+    if(!saveCustom(next)) return false; customRecords=next; Object.assign(brush,old.base); return true;
+  };
+  Q.deleteCustomBrush = function (brush) {
+    const index=customRecords.findIndex(r=>r.id===brush.id); if(index<0) return false;
+    const next=customRecords.filter(r=>r.id!==brush.id); if(!saveCustom(next)) return false;
+    customRecords=next; const i=Q.BRUSHES.indexOf(brush); if(i>=0) Q.BRUSHES.splice(i,1); return true;
+  };
+
   Q.brushById = function (id) {
     for (const b of Q.BRUSHES) if (b.id === id) return b;
     return Q.BRUSHES[0];
@@ -123,12 +178,13 @@
 
   /* ── stamp sprites ──────────────────────────────────────── */
 
-  const spriteCache = Object.create(null);
+  const spriteCache = new Map();
+  const SPRITE_CACHE_LIMIT = 32;
   const SPRITE = 128;
 
   Q.brushSprite = function (brush, rgb) {
     const key = brush.id + '|' + rgb.join(',') + '|' + (brush.hardness || 0).toFixed(2) + '|' + (brush.grain || 0).toFixed(2);
-    if (spriteCache[key]) return spriteCache[key];
+    if (spriteCache.has(key)) { const hit=spriteCache.get(key); spriteCache.delete(key); spriteCache.set(key,hit); return hit; }
 
     const S = SPRITE, c = Q.canvas(S, S), g = c.getContext('2d');
     const mid = S / 2;
@@ -167,7 +223,7 @@
     g.fillStyle = Q.rgba(rgb, 1);
     g.fillRect(0, 0, S, S);
 
-    spriteCache[key] = c;
+    spriteCache.set(key,c); if(spriteCache.size>SPRITE_CACHE_LIMIT) spriteCache.delete(spriteCache.keys().next().value);
     return c;
   };
 

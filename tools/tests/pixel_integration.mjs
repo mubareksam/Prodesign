@@ -1009,4 +1009,15 @@ console.log('5.3 combined selections');
  const tall={x:0,y:0,w:3,h:4096}, middle={x:1,y:0,w:1,h:4096}; ok(Q.combineSelections(tall,middle,'subtract',3,4096).error.includes('complex'),'more than 4096 runs is rejected');
  const inv=Q.invertSelection(cut,16,16); ok(!inv.error && inv.selection.runs,'combined selections can be inverted');
 }
+console.log('5.4 custom brush drawing');
+{
+ const entries=new Map(); globalThis.localStorage={getItem:k=>entries.get(k)||null,setItem:(k,v)=>entries.set(k,String(v))}; Q.restoreCustomBrushes();
+ const source=Q.brushById('airbrush'), before=source.scatter, result=Q.createCustomBrush(source), brush=result.brush;
+ ok(brush && brush.custom && brush.engine==='soft' && Q.updateCustomBrush(brush,'scatter',0.42) && source.scatter===before,'custom brush settings are independent of the source');
+ const d=setup(), s=new Q.Stroke(d,brush,[255,0,0],10,1,null,0); s.begin({x:3,y:8,pressure:1,t:1}); s.add({x:12,y:8,pressure:1,t:30}); s.end(); const c=d.activeCel(false);
+ ok([...c.getContext('2d').getImageData(0,0,16,16).data].some((x,i)=>i%4===3 && x>0),'custom brush paints real pixels'); d.history.undo(); ok([...c.getContext('2d').getImageData(0,0,16,16).data].every((x,i)=>i%4!==3 || x===0),'custom brush stroke can be undone');
+ const id=brush.id; Q.restoreCustomBrushes(); ok(Q.brushById(id).scatter===0.42 && Q.brushById(id)!==source,'custom brush settings survive reloading');
+ ok(Q.resetCustomBrush(Q.brushById(id)) && Q.brushById(id).scatter===before,'reset restores copied baseline');
+ Q.deleteCustomBrush(Q.brushById(id)); delete globalThis.localStorage;
+}
 console.log(`all ${n} raster integration checks passed`);

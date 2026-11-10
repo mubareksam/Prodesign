@@ -455,7 +455,7 @@
     brushSlider('Brush opacity in tray','trayOpacity',Math.round(app().view.opacity*100),1,100,n=>app().setOpacity(n/100));
     const filterRow=Q.crel('div','brush-filter'), search=Q.crel('input','select'), categorySelect=Q.crel('select');
     search.type='search'; search.placeholder='Search brushes'; search.setAttribute('aria-label','Search brushes'); search.value=brushSearch;
-    categorySelect.setAttribute('aria-label','Brush category'); [['all','All brushes'],['INK','Ink'],['PENCIL','Pencil'],['PAINT','Paint'],['ERASER','Eraser']].forEach(function(item){ const option=Q.crel('option'); option.value=item[0]; option.textContent=item[1]; categorySelect.appendChild(option); }); categorySelect.value=brushCategory; filterRow.appendChild(search); filterRow.appendChild(categorySelect); root.appendChild(filterRow);
+    categorySelect.setAttribute('aria-label','Brush category'); [['all','All brushes'],['INK','Ink'],['PENCIL','Pencil'],['PAINT','Paint'],['ERASER','Eraser'],['CUSTOM','Custom']].forEach(function(item){ const option=Q.crel('option'); option.value=item[0]; option.textContent=item[1]; categorySelect.appendChild(option); }); categorySelect.value=brushCategory; filterRow.appendChild(search); filterRow.appendChild(categorySelect); root.appendChild(filterRow);
     const resultCount=Q.crel('div','layer-sub'); resultCount.setAttribute('role','status'); root.appendChild(resultCount);
     const grid = Q.crel('div', 'brush-grid');
     Q.BRUSHES.forEach(function (b) {
@@ -468,11 +468,11 @@
         b.engine === 'grain' ? '<path d="M5 19l3-7L16 4l4 4-8 8zM5 19l7-3M14 6l4 4"/>' :
         b.engine === 'soft' ? '<path d="M16 3c1 5 5 7 5 11a6 6 0 01-12 0c0-4 4-6 7-11zM6 16c0 3-1 4-3 5"/>' :
         '<path d="M12 3l7 7-8 8-6 1 1-6zM12 3l-2 8 3 3 6-4M5 19l-2 2"/>';
-      card.dataset.brushName=b.name.toLowerCase(); card.dataset.brushCategory=category;
-      badge.innerHTML = icon(tip) + '<span>' + category + '</span>';
+      card.dataset.brushName=b.name.toLowerCase(); card.dataset.brushCategory=category; card.dataset.custom=b.custom ? 'true' : 'false';
+      badge.innerHTML = icon(tip) + '<span>' + (b.custom ? 'CUSTOM · ' : '') + category + '</span>';
       card.appendChild(badge);
       card.appendChild(cv);
-      card.appendChild(Q.crel('span', 'brush-name', b.name));
+      const brushName=Q.crel('span','brush-name'); brushName.textContent=b.name; card.appendChild(brushName);
       grid.appendChild(card);
       requestAnimationFrame(function () {
         Q.brushPreview(b, cv, document.documentElement.getAttribute('data-theme')==='light' ? [35, 34, 32] : [240, 236, 232]);
@@ -485,7 +485,7 @@
     root.appendChild(grid);
     function filterBrushes() {
       brushSearch=search.value.slice(0,100); brushCategory=categorySelect.value; const term=brushSearch.trim().toLowerCase(); let count=0;
-      grid.querySelectorAll('.brush-card').forEach(function(card) { const match=(!term || card.dataset.brushName.includes(term)) && (brushCategory==='all' || card.dataset.brushCategory===brushCategory); card.classList.toggle('hidden',!match); if(match) count++; });
+      grid.querySelectorAll('.brush-card').forEach(function(card) { const match=(!term || card.dataset.brushName.includes(term)) && (brushCategory==='all' || (brushCategory==='CUSTOM' ? card.dataset.custom==='true' : card.dataset.brushCategory===brushCategory)); card.classList.toggle('hidden',!match); if(match) count++; });
       resultCount.textContent=count ? count+' brush'+(count===1 ? '' : 'es') : 'No brushes match';
     }
     search.maxLength=100; search.addEventListener('input',filterBrushes); categorySelect.addEventListener('change',filterBrushes); filterBrushes();
@@ -502,10 +502,9 @@
     if (app().view.brush.syncedEraser) { r1.disabled=true; r1.title='Switch back to the painting brush to edit pressure'; }
     const v1 = Q.crel('div', 'val', String(r1.value));
     r1.addEventListener('input', function () {
-      app().view.brush.pressureSize = parseInt(r1.value, 10) / 100;
-      const settings = Q.Store.meta('brushSettings') || {};
-      settings[app().view.brush.id] = Object.assign({}, settings[app().view.brush.id], { pressureSize: app().view.brush.pressureSize });
-      Q.Store.meta('brushSettings', settings);
+      const brush=app().view.brush, value=parseInt(r1.value,10)/100;
+      if(brush.custom) { if(!Q.updateCustomBrush(brush,'pressureSize',value)) { r1.value=Math.round(brush.pressureSize*100); Q.toast('Could not save brush',3500); } }
+      else { brush.pressureSize=value; const settings=Q.Store.meta('brushSettings') || {}; settings[brush.id]=Object.assign({},settings[brush.id],{pressureSize:value}); Q.Store.meta('brushSettings',settings); }
       v1.textContent = r1.value;
     });
     row.appendChild(r1); row.appendChild(v1);
@@ -527,40 +526,47 @@
     add.addEventListener('click',function(){ const size=Math.round(app().view.size); if(presets.includes(size)) { error.textContent='This size is already saved.'; return; } if(presets.length>=6) { error.textContent='Remove a size before adding another.'; return; } presets.push(size); Q.Store.meta('sizePresets',presets); error.textContent=''; render(); }); close.addEventListener('click',()=>UI.closeModal()); actions.appendChild(close); actions.appendChild(add); card.appendChild(actions); UI.openModal(card);
   };
 
-  // A focused, local brush editor: adjustments are saved per preset on this device.
+  // Per-device profiles use the existing stamp engines and do not change artwork.
   UI.brushStudio = function () {
-    const brush = app().view.brush;
-    if (brush.syncedEraser) { Q.toast('Switch back to the painting brush to edit its settings'); return; }
-    const card = Q.crel('div');
-    card.appendChild(Q.crel('h2', null, 'Brush studio · ' + brush.name));
-    card.appendChild(Q.crel('p', 'sub', 'Tune this brush. Changes are saved on this device.'));
-    const fields = [ ['Spacing','spacing',2,100], ['Flow','flow',0,100], ['Opacity','opacity',0,100],
-      ['Edge hardness','hardness',0,100], ['Pressure size','pressureSize',0,100],
-      ['Pressure opacity','pressureAlpha',0,100], ['Stabilization','streamline',0,90] ];
-    const settings = Q.Store.meta('brushSettings') || {};
-    fields.forEach(function (field) {
-      const row = Q.crel('div', 'field studio-field');
-      row.appendChild(Q.crel('label', null, field[0]));
-      const slider = Q.crel('input'); slider.type = 'range'; slider.min = field[2]; slider.max = field[3];
-      slider.value = Math.round((brush[field[1]] == null ? 0 : brush[field[1]]) * 100);
-      slider.setAttribute('aria-label', field[0]);
-      const value = Q.crel('div', 'val', slider.value + '%');
-      slider.addEventListener('input', function () {
-        brush[field[1]] = Number(slider.value) / 100;
-        settings[brush.id] = Object.assign({}, settings[brush.id], { [field[1]]: brush[field[1]] });
-        Q.Store.meta('brushSettings', settings); value.textContent = slider.value + '%';
+    const brush=app().view.brush;
+    if(brush.syncedEraser) { Q.toast('Switch back to the painting brush to edit its settings'); return; }
+    const card=Q.crel('div'), title=Q.crel('h2'); title.textContent='Brush studio · '+brush.name; card.appendChild(title);
+    card.appendChild(Q.crel('p','sub','Tune this brush on this device. Duplicate it to create a separate custom profile. Preview shows a painted mark even for erasers.'));
+    const preview=Q.canvas(180,52); preview.className='studio-preview'; preview.setAttribute('aria-label','Live brush preview'); card.appendChild(preview);
+    let pending=false; function renderPreview() { if(pending) return; pending=true; requestAnimationFrame(function(){ pending=false; if(preview.isConnected) Q.brushPreview(brush,preview,document.documentElement.getAttribute('data-theme')==='light' ? [35,34,32] : [240,236,232]); }); } renderPreview();
+    const fields=[['Spacing','spacing',2,100],['Flow','flow',0,100],['Opacity','opacity',0,100],['Edge hardness','hardness',0,100],['Pressure size','pressureSize',0,100],['Pressure opacity','pressureAlpha',0,100],['Stabilization','streamline',0,90],['Speed size','velocitySize',0,100],['Taper in','taperIn',0,100],['Size jitter','jitter',0,100],['Scatter','scatter',0,100]];
+    if(brush.engine==='grain') fields.push(['Grain','grain',0,100]);
+    const settings=Q.Store.meta('brushSettings') || {};
+    fields.forEach(function(field){
+      const row=Q.crel('div','field studio-field'); row.appendChild(Q.crel('label',null,field[0])); const slider=Q.crel('input'); slider.type='range'; slider.min=field[2]; slider.max=field[3]; slider.value=Math.round((brush[field[1]]==null ? 0 : brush[field[1]])*100); slider.setAttribute('aria-label',field[0]);
+      const value=Q.crel('div','val',slider.value+'%');
+      slider.addEventListener('input',function(){
+        const n=Number(slider.value)/100;
+        if(brush.custom) { if(!Q.updateCustomBrush(brush,field[1],n)) { slider.value=Math.round((brush[field[1]]||0)*100); Q.toast('Could not save brush',3500); } }
+        else { brush[field[1]]=n; settings[brush.id]=Object.assign({},settings[brush.id],{[field[1]]:n}); Q.Store.meta('brushSettings',settings); }
+        value.textContent=slider.value+'%'; renderPreview();
       });
       row.appendChild(slider); row.appendChild(value); card.appendChild(row);
     });
-    const actions = Q.crel('div', 'modal-actions');
-    const reset = Q.crel('button', 'btn ghost', 'Reset');
-    reset.addEventListener('click', function () {
-      const original = Q.BRUSH_DEFAULTS.find(function (b) { return b.id === brush.id; });
-      Object.assign(brush, original); delete settings[brush.id]; Q.Store.meta('brushSettings', settings); UI.brushStudio();
-    });
-    const done = Q.crel('button', 'btn primary', 'Done');
-    done.addEventListener('click', function () { UI.closeModal(); UI.openTray('brushes'); });
-    actions.appendChild(reset); actions.appendChild(done); card.appendChild(actions); UI.openModal(card);
+    const actions=Q.crel('div','brush-studio-actions');
+    const duplicate=Q.crel('button','btn ghost','Duplicate brush'); duplicate.addEventListener('click',function(){ const result=Q.createCustomBrush(brush); if(result.error) { Q.toast(result.error,4000); return; } app().setBrush(result.brush.id); UI.brushStudio(); Q.toast('Custom brush created'); }); actions.appendChild(duplicate);
+    if(brush.custom) {
+      const rename=Q.crel('button','btn ghost','Rename brush'); rename.addEventListener('click',function(){ UI.renameBrushDialog(brush); }); actions.appendChild(rename);
+      const del=Q.crel('button','btn danger','Delete brush'); del.addEventListener('click',function(){ UI.confirm('Delete custom brush?', 'This removes the custom brush from this device. Artwork pixels are not changed.',function(){ if(!Q.deleteCustomBrush(brush)) { Q.toast('Could not delete brush',4000); return; } const fallback=Q.brushById('studio'); if(app().lastPaintBrush===brush) app().lastPaintBrush=fallback; if(app().view.brush===brush) app().setBrush(fallback.id); UI.openTray('brushes'); Q.toast('Custom brush deleted'); }); }); actions.appendChild(del);
+    }
+    const reset=Q.crel('button','btn ghost','Reset'); reset.addEventListener('click',function(){
+      if(brush.custom) { if(!Q.resetCustomBrush(brush)) { Q.toast('Could not reset brush',4000); return; } }
+      else { const original=Q.BRUSH_DEFAULTS.find(b=>b.id===brush.id); if(!original) return; fields.forEach(f=>delete brush[f[1]]); Object.assign(brush,original); delete settings[brush.id]; Q.Store.meta('brushSettings',settings); }
+      UI.brushStudio();
+    }); actions.appendChild(reset);
+    const done=Q.crel('button','btn primary','Done'); done.addEventListener('click',function(){ UI.closeModal(); UI.openTray('brushes'); }); actions.appendChild(done); card.appendChild(actions); UI.openModal(card); Q.el('#modalBody').scrollTop=0;
+  };
+  UI.renameBrushDialog = function(brush) {
+    if(!brush || !brush.custom || !Q.BRUSHES.includes(brush)) return;
+    const card=Q.crel('div'); card.appendChild(Q.crel('h2',null,'Rename custom brush')); const row=Q.crel('div','field'); row.appendChild(Q.crel('label',null,'Name')); const input=Q.crel('input','select'); input.value=brush.name; input.maxLength=40; input.setAttribute('aria-label','Custom brush name'); row.appendChild(input); card.appendChild(row);
+    const error=Q.crel('p','canvas-error'); error.setAttribute('role','alert'); card.appendChild(error);
+    const actions=Q.crel('div','modal-actions'), cancel=Q.crel('button','btn ghost','Cancel'), save=Q.crel('button','btn primary','Save');
+    cancel.addEventListener('click',function(){ UI.brushStudio(); }); save.addEventListener('click',function(){ const name=input.value.trim(); if(!name || name.length>40) { error.textContent='Enter a name of up to 40 characters.'; return; } if(!Q.renameCustomBrush(brush,name)) { error.textContent='Could not save this brush.'; return; } UI.brushStudio(); }); actions.appendChild(cancel); actions.appendChild(save); card.appendChild(actions); UI.openModal(card);
   };
 
   /* ── layers ─────────────────────────────────────────────── */
@@ -1990,7 +1996,7 @@
     card.appendChild(Q.crel('p', 'sub', 'A paint, sketch and frame-by-frame animation studio for Android. Artwork is stored on this device only — nothing is uploaded.'));
     card.appendChild(Q.crel('p', 'sub', 'Developed by Qmer'));
     card.appendChild(Q.crel('p', 'sub', 'ቀለም (qalam) means “pen” or “ink”.'));
-    card.appendChild(Q.crel('p', 'sub', 'Version 5.3'));
+    card.appendChild(Q.crel('p', 'sub', 'Version 5.4'));
     const actions = Q.crel('div', 'modal-actions');
     const close = Q.crel('button', 'btn primary', 'Close');
     close.addEventListener('click', function () { UI.closeModal(); });

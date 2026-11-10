@@ -86,5 +86,17 @@ try {
   ok(duplicate.mode==='idb' && duplicate.different && duplicate.name==='Ellipse layout copy' && duplicate.orig==='Ellipse layout' && duplicate.frames===2 && duplicate.first && duplicate.second,'IndexedDB duplicate preserves all frames without overwriting original');
   await page.evaluate(()=>Q.App.backToGallery()); await page.getByRole('button',{name:'Preview artwork: Ellipse layout',exact:true}).first().click();
   ok(await page.getByText('Duplicate artwork',{exact:true}).isVisible(),'gallery preview exposes duplication in real browser'); await page.getByText('Duplicate artwork',{exact:true}).click(); await page.waitForFunction(async()=> (await Q.Store.list()).filter(x=>x.name==='Ellipse layout copy').length>=2); ok(true,'gallery duplicate persists an IndexedDB record');
+  await page.evaluate(()=>{Q.App.createDoc(128,128,'Custom brush');Q.App.setBrush('technical');Q.UI.openTray('brushes');Q.UI.brushStudio();});
+  ok(await page.evaluate(()=>{const p=document.querySelector('.studio-preview'); return [...p.getContext('2d').getImageData(0,0,p.width,p.height).data].some((v,i)=>i%4===3 && v>0);}), 'live brush preview paints actual pixels');
+  await page.getByText('Duplicate brush',{exact:true}).click(); ok(await page.evaluate(()=>document.querySelector('#modalBody').scrollTop===0),'duplicate opens studio at the top on a narrow phone');
+  await page.locator('[aria-label="Scatter"]').fill('57'); await page.getByText('Rename brush',{exact:true}).click(); await page.locator('[aria-label="Custom brush name"]').fill('Browser brush'); await page.getByText('Save',{exact:true}).click();
+  const brushId=await page.evaluate(()=>Q.App.view.brush.id); await page.reload(); await page.waitForFunction(()=>window.Q && Q.App && Q.App.ready);
+  ok(await page.evaluate(id=>Q.brushById(id).name==='Browser brush' && Q.brushById(id).scatter===0.57,brushId),'custom brush persists across real browser reload');
+  await page.evaluate(()=>{Q.App.createDoc(128,128,'Custom brush');Q.App.setBrush('technical');Q.UI.brushStudio();});
+  await page.waitForFunction(()=>{const p=document.querySelector('.studio-preview');return [...p.getContext('2d').getImageData(0,0,p.width,p.height).data].some((v,i)=>i%4===3 && v>0);});
+  const alphaBefore=await page.evaluate(()=>{const p=document.querySelector('.studio-preview');return [...p.getContext('2d').getImageData(0,0,p.width,p.height).data].reduce((sum,v,i)=>sum+(i%4===3 ? v : 0),0);});
+  await page.locator('[aria-label="Opacity"]').fill('0'); await page.waitForTimeout(100);
+  ok(await page.evaluate(before=>{const p=document.querySelector('.studio-preview');return [...p.getContext('2d').getImageData(0,0,p.width,p.height).data].reduce((sum,v,i)=>sum+(i%4===3 ? v : 0),0)<before/5;},alphaBefore), 'live preview updates when opacity changes');
+  await page.evaluate(()=>Q.UI.closeModal());
   ok(errors.length===0,'no browser runtime errors'); console.log(`all ${checks} browser layout checks passed`);
 } finally { await browser.close(); await new Promise(resolve=>server.close(resolve)); }

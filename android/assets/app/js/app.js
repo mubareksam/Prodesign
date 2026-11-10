@@ -54,6 +54,7 @@
     v.globalPressure=Number.isFinite(pressure) ? Q.clamp(pressure,0.5,2) : 1;
     v.globalSmoothing=Number.isFinite(smoothing) ? Q.clamp(smoothing,0,0.9) : 0;
     Q.restoreBrushSettings(Q.Store.meta('brushSettings'));
+    Q.restoreCustomBrushes();
     const savedBrush = Q.Store.meta('brush');
     const savedRecent = Q.Store.meta('recent');
     if (savedRecent && savedRecent.length) App.recent = savedRecent;

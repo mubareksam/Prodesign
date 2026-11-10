@@ -5,6 +5,17 @@ The supplied feature inventory is a roadmap, not a list of completed work.
 
 ## Available now
 
+- Duplicate, rename and delete up to 24 device-local custom brush profiles from
+  existing brushes, including erasers. Reset returns to the copied settings. They
+  use existing stamp engines and are not included in projects or exports; no
+  custom tip import, brush sharing or full Procreate brush engine is provided.
+  Failed local-storage writes are reported and leave the custom profile intact.
+- Brush Studio adds scatter, size jitter, speed-based size, taper-in and grain
+  (grain engines only) controls, plus a live real-engine preview. Preview uses a
+  fixed demonstration path, displays erasers as paint, and may vary randomly.
+  The sprite cache now retains at most 32 tips. Device performance still needs
+  physical Android testing.
+
 - Add or subtract a rectangle, ellipse or lasso from an existing temporary
   selection; the result is a hard run mask with a bounding-box outline. Canvas
   size is capped at 4 megapixels and results at 4096 runs. Empty results are

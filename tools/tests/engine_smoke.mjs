@@ -162,6 +162,26 @@ for (const b of Q.BRUSHES) {
   ok(!!d, 'brush "' + b.name + '" produced a dirty rect');
 }
 
+console.log('bounded brush sprite cache');
+{
+ const b=Q.brushById('airbrush'), first=Q.brushSprite(b,[1,2,3]); ok(first===Q.brushSprite(b,[1,2,3]),'brush sprite cache reuses identical sprite');
+ for(let i=0;i<35;i++) Q.brushSprite(b,[i+10,20,30]); const newFirst=Q.brushSprite(b,[1,2,3]); ok(newFirst!==first,'least recently used brush sprites are evicted');
+ const recent=Q.brushSprite(b,[44,20,30]); ok(recent===Q.brushSprite(b,[44,20,30]),'recent sprites are retained after eviction');
+}
+
+console.log('custom brush storage validation');
+{
+ const entries=new Map(), storage={getItem:k=>entries.get(k)||null,setItem:(k,v)=>entries.set(k,String(v))}; globalThis.localStorage=storage; Q.restoreCustomBrushes();
+ const eraser=Q.createCustomBrush(Q.brushById('eraser')).brush; ok(eraser.eraser,'duplicated eraser preserves erasing behavior'); const id=eraser.id;
+ Q.restoreCustomBrushes(); ok(Q.brushById(id).eraser,'custom eraser remains an eraser after reload');
+ const obj=Q.brushById(id); storage.setItem=()=>{throw Error('full');}; ok(!Q.deleteCustomBrush(obj) && Q.brushById(id)===obj && !Q.renameCustomBrush(obj,'New name'),'quota failure leaves existing profile and name untouched');
+ ok(!!Q.createCustomBrush(Q.brushById('studio')).error,'quota failure prevents creation'); storage.setItem=(k,v)=>entries.set(k,String(v));
+ for(let i=1;i<24;i++) ok(!!Q.createCustomBrush(Q.brushById('studio')).brush,'custom profile '+(i+1)+' created');
+ ok(!!Q.createCustomBrush(Q.brushById('studio')).error && Q.BRUSHES.filter(b=>b.custom).length===24,'custom profile capacity is bounded');
+ Q.restoreCustomBrushes(); ok(Q.BRUSHES.filter(b=>b.custom).length===24,'all allowed profiles persist');
+ entries.set('qelem-custom-brushes','invalid json'); Q.restoreCustomBrushes(); ok(Q.BRUSHES.length===28,'corrupt custom storage does not affect built-ins'); delete globalThis.localStorage;
+}
+
 console.log('compositing + export');
 const flat = doc.flatten(0);
 ok(flat.width === 128 && flat.height === 128, 'flatten matches document size');

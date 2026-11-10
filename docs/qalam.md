@@ -8,11 +8,11 @@ brushes, layers with blend modes, a colour wheel, a frame timeline with onion sk
 Procreate's gesture vocabulary, PNG/GIF export and device-dependent MP4 export — all offline, with no account and
 no network permissions at all.
 
-- Package: `com.qalam.studio` · version 5.3 (versionCode 44)
+- Package: `com.qalam.studio` · version 5.4 (versionCode 45)
 - minSdk 26 (Android 8.0) · targetSdk 33 · armeabi-v7a/arm64/x86/x86_64 independent
   (everything is HTML/JS running inside the app's own `WebView`, so the APK has no
   native code)
-- APK: **`artifacts/Qelem-5.3.apk`** (~321 KB), signed with a v1+v2 scheme
+- APK: **`artifacts/Qelem-5.4.apk`** (~324 KB), signed with a v1+v2 scheme
 - The written analysis of Procreate that this app was specified from:
   [`docs/procreate-analysis.md`](procreate-analysis.md)
 
@@ -20,7 +20,7 @@ no network permissions at all.
 
 ## 1. Install
 
-1. Copy `artifacts/Qelem-5.3.apk` to the phone (USB, Drive, chat to yourself — anything).
+1. Copy `artifacts/Qelem-5.4.apk` to the phone (USB, Drive, chat to yourself — anything).
 2. Open it with the phone's file manager. Android will ask to allow installs from
    that app the first time ("Install unknown apps").
 3. Install and open **Qelem**. If an earlier Qalam version is already installed, Android should offer an update that preserves its data. Back up important artwork first. Android does not allow this app to silently uninstall itself; do not uninstall it unless you have backed up its local artwork.
@@ -88,8 +88,13 @@ Android WebView touch and physical-device layout still need testing.
 
 - **Brush tray** — 28 presets, with labelled ink, pencil, paint and eraser icons and sample stroke thumbnails. Thumbnails are generated using each preset’s brush engine; erasers are shown as painted marks. Search by brush name or choose an ink, pencil, paint or eraser category; both filters combine and remain until cleared or the app restarts.
   Select a brush and open **Brush studio** to adjust spacing, flow, opacity, edge
-  hardness, pressure response and stabilization. Settings are saved per preset on
-  this device. The sliders icon in the brush tray opens **Brush size presets**:
+  hardness, pressure response, stabilization, speed size, taper-in, size jitter,
+  scatter and (for grain tips) grain. A live sample uses the actual brush engine,
+  with erasers displayed as paint. Duplicate a preset into a custom profile, then
+  rename, adjust, reset to the copied settings or delete it with confirmation.
+  Up to 24 custom profiles are saved locally, not in artwork or exports; they use
+  existing engines and do not support imported tips or sharing. Storage failures
+  are reported. Built-in preset adjustments also remain device-local. The sliders icon in the brush tray opens **Brush size presets**:
   save, reuse or remove up to six sizes shared across all brushes on this device.
   The eraser icon on the right rail toggles the hard eraser and your previous
   painting brush. Hold it, then release, to make an eraser using a copy of the
@@ -639,7 +644,7 @@ tools/
   tests/gif_roundtrip.mjs    encodes a GIF and decodes it with an independent decoder
   tests/ui_smoke.mjs         jsdom boot + full UI drive (gallery -> export)
   tests/ui_layout_browser.mjs optional Chromium layout and interaction checks
-artifacts/Qelem-5.3.apk           the signed, installable artefact
+artifacts/Qelem-5.4.apk           the signed, installable artefact
 docs/procreate-analysis.md   the Procreate study this app was built from
 docs/qalam.md                this file
 ```
@@ -669,7 +674,7 @@ Design notes worth knowing before changing code:
 
 ```bash
 bash tools/fetch-toolchain.sh     # once per machine: JVM, apktool, aapt2, jars, npm
-bash tools/build.sh               # -> artifacts/Qelem-5.3.apk (signed + verified)
+bash tools/build.sh               # -> artifacts/Qelem-5.4.apk (signed + verified)
 bash tools/check_reference.sh     # optional: javac-check the Java mirrors
 ```
 
