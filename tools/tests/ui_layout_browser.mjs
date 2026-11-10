@@ -24,7 +24,7 @@ const browser=await chromium.launch({executablePath,args:['--no-sandbox','--no-z
 let checks=0;
 function ok(condition,label) { assert.ok(condition,label); checks++; console.log('  ✓ '+label); }
 try {
-  const page=await browser.newPage({viewport:{width:390,height:844},deviceScaleFactor:1});
+  const page=await browser.newPage({viewport:{width:390,height:844},deviceScaleFactor:1,hasTouch:true});
   const errors=[]; page.on('pageerror',e=>errors.push(e.message));
   for(const [name,width,height] of [['narrow phone',320,640],['phone',390,844],['landscape',800,360],['tablet',1024,768]]) {
     await page.setViewportSize({width,height}); await page.goto(`http://127.0.0.1:${server.address().port}/`);
@@ -44,5 +44,21 @@ try {
     if(width>=700) { const a=await page.locator('#tray').boundingBox(); ok(a.x<width/2,name+' floating panel follows swapped tool rail'); }
     await page.evaluate(()=>Q.UI.closeTray());
   }
+  await page.setViewportSize({width:320,height:640}); await page.goto(`http://127.0.0.1:${server.address().port}/`);
+  await page.waitForFunction(()=>window.Q && Q.App && Q.App.ready);
+  await page.evaluate(()=>{ Q.App.createDoc(128,128,'Touch selection'); Q.App.addLayer(); Q.App.addLayer(); Q.UI.openTray('layers'); });
+  await page.locator('#splash').waitFor({state:'hidden'});
+  const touch=await page.context().newCDPSession(page), row=page.locator('.layer-row').last(); await row.scrollIntoViewIfNeeded();
+  const r=await row.boundingBox(), before=await page.evaluate(()=>({active:Q.App.doc.layer().id,opacity:Q.App.doc.layers[0].opacity}));
+  await touch.send('Input.dispatchTouchEvent',{type:'touchStart',touchPoints:[{x:r.x+45,y:r.y+20}]});
+  await touch.send('Input.dispatchTouchEvent',{type:'touchMove',touchPoints:[{x:r.x+110,y:r.y+20}]});
+  await touch.send('Input.dispatchTouchEvent',{type:'touchEnd',touchPoints:[]});
+  ok(await page.locator('.layer-row[aria-pressed="true"]').count()===2 && await page.evaluate(b=>Q.App.doc.layer().id===b.active && Q.App.doc.layers[0].opacity===b.opacity,before),'real touch swipe selects a second layer without changing opacity or active layer');
+  await page.getByText('Actions · 2').click(); await page.getByText('Duplicate selected').click();
+  ok(await page.evaluate(()=>Q.App.doc.layers.length===5),'touch-selected batch duplicate works');
+  await page.locator('#btnUndo').click(); ok(await page.evaluate(()=>Q.App.doc.layers.length===3),'batch duplicate can be undone from toolbar');
+  await page.evaluate(()=>Q.UI.openTray('layers')); await page.getByText('Select layers',{exact:true}).click(); await page.locator('.layer-row').nth(1).click();
+  ok(await page.locator('.layer-row[aria-pressed="true"]').count()===3,'tap selection mode works on a narrow phone');
+  const brand=await page.locator('#splash span').textContent(); ok(brand==='Qelem','loading and app name use corrected spelling');
   ok(errors.length===0,'no browser runtime errors'); console.log(`all ${checks} browser layout checks passed`);
 } finally { await browser.close(); await new Promise(resolve=>server.close(resolve)); }

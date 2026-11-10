@@ -1,18 +1,18 @@
-# Qalam — a Procreate-style painting & animation studio for Android
+# Qelem — a Procreate-style painting & animation studio for Android
 
 **Developed by Qmer.**
 
-**Qalam** (from Arabic *qalam*, قلم — pen) is a self-contained Android drawing and
+**Qelem** (previously spelled Qalam) is a self-contained Android drawing and
 frame-animation app modelled on Procreate: full-screen canvas, pressure-sensitive
 brushes, layers with blend modes, a colour wheel, a frame timeline with onion skin,
 Procreate's gesture vocabulary, PNG/GIF export and device-dependent MP4 export — all offline, with no account and
 no network permissions at all.
 
-- Package: `com.qalam.studio` · version 5.0 (versionCode 41)
+- Package: `com.qalam.studio` · version 5.1 (versionCode 42)
 - minSdk 26 (Android 8.0) · targetSdk 33 · armeabi-v7a/arm64/x86/x86_64 independent
   (everything is HTML/JS running inside the app's own `WebView`, so the APK has no
   native code)
-- APK: **`artifacts/Qalam-5.0.apk`** (~316 KB), signed with a v1+v2 scheme
+- APK: **`artifacts/Qelem-5.1.apk`** (~318 KB), signed with a v1+v2 scheme
 - The written analysis of Procreate that this app was specified from:
   [`docs/procreate-analysis.md`](procreate-analysis.md)
 
@@ -20,10 +20,10 @@ no network permissions at all.
 
 ## 1. Install
 
-1. Copy `artifacts/Qalam-5.0.apk` to the phone (USB, Drive, chat to yourself — anything).
+1. Copy `artifacts/Qelem-5.1.apk` to the phone (USB, Drive, chat to yourself — anything).
 2. Open it with the phone's file manager. Android will ask to allow installs from
    that app the first time ("Install unknown apps").
-3. Install and open **Qalam**. If an earlier Qalam version is already installed, Android should offer an update that preserves its data. Back up important artwork first. Android does not allow this app to silently uninstall itself; do not uninstall it unless you have backed up its local artwork.
+3. Install and open **Qelem**. If an earlier Qalam version is already installed, Android should offer an update that preserves its data. Back up important artwork first. Android does not allow this app to silently uninstall itself; do not uninstall it unless you have backed up its local artwork.
 
 No permissions are requested except `VIBRATE` (haptic ticks). There is no internet
 permission, so nothing can phone home.
@@ -62,6 +62,8 @@ not configurable.
 Everything is autosaved on the device (`IndexedDB`, with a `localStorage` fallback)
 ≈2.5 s after the last change, when the app goes to the background, and on
 **Menu → Save now**. Reopening an artwork restores every layer and frame.
+
+The corrected spelling does not change the package, signing identity or storage keys. Android 10+ exports still use the existing `Pictures/Qalam` and `Movies/Qalam` folders.
 
 ## 3. Tools and panels
 
@@ -209,6 +211,22 @@ Android WebView touch and physical-device layout still need testing.
   swatch still, then release,
   to swap the current and previous colours. Moving it instead still starts colour
   drop fill; tapping it opens the colour tray. The previous colour is stored locally.
+- **Multi-layer selection and batch actions** — swipe a layer row to the right to
+  add or remove it from the selection, or tap **Select layers** and tap rows. The
+  active layer always remains selected; tap **Done selecting**, then tap a row to
+  make it the sole active layer. **Select all** selects every layer. **Actions · N**
+  can show, hide, lock, unlock, duplicate, move selected layers to the top or
+  bottom, or delete them after confirmation. Each batch edit is one undo step and
+  affects all animation frames. Duplicate copies each cel and layer properties;
+  new copies are placed above the highest selected layer. It refuses copies needing
+  more than 64 MiB in estimated new cel pixels (excluding existing artwork/history).
+  Delete refuses locked layers or the last remaining layer. Batch actions are
+  unavailable while a layer is soloed; restore visibility first. Reordering or
+  duplicating can change clipping relationships. Selection is temporary and scoped
+  to the current open artwork. Drawing, effects and transforms still operate only
+  on the active layer; this is not full Procreate grouping or multi-layer transform.
+  The layer row no longer adjusts opacity on a sideways drag: use its three-dot
+  menu's **Opacity** slider instead. Touch behavior still needs Android-device testing.
 - **Layers tray** — add, duplicate, merge down, clear, delete, reorder (▲▼), rename,
   opacity and 16 blend modes (Normal, Multiply, Screen, Overlay, Darken, Lighten,
   Color dodge/burn, Hard/Soft light, Difference, Exclusion, Hue, Saturation, Color,
@@ -466,7 +484,7 @@ Android WebView touch and physical-device layout still need testing.
   at the copied pixel coordinates. Other frames stay blank on that layer. Pasting
   into a smaller canvas crops outside pixels; a fully off-canvas paste is refused.
   Paste into another artwork in the same session is supported. Cut and paste are
-  separately undoable; the clipboard itself is not part of undo history. The Qalam
+  separately undoable; the clipboard itself is not part of undo history. The Qelem
   clipboard is temporary memory only, not Android's system clipboard: it is not saved
   with the project and is cleared when the app closes, or with Clear clipboard.
   Copy is limited to 32 MiB of clipboard pixels; cut is limited to 64 MiB estimated
@@ -509,12 +527,12 @@ Android WebView touch and physical-device layout still need testing.
 ## 5. Export
 
 - **Export PNG** — flattens the current frame and hands the bytes to the native
-  bridge, which writes `Qalam-<timestamp>.png` into `Pictures/Qalam` through `MediaStore`
+  bridge, which writes `Qelem-<timestamp>.png` into `Pictures/Qalam` through `MediaStore`
   (Android 10+; on 8.0–9.0 the file lands in the app's external folder, whose path
   `Bridge.folder()` reports).
 - **Export animation** — encodes a GIF on the device (median-cut quantiser + LZW,
   no native dependency) with a size choice (50/100/150 %) and loop count (forever /
-  once / 3×), saved the same way as `Qalam-<timestamp>.gif`.
+  once / 3×), saved the same way as `Qelem-<timestamp>.gif`.
 
 - **Export PNG frames** — saves one numbered PNG per animation frame. Frame-hold
   timing is not encoded in the filenames; set timing in your video editor. This
@@ -589,7 +607,7 @@ tools/
   tests/gif_roundtrip.mjs    encodes a GIF and decodes it with an independent decoder
   tests/ui_smoke.mjs         jsdom boot + full UI drive (gallery -> export)
   tests/ui_layout_browser.mjs optional Chromium layout and interaction checks
-artifacts/Qalam-5.0.apk           the signed, installable artefact
+artifacts/Qelem-5.1.apk           the signed, installable artefact
 docs/procreate-analysis.md   the Procreate study this app was built from
 docs/qalam.md                this file
 ```
@@ -619,7 +637,7 @@ Design notes worth knowing before changing code:
 
 ```bash
 bash tools/fetch-toolchain.sh     # once per machine: JVM, apktool, aapt2, jars, npm
-bash tools/build.sh               # -> artifacts/Qalam-5.0.apk (signed + verified)
+bash tools/build.sh               # -> artifacts/Qelem-5.1.apk (signed + verified)
 bash tools/check_reference.sh     # optional: javac-check the Java mirrors
 ```
 

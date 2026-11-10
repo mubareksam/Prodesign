@@ -16,6 +16,7 @@
   let timelineOpen = false;
   let timelineCategory = 'frames';
   let brushSearch = '', brushCategory = 'all';
+  let layerSelectionDoc=null, layerSelection=new Set(), layerSelectMode=false;
   let railPreferences={side:'left',position:50};
   let railLayoutFrame=0;
   let wheelState = { hue: 210, sat: 0.1, val: 0.12, drag: null };
@@ -633,11 +634,23 @@
     const dupBtn=iconButton('Duplicate layer',ICON.copy,function () { app().duplicateLayer(); });
     const mergeBtn=iconButton('Merge layer down',ICON.merge,function () { app().mergeDownLayer(d.activeLayer); });
     root.appendChild(trayHead('Layers · ' + d.layers.length,[addBtn,dupBtn,mergeBtn]));
+    if(layerSelectionDoc!==d) { layerSelectionDoc=d; layerSelection=new Set(); layerSelectMode=false; }
+    const live=new Set(d.layers.map(l=>l.id)); layerSelection=new Set([...layerSelection].filter(id=>live.has(id)));
+    layerSelection.add(d.layer().id);
+    const controls=Q.crel('div','layer-selection-controls');
+    const mode=Q.crel('button','chip'+(layerSelectMode ? ' on' : ''),layerSelectMode ? 'Done selecting' : 'Select layers');
+    mode.setAttribute('aria-pressed',layerSelectMode ? 'true' : 'false'); mode.addEventListener('click',function(){ layerSelectMode=!layerSelectMode; buildLayers(root); }); controls.appendChild(mode);
+    const all=Q.crel('button','chip','Select all'); all.addEventListener('click',function(){ layerSelectMode=true; layerSelection=new Set(d.layers.map(l=>l.id)); buildLayers(root); }); controls.appendChild(all);
+    if(layerSelection.size>1) { const batch=Q.crel('button','chip on','Actions · '+layerSelection.size); batch.addEventListener('click',function(){ UI.batchLayerSheet(d,[...layerSelection]); }); controls.appendChild(batch); }
+    root.appendChild(controls);
+    const hint=Q.crel('div','layer-select-hint',layerSelectMode ? 'Tap layers to add or remove · the active layer stays selected' : 'Swipe a layer right to select it · tap to make it active'); root.appendChild(hint);
+
 
     const list = Q.crel('div', 'layer-list');
     for (let i = d.layers.length - 1; i >= 0; i--) {
       const layer = d.layers[i];
-      const row = Q.crel('div', 'layer-row' + (i === d.activeLayer ? ' on' : ''));
+      const row = Q.crel('div', 'layer-row' + (i === d.activeLayer ? ' on' : '') + (layerSelection.has(layer.id) && i!==d.activeLayer ? ' multi-selected' : ''));
+      row.setAttribute('role','button'); row.setAttribute('tabindex','0'); row.setAttribute('aria-label',layer.name+(i===d.activeLayer ? ', active layer' : '')); row.setAttribute('aria-pressed',layerSelection.has(layer.id) ? 'true' : 'false');
 
       const thumb = Q.crel('div', 'layer-thumb');
       const tcv = d.layerThumbnail(i, 46);
@@ -646,7 +659,7 @@
 
       const meta = Q.crel('div', 'layer-meta');
       meta.appendChild(Q.crel('div', 'layer-name', escapeHtml(layer.name)));
-      const sub = Q.crel('div', 'layer-sub', Math.round(layer.opacity * 100) + '% · ' + (layer.clipped ? 'Normal (clipped)' : blendLabel(layer.blend)) + (layer.locked ? ' · Locked' : '') + (layer.alphaLocked ? ' · Alpha locked' : '') + (d.solo && d.solo.target===layer.id ? ' · Solo' : ''));
+      const sub = Q.crel('div', 'layer-sub', Math.round(layer.opacity * 100) + '% · ' + (layer.clipped ? 'Normal (clipped)' : blendLabel(layer.blend)) + (layer.locked ? ' · Locked' : '') + (layer.alphaLocked ? ' · Alpha locked' : '') + (d.solo && d.solo.target===layer.id ? ' · Solo' : '') + (layerSelection.size>1 && i===d.activeLayer ? ' · Active' : ''));
       meta.appendChild(sub);
       row.appendChild(meta);
 
@@ -675,14 +688,27 @@
       tools.appendChild(more);
       row.appendChild(tools);
 
-      row.addEventListener('click', function () {
-        d.activeLayer = i;
+      let suppressRowClick=false;
+      function toggleSelected() {
+        if(app().doc!==d || !d.layers.some(l=>l.id===layer.id) || layer.id===d.layer().id) return;
+        if(layerSelection.has(layer.id)) layerSelection.delete(layer.id); else layerSelection.add(layer.id);
         buildLayers(root);
-        UI.syncDoc();
+      }
+      row.addEventListener('click', function () {
+        if(suppressRowClick) { suppressRowClick=false; return; }
+        if(app().doc!==d || d.layers[i]!==layer) return;
+        if(layerSelectMode) toggleSelected();
+        else { d.activeLayer=i; layerSelection=new Set([layer.id]); UI.syncDoc(); }
       });
-
-      // horizontal drag on the row adjusts opacity
-      attachOpacityDrag(row, i, root);
+      row.addEventListener('keydown',function(e){ if(e.key==='Enter' || e.key===' ') { e.preventDefault(); row.click(); } });
+      let swipe=null;
+      row.addEventListener('pointerdown',function(e){ if(e.target.closest('button') || e.isPrimary===false && e.pointerType==='touch') return; swipe={id:e.pointerId,x:e.clientX,y:e.clientY}; });
+      row.addEventListener('pointerup',function(e){
+        if(!swipe || swipe.id!==e.pointerId) return;
+        const dx=e.clientX-swipe.x, dy=e.clientY-swipe.y; swipe=null;
+        if(dx>=45 && dx>Math.abs(dy)*1.5) { suppressRowClick=true; toggleSelected(); setTimeout(()=>{suppressRowClick=false;},500); }
+      });
+      row.addEventListener('pointercancel',function(){ swipe=null; });
       list.appendChild(row);
     }
     root.appendChild(list);
@@ -698,29 +724,24 @@
     return 'Normal';
   }
 
-  function attachOpacityDrag(row, idx, root) {
-    let startX = 0, startOpacity = 1, dragging = false;
-    row.addEventListener('pointerdown', function (e) {
-      if (e.target.closest('button')) return;
-      startX = e.clientX; startOpacity = app().doc.layers[idx].opacity; dragging = true;
+  UI.batchLayerSheet = function(d,ids) {
+    if(app().doc!==d) return;
+    const card=Q.crel('div'); card.appendChild(Q.crel('h2',null,'Selected layers · '+ids.length));
+    card.appendChild(Q.crel('p','sub','Actions apply to every frame and are undoable. Copies use up to 64 MiB of new cel pixels. Duplicating or reordering can change clipping relationships. Drawing and transforms still affect only the active layer. Restore solo before batch edits.'));
+    const grid=Q.crel('div','menu-grid');
+    function run(action) {
+      if(app().doc!==d) { Q.toast('Artwork changed; select layers again'); return; }
+      app().stopPlay(); const error=d.batchLayers(ids,action);
+      if(error) { Q.toast(error,4000); return; }
+      if(action==='delete') { layerSelection=new Set([d.layer().id]); layerSelectMode=false; }
+      app().view.dirty=true; app().markDirty(); UI.syncDoc(); Q.toast('Layers updated · Undo to restore');
+    }
+    [['Duplicate selected','duplicate',ICON.copy],['Show selected','show',ICON.eye],['Hide selected','hide',ICON.eyeOff],['Lock selected','lock',ICON.alphaLock],['Unlock selected','unlock',ICON.alphaLock],['Move to top','top',ICON.up],['Move to bottom','bottom',ICON.down],['Delete selected','delete',ICON.trash]].forEach(function(item){
+      const b=Q.crel('button','menu-item'+(item[1]==='delete' ? ' danger' : '')); b.innerHTML=icon(item[2]); b.appendChild(document.createTextNode(item[0]));
+      b.addEventListener('click',function(){ UI.closeModal(); if(item[1]==='delete') UI.confirm('Delete selected layers?', 'This removes the selected layers and their cels in every frame. Locked layers cannot be deleted. Undo restores them.',function(){run('delete');}); else run(item[1]); }); grid.appendChild(b);
     });
-    row.addEventListener('pointermove', function (e) {
-      if (!dragging) return;
-      const delta = (e.clientX - startX) / 220;
-      const val = Q.clamp(startOpacity + delta, 0.02, 1);
-      app().view.doc.layers[idx].opacity = val;
-      app().view.dirty = true;
-      const sub = row.querySelector('.layer-sub');
-      if (sub) { const layer=app().doc.layers[idx]; sub.textContent=Math.round(val*100)+'% · '+(layer.clipped ? 'Normal (clipped)' : blendLabel(layer.blend))+(layer.locked ? ' · Locked' : '')+(layer.alphaLocked ? ' · Alpha locked' : ''); }
-    });
-    row.addEventListener('pointerup', function () {
-      if (!dragging) return;
-      dragging = false;
-      app().commitLayerOpacity(idx, startOpacity);
-      void root;
-    });
-    row.addEventListener('pointercancel', function () { dragging = false; });
-  }
+    card.appendChild(grid); const close=Q.crel('button','btn ghost','Close'); close.addEventListener('click',UI.closeModal); card.appendChild(close); UI.openModal(card);
+  };
 
   UI.layerSheet = function (i) {
     const d = app().doc;
@@ -754,6 +775,12 @@
     if (layer.clipped) { sel.disabled=true; sel.setAttribute('aria-label','Blend unavailable while clipped'); }
     blendField.appendChild(sel);
     card.appendChild(blendField);
+    const opacity=Q.crel('div','field'); opacity.appendChild(Q.crel('label',null,'Opacity'));
+    const slider=Q.crel('input'); slider.type='range'; slider.min=0; slider.max=100; slider.value=Math.round(layer.opacity*100); slider.setAttribute('aria-label','Layer opacity');
+    const output=Q.crel('span','val',slider.value+'%'); slider.addEventListener('input',function(){ output.textContent=slider.value+'%'; });
+    slider.addEventListener('change',function(){ if(app().doc!==d || !d.layers[i] || d.layers[i].id!==layer.id) return; app().setLayerProp(i,'opacity',Number(slider.value)/100); });
+    opacity.appendChild(slider); opacity.appendChild(output); card.appendChild(opacity);
+
 
     const actions = Q.crel('div', 'menu-grid');
     const mk = function (label, ico, fn, danger) {
@@ -1031,7 +1058,7 @@
       ['Export MP4',ICON.film,()=>{UI.closeTray(); UI.mp4Dialog();}]
     ]);
     group('Preferences', [ ['Smudge edge',ICON.controls,()=>UI.smudgePreferences()], ['Interface appearance',ICON.appearance,()=>UI.themeDialog()], ['Pressure & smoothing',ICON.controls,()=>UI.pressurePreferences()], ['Brush slider layout',ICON.railLayout,()=>UI.railPreferencesDialog()], ['Hold gesture timing',ICON.gestureDelay,()=>UI.gesturePreferences()] ]);
-    group('File & help', [ ['Artwork details',ICON.controls,()=>UI.artworkDetails()], ['Save now',ICON.save,()=>app().saveNow(true)], ['Gestures & help',ICON.sparkle,()=>UI.helpSheet()], ['About Qalam',ICON.layers,()=>UI.aboutSheet()] ]);
+    group('File & help', [ ['Artwork details',ICON.controls,()=>UI.artworkDetails()], ['Save now',ICON.save,()=>app().saveNow(true)], ['Gestures & help',ICON.sparkle,()=>UI.helpSheet()], ['About Qelem',ICON.layers,()=>UI.aboutSheet()] ]);
 
     const info = Q.crel('div', 'layer-sub');
     info.style.margin = '12px 2px 0';
@@ -1203,7 +1230,7 @@
     app().stopPlay(); const d=app().doc; if(!d) return; UI.closeTray();
     const card=Q.crel('div'); card.appendChild(Q.crel('h2',null,'Cut, copy & paste'));
     card.appendChild(Q.crel('p','sub','Cut and copy use the selection on the current layer and frame, or the whole current cel if nothing is selected. Paste ignores the current selection and creates a new top layer on the current frame, at the original canvas coordinates. Pixels beyond the canvas are cropped.'));
-    card.appendChild(Q.crel('p','sub','The Qalam clipboard stays in memory across artworks until cleared or the app closes. It is not the system clipboard and is not saved. Undo restores cut pixels or removes a pasted layer; it does not undo clipboard contents.'));
+    card.appendChild(Q.crel('p','sub','The Qelem clipboard stays in memory across artworks until cleared or the app closes. It is not the system clipboard and is not saved. Undo restores cut pixels or removes a pasted layer; it does not undo clipboard contents.'));
     const clip=app().clipboard, selection=app().view.selection, frame=d.frames[d.activeFrame], layer=d.layer(), cel=d.activeCel(false);
     const bounds=selection ? {x:selection.x,y:selection.y,w:selection.w,h:selection.h} : null;
     const status=Q.crel('p','sub',clip ? 'Clipboard: '+clip.w+' × '+clip.h+' px at ('+clip.x+', '+clip.y+').'+(clip.x+clip.w>d.width || clip.y+clip.h>d.height ? ' Paste will be cropped to this canvas.' : '') : 'Clipboard is empty.'); card.appendChild(status);
@@ -1874,7 +1901,7 @@
   UI.helpSheet = function () {
     const card = Q.crel('div');
     card.appendChild(Q.crel('h2', null, 'Gestures & tools'));
-    card.appendChild(Q.crel('p', 'sub', 'Qalam is built for a finger or a stylus. Stylus pressure changes size and opacity when the pen reports it.'));
+    card.appendChild(Q.crel('p', 'sub', 'Qelem is built for a finger or a stylus. Stylus pressure changes size and opacity when the pen reports it.'));
     const rows = [
       ['One finger / stylus', 'Draw'],
       ['Two fingers', 'Pan, pinch to zoom, twist to rotate'],
@@ -1893,7 +1920,7 @@
       ['Smudge', 'Drag existing pixels on the active layer; opacity controls strength'],
       ['Fit canvas', 'Tap the fit icon in the tool rail to reset zoom and rotation'],
       ['Alpha lock', 'Tap the checkerboard icon on a layer row to protect transparency'],
-      ['Drag a layer row sideways', 'Change layer opacity'],
+      ['Swipe a layer right', 'Add or remove it from the layer selection; opacity is in layer options'],
       ['Double-tap a frame', 'Duplicate, reorder or delete it']
     ];
     rows.forEach(function (r) {
@@ -1916,11 +1943,11 @@
 
   UI.aboutSheet = function () {
     const card = Q.crel('div');
-    card.appendChild(Q.crel('h2', null, 'Qalam'));
+    card.appendChild(Q.crel('h2', null, 'Qelem'));
     card.appendChild(Q.crel('p', 'sub', 'A paint, sketch and frame-by-frame animation studio for Android. Artwork is stored on this device only — nothing is uploaded.'));
     card.appendChild(Q.crel('p', 'sub', 'Developed by Qmer'));
     card.appendChild(Q.crel('p', 'sub', 'ቀለም (qalam) means “pen” or “ink”.'));
-    card.appendChild(Q.crel('p', 'sub', 'Version 5.0'));
+    card.appendChild(Q.crel('p', 'sub', 'Version 5.1'));
     const actions = Q.crel('div', 'modal-actions');
     const close = Q.crel('button', 'btn primary', 'Close');
     close.addEventListener('click', function () { UI.closeModal(); });

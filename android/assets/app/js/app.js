@@ -732,7 +732,7 @@
         const before=ctx.getImageData(r.x,r.y,r.w,r.h), after=sc.getImageData(0,0,r.w,r.h);
         ctx.putImageData(after,r.x,r.y); d.history.push({type:'pixels',f:d.activeFrame,l:d.activeLayer,rect:r,before:before}); v.dirty=true; App.markDirty();
       }
-      App.clipboard={canvas:copy,x:r.x,y:r.y,w:r.w,h:r.h}; Q.toast(cut ? 'Cut · Undo restores the pixels' : 'Copied to Qalam clipboard',3000); return {};
+      App.clipboard={canvas:copy,x:r.x,y:r.y,w:r.w,h:r.h}; Q.toast(cut ? 'Cut · Undo restores the pixels' : 'Copied to Qelem clipboard',3000); return {};
     } catch(err) { return {error:'Could not '+(cut ? 'cut' : 'copy')+' this area on this device'}; }
   };
   App.pasteClipboard = function () {
@@ -920,7 +920,7 @@
     const d = App.doc;
     if (!d) return;
     const cv = d.flatten(d.activeFrame, {background: transparent ? false : d.bg});
-    const ok = Q.saveBytes(cv.toDataURL('image/png'), 'image/png', 'Qalam-' + Q.stamp() + (transparent ? '-transparent' : '') + '.png');
+    const ok = Q.saveBytes(cv.toDataURL('image/png'), 'image/png', 'Qelem-' + Q.stamp() + (transparent ? '-transparent' : '') + '.png');
     Q.toast(ok ? 'PNG saved' : 'Could not save PNG');
   };
 
@@ -934,7 +934,7 @@
       try {
         const png = d.flatten(index, {background: transparent ? false : d.bg}).toDataURL('image/png');
         const number = String(index + 1).padStart(3, '0');
-        if (Q.saveBytes(png, 'image/png', 'Qalam-' + stamp + '-frame-' + number + (transparent ? '-transparent' : '') + '.png')) saved++;
+        if (Q.saveBytes(png, 'image/png', 'Qelem-' + stamp + '-frame-' + number + (transparent ? '-transparent' : '') + '.png')) saved++;
         index++;
         if (index < total) { Q.UI.progress('Exporting PNG sequence', index + ' / ' + total, index / total); setTimeout(step, 0); }
         else { Q.UI.endProgress(); Q.toast('Saved ' + saved + ' of ' + total + ' PNG frames', 4000); }
@@ -951,7 +951,7 @@
       try {
         if (App.doc!==d) { Q.UI.endProgress(); return; }
         const sheet=Q.renderSpriteSheet(d,columns,scale,transparent);
-        const ok=Q.saveBytes(sheet.toDataURL('image/png'),'image/png','Qalam-'+Q.stamp()+'-spritesheet.png');
+        const ok=Q.saveBytes(sheet.toDataURL('image/png'),'image/png','Qelem-'+Q.stamp()+'-spritesheet.png');
         Q.UI.endProgress(); Q.toast(ok ? 'Sprite sheet saved' : 'Could not save sprite sheet');
       } catch (err) { Q.UI.endProgress(); Q.toast('Could not create sprite sheet on this device',4000); }
     },40);
@@ -990,7 +990,7 @@
         const reader = new FileReader();
         reader.onerror = function () { Q.toast('Could not prepare MP4', 4000); };
         reader.onload = function () {
-          const ok = Q.saveBytes(reader.result, 'video/mp4', 'Qalam-' + Q.stamp() + '.mp4');
+          const ok = Q.saveBytes(reader.result, 'video/mp4', 'Qelem-' + Q.stamp() + '.mp4');
           Q.toast(ok ? 'MP4 saved (Movies/Qalam on Android 10+)' : 'Could not save MP4', 4000);
         };
         reader.readAsDataURL(new Blob(chunks, { type: 'video/mp4' }));
@@ -1152,7 +1152,7 @@
                 if (!valid) { fail('MP4 has no video or audio track; no file saved'); return; }
                 finished=true; cleanup();
                 const reader=new FileReader(); reader.onerror=function () { Q.toast('Could not prepare MP4',4000); };
-                reader.onload=function () { const ok=Q.saveBytes(reader.result,'video/mp4','Qalam-'+Q.stamp()+'-audio.mp4'); Q.toast(ok ? 'MP4 with audio saved (Movies/Qalam on Android 10+)' : 'Could not save MP4',4000); };
+                reader.onload=function () { const ok=Q.saveBytes(reader.result,'video/mp4','Qelem-'+Q.stamp()+'-audio.mp4'); Q.toast(ok ? 'MP4 with audio saved (Movies/Qalam on Android 10+)' : 'Could not save MP4',4000); };
                 try { reader.readAsDataURL(blob); } catch(e) { Q.toast('Could not prepare MP4',4000); }
               }).catch(function () { fail('Could not verify MP4 audio and video tracks; no file saved'); });
             };
@@ -1199,7 +1199,7 @@
       }
     }).then(function (res) {
       Q.UI.endProgress();
-      const name = 'Qalam-' + Q.stamp() + '.gif';
+      const name = 'Qelem-' + Q.stamp() + '.gif';
       const ok = Q.saveBytes(res.dataUrl, 'image/gif', name);
       Q.toast(ok ? 'GIF saved to Pictures/Qalam' : 'Could not save the GIF', 2600);
     }).catch(function (err) {

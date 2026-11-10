@@ -1,12 +1,22 @@
-# Qalam feature coverage
+# Qelem feature coverage
 
 This is an independent Android app inspired by Procreate, not a full replacement.
 The supplied feature inventory is a roadmap, not a list of completed work.
 
 ## Available now
 
+- Multi-layer selection via right-swipe or accessible tap mode, Select all, and
+  atomic batch show/hide, lock/unlock, duplicate, move to top/bottom and confirmed
+  delete across all frames. Active layer remains the drawing target. Copies are
+  independent and limited to 64 MiB of estimated new cel pixels; deletion refuses
+  locked layers and deleting all layers. Restore solo first. Selection is session
+  only; no multi-layer transforms or true groups. Reorder/copy can alter clipping.
+- The display name is corrected to Qelem and yellow accents restored. Package,
+  signing and existing storage identifiers remain unchanged; export folders keep
+  their historical Qalam names.
+
 - Canvas-first interface refresh: neutral studio toolbar with direct selection,
-  list-style brush previews, blue active states and redesigned gallery, panels,
+  list-style brush previews, yellow active states and redesigned gallery, panels,
   layers and timeline. Panels have a close button, use a phone bottom sheet or a
   floating panel at wider sizes, and follow the tool rail when swapped. Artwork
   can be renamed via Actions → File & help → Artwork details. This is inspired

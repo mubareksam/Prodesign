@@ -208,6 +208,42 @@
       });
       return true;
     }
+    // Batch actions use stable IDs, all frames and one structural history entry.
+    batchLayers(ids, action) {
+      if (!Array.isArray(ids) || !ids.length || new Set(ids).size!==ids.length) return 'Select at least one layer';
+      const selected=new Set(ids), indices=this.layers.map((l,i)=>selected.has(l.id) ? i : -1).filter(i=>i>=0);
+      if (indices.length!==ids.length) return 'Layers changed; select them again';
+      if (this.solo) return 'Restore solo visibility before batch editing';
+      if (!['show','hide','lock','unlock','top','bottom','duplicate','delete'].includes(action)) return 'Unknown layer action';
+      if (action==='delete' && indices.length===this.layers.length) return 'A canvas needs at least one layer';
+      if (action==='delete' && indices.some(i=>this.layers[i].locked)) return 'Unlock selected layers before deleting';
+      if (['show','hide','lock','unlock'].includes(action)) {
+        const prop=action==='show'||action==='hide' ? 'visible' : 'locked', value=action==='show'||action==='lock';
+        if (indices.every(i=>!!this.layers[i][prop]===value)) return 'No change needed';
+        this.history.struct(function(){ indices.forEach(i=>{this.layers[i][prop]=value;}); }); return '';
+      }
+      if (action==='duplicate') {
+        const count=this.frames.reduce((sum,f)=>sum+indices.filter(i=>!!f.cels[i]).length,0);
+        if (count*this.width*this.height*4>64*1024*1024) return 'Copies exceed the 64 MiB temporary limit';
+        let copies, cels;
+        try {
+          copies=indices.map(i=>({...copyLayer(this.layers[i]),id:Q.uid(),name:(this.layers[i].name+' copy').slice(0,64)}));
+          cels=this.frames.map(f=>indices.map(i=>f.cels[i] ? Q.copyCanvas(f.cels[i]) : null));
+        } catch(e) { return 'Could not allocate layer copies'; }
+        const at=indices[indices.length-1]+1;
+        this.history.struct(function(){ this.layers.splice(at,0,...copies); this.frames.forEach((f,i)=>f.cels.splice(at,0,...cels[i])); });
+        return '';
+      }
+      const remaining=this.layers.map((_,i)=>i).filter(i=>!selected.has(this.layers[i].id));
+      const order=action==='delete' ? remaining : action==='top' ? remaining.concat(indices) : indices.concat(remaining);
+      if (order.length===this.layers.length && order.every((n,i)=>n===i)) return 'No change needed';
+      this.history.struct(function(){
+        const activeId=this.layer().id, oldLayers=this.layers;
+        this.layers=order.map(i=>oldLayers[i]); this.frames.forEach(f=>{const cels=f.cels; f.cels=order.map(i=>cels[i]);});
+        const active=this.layers.findIndex(l=>l.id===activeId); this.activeLayer=active>=0 ? active : Math.min(this.activeLayer,this.layers.length-1);
+      });
+      return '';
+    }
     deleteLayer(i) {
       if (this.layers.length < 2) { Q.toast('A canvas needs at least one layer'); return; }
       if (i < 0 || i >= this.layers.length) return;

@@ -450,7 +450,7 @@ async function run() {
 
   console.log('about');
   Q.UI.aboutSheet();
-  ok(doc.querySelector('#modalBody').textContent.includes('Developed by Qmer') && doc.querySelector('#modalBody').textContent.includes('Version 5.0'), 'About credits Qmer and shows current version');
+  ok(doc.querySelector('#modalBody').textContent.includes('Developed by Qmer') && doc.querySelector('#modalBody').textContent.includes('Version 5.1'), 'About credits Qmer and shows current version');
   Q.UI.closeModal();
 
   console.log('hardware back');
@@ -1408,6 +1408,25 @@ async function run() {
   const name=doc.querySelector('[aria-label="Artwork name in details"]'); name.value='New title'; click('#modalBody .btn.primary'); ok(d.name==='New title' && doc.querySelector('#docTitle').value==='New title' && d.history.undoStack.length===before,'artwork details renames the active project without editing pixels');
   await App.saveNow(false); const loaded=await Q.Store.load(d.id); ok(loaded.name==='New title','artwork name is persisted');
   Q.UI.artworkDetails(); const original=d; App.createDoc(64,64,'Other artwork'); click('#modalBody .btn.primary'); ok(original.name==='New title' && App.doc.name==='Other artwork' && doc.querySelector('.canvas-error').textContent.includes('changed'),'stale details dialog cannot rename a different artwork'); Q.UI.closeModal(); Q.UI.closeTray();
+  }
+
+  {
+  console.log('5.1 layer selection');
+  App.createDoc(64,64,'Batch layers'); App.addLayer(); App.addLayer(); const d=App.doc; d.history.clear(); Q.UI.openTray('layers');
+  let rows=[...doc.querySelectorAll('.layer-row')], active=d.layer().id, other=d.layers[0].id;
+  ok(rows[0].getAttribute('aria-pressed')==='true' && rows[0].getAttribute('role')==='button','active layer selection is accessible');
+  let row=rows[2]; pointer(row,'pointerdown',50,100,{id:2301,pointerType:'touch'}); pointer(row,'pointermove',115,100,{id:2301,pointerType:'touch'}); pointer(row,'pointerup',115,100,{id:2301,pointerType:'touch'});
+  ok(d.layer().id===active && doc.querySelectorAll('.layer-row[aria-pressed="true"]').length===2 && d.layers[0].opacity===1 && d.history.undoStack.length===0,'right swipe adds selection without changing active layer or opacity');
+  row=[...doc.querySelectorAll('.layer-row')][2]; pointer(row,'pointerdown',50,100,{id:2302,pointerType:'touch'}); pointer(row,'pointerup',110,100,{id:2302,pointerType:'touch'}); ok(doc.querySelectorAll('.layer-row[aria-pressed="true"]').length===1,'right swipe again removes extra selection');
+  [...doc.querySelectorAll('#trayBody .chip')].find(b=>b.textContent==='Select layers').click(); [...doc.querySelectorAll('.layer-row')][2].click(); ok(doc.querySelectorAll('.layer-row[aria-pressed="true"]').length===2,'tap selection mode adds a layer');
+  [...doc.querySelectorAll('#trayBody .chip')].find(b=>b.textContent.startsWith('Actions ·')).click(); [...doc.querySelectorAll('#modalBody button')].find(b=>b.textContent==='Hide selected').click(); ok(!d.layer().visible && !d.layers.find(l=>l.id===other).visible && d.history.undoStack.length===1,'batch hide changes selected layers as one undo step');
+  App.undo(); ok(d.layer().visible && d.layers.find(l=>l.id===other).visible,'batch hide undo restores visibility'); App.redo(); ok(!d.layer().visible && !d.layers.find(l=>l.id===other).visible,'batch hide redo works');
+  Q.UI.openTray('layers'); [...doc.querySelectorAll('#trayBody .chip')].find(b=>b.textContent==='Select all').click(); [...doc.querySelectorAll('#trayBody .chip')].find(b=>b.textContent.startsWith('Actions ·')).click(); [...doc.querySelectorAll('#modalBody button')].find(b=>b.textContent==='Delete selected').click(); click('#modalBody .btn.danger'); ok(d.layers.length===3,'cannot delete every layer');
+  Q.UI.openTray('layers'); [...doc.querySelectorAll('#trayBody .chip')].find(b=>b.textContent==='Done selecting').click(); [...doc.querySelectorAll('.layer-row')][1].click(); ok(doc.querySelectorAll('.layer-row[aria-pressed="true"]').length===1 && d.activeLayer===1,'ordinary tap switches active layer and clears multi-selection');
+  doc.querySelector('[aria-label^="Layer options:"]').click(); const opacity=doc.querySelector('[aria-label="Layer opacity"]'); opacity.value='42'; opacity.dispatchEvent(new win.Event('input',{bubbles:true})); opacity.dispatchEvent(new win.Event('change',{bubbles:true})); ok(d.layers[2].opacity===0.42,'layer options provide an undoable opacity slider'); App.undo(); ok(d.layers[2].opacity===1,'opacity slider undo restores old value'); Q.UI.closeModal();
+  await App.saveNow(false); const loadedBatch=await Q.Store.load(d.id); ok(loadedBatch.layers.map(l=>l.visible).join()===d.layers.map(l=>l.visible).join(),'batch visibility survives saving and loading');
+  ok(doc.title==='Qelem' && doc.querySelector('#splash span').textContent==='Qelem','corrected spelling is shown at launch and in the title');
+  Q.UI.closeTray();
   }
 
   await App.saveNow(false);

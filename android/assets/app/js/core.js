@@ -158,7 +158,7 @@
       document.body.appendChild(box);
     }
     const text = (err && (err.stack || err.message)) || String(err);
-    box.textContent = 'Qalam hit an error\n\n' + text;
+    box.textContent = 'Qelem hit an error\n\n' + text;
   };
 
   window.addEventListener('error', function (e) {

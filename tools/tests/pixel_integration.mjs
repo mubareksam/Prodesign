@@ -942,4 +942,22 @@ console.log('4.9 gradient alpha and smudge softness');
  const cancel=sample(0), fresh=cancel.d, cel=cancel.c; fresh.history.clear(); const snapshot=[...cel.getContext('2d').getImageData(0,0,16,16).data]; const stroke=new Q.SmudgeStroke(fresh,8,0.5,{x:0,y:0,w:8,h:16},0); stroke.begin({x:4,y:8}); stroke.add({x:12,y:8}); stroke.cancel(); ok(same([...cel.getContext('2d').getImageData(0,0,16,16).data],snapshot) && fresh.history.undoStack.length===0,'soft smudge cancellation restores pixels');
 }
 
+console.log('5.1 batch layer operations');
+{
+ const d=setup(); d.activeCel(true).getContext('2d').fillRect(0,0,1,1); d.addLayer(); d.activeCel(true).getContext('2d').fillRect(1,0,1,1); d.addLayer(); d.activeCel(true).getContext('2d').fillRect(2,0,1,1); d.addFrame(false);
+ d.activeLayer=0; d.activeCel(true).getContext('2d').fillRect(3,0,1,1); d.activeLayer=2; d.activeCel(true).getContext('2d').fillRect(4,0,1,1);
+ const ids=d.layers.map(l=>l.id); d.history.clear();
+ ok(d.batchLayers([ids[0],ids[2]],'bottom')==='' && d.layers.map(l=>l.id).join()=== [ids[0],ids[2],ids[1]].join(),'batch reorder preserves relative order');
+ ok(pixel(d.cel(0,1,false),2,0)[3]===255 && pixel(d.cel(1,1,false),4,0)[3]===255 && d.layer().id===ids[2],'batch reorder keeps all frame cels and active layer aligned');
+ d.history.undo(); ok(d.layers.map(l=>l.id).join()===ids.join() && pixel(d.cel(1,2,false),4,0)[3]===255,'batch reorder undo restores original order and pixels'); d.history.redo(); ok(pixel(d.cel(0,1,false),2,0)[3]===255,'batch reorder redo restores cels');
+ ok(d.batchLayers([ids[0],ids[2]],'duplicate')==='' && d.layers.length===5 && d.layers[2].id!==ids[0] && d.layers[3].id!==ids[2],'batch duplicate creates distinct layer IDs');
+ ok(pixel(d.cel(0,2,false),0,0)[3]===255 && pixel(d.cel(1,3,false),4,0)[3]===255,'batch duplicate copies cels across frames');
+ d.cel(0,2,false).getContext('2d').clearRect(0,0,1,1); ok(pixel(d.cel(0,0,false),0,0)[3]===255,'batch duplicate pixels are independent'); d.history.undo(); ok(d.layers.length===3,'batch duplicate undo removes copies');
+ const large=setup(); large.width=large.height=8192; large.frames[0].cels[0]=createCanvas(1,1); large.history.clear(); ok(large.batchLayers([large.layer().id],'duplicate').includes('64 MiB') && large.layers.length===1 && !large.history.canUndo(),'large duplicate is rejected before allocation');
+ ok(d.batchLayers([ids[0],ids[2]],'lock')==='' && d.batchLayers([ids[0],ids[2]],'delete').includes('Unlock'),'locked selected layers cannot be deleted');
+ ok(d.batchLayers([ids[0],ids[2]],'unlock')==='' && d.batchLayers([ids[0],ids[2]],'delete')==='' && d.layers.length===1,'unlocked selected layers delete together');
+ d.history.undo(); ok(d.layers.length===3 && pixel(d.cel(1,1,false),4,0)[3]===255,'delete undo restores all-frame artwork'); d.history.redo(); ok(d.layers.length===1,'delete redo works');
+ const historyBefore=d.history.undoStack.length; d.solo={target:ids[1],visibility:[{id:ids[1],visible:true}]}; ok(d.batchLayers([ids[1]],'hide').includes('solo') && d.history.undoStack.length===historyBefore && d.layers[0].visible,'batch operations are refused without mutation while solo is active'); d.solo=null;
+ const before=d.history.undoStack.length; ok(d.batchLayers([ids[1]],'delete').includes('at least one') && d.batchLayers([ids[0]],'hide').includes('changed') && d.history.undoStack.length===before,'invalid batch actions do not mutate history');
+}
 console.log(`all ${n} raster integration checks passed`);

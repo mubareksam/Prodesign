@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Builds Qalam.apk without Gradle or the Android SDK:
+# Builds Qelem.apk without Gradle or the Android SDK:
 #   smali -> classes.dex (apktool), resources -> binary XML + resources.arsc (aapt2),
 #   then APK Signature Scheme v1+v2 (apk_sign_ts).
 #
@@ -14,7 +14,7 @@ APKTOOL="$TC/apktool_2.4.1.jar"
 ANDROID_JAR="$TC/android-33.jar"
 BUILD="$ROOT/build"
 DIST="$ROOT/artifacts"
-VERSION="${QALAM_VERSION:-5.0}"
+VERSION="${QALAM_VERSION:-5.1}"
 
 for f in "$JAVA" "$APKTOOL" "$TC/aapt2"; do
   [ -e "$f" ] || { echo "missing toolchain file: $f (run tools/fetch-toolchain.sh)" >&2; exit 1; }
@@ -33,7 +33,7 @@ UNSIGNED="$BUILD/qalam-unsigned.apk"
 "$JAVA" $JAVA_OPTS -jar "$APKTOOL" b "$ROOT/android" -o "$UNSIGNED" --use-aapt2
 
 echo "== 3/4 signing (v1 + v2)"
-OUT="$DIST/Qalam-$VERSION.apk"
+OUT="$DIST/Qelem-$VERSION.apk"
 ( cd "$ROOT/tools/apksign" && node sign.mjs "$UNSIGNED" "$OUT" )
 
 echo "== 4/4 verifying"
