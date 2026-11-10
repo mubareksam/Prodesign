@@ -960,4 +960,34 @@ console.log('5.1 batch layer operations');
  const historyBefore=d.history.undoStack.length; d.solo={target:ids[1],visibility:[{id:ids[1],visible:true}]}; ok(d.batchLayers([ids[1]],'hide').includes('solo') && d.history.undoStack.length===historyBefore && d.layers[0].visible,'batch operations are refused without mutation while solo is active'); d.solo=null;
  const before=d.history.undoStack.length; ok(d.batchLayers([ids[1]],'delete').includes('at least one') && d.batchLayers([ids[0]],'hide').includes('changed') && d.history.undoStack.length===before,'invalid batch actions do not mutate history');
 }
+console.log('5.2 ellipse selection and JPEG export');
+{
+ const d=setup(), sel=Q.ellipseSelection({x:2,y:2},{x:14,y:14},16,16), rev=Q.ellipseSelection({x:14,y:14},{x:2,y:2},16,16);
+ ok(sel && sel.shape==='ellipse' && !!sel.ellipse && rev.x===sel.x && rev.w===sel.w,'ellipse drag works in either direction');
+ ok(!Q.ellipseSelection({x:4,y:4},{x:4,y:10},16,16) && !Q.ellipseSelection({x:NaN,y:4},{x:4,y:10},16,16),'degenerate or invalid ellipse is rejected');
+ const clipped=Q.ellipseSelection({x:-8,y:2},{x:8,y:14},16,16); ok(clipped && clipped.x===0 && clipped.w===8,'off-canvas ellipse clips bounds without reshaping geometry');
+ const mask=Q.selectionMask(sel); ok(mask[(8-sel.y)*sel.w+8-sel.x]===1 && mask[(2-sel.y)*sel.w+2-sel.x]===0,'ellipse produces an elliptical mask rather than a bounding rectangle');
+ App.view.selection=sel; const cel=d.activeCel(true); App.editSelection('fill');
+ ok(pixel(cel,8,8)[0]===255 && pixel(cel,2,2)[3]===0,'fill respects ellipse interior'); d.history.undo(); ok(pixel(cel,8,8)[3]===0,'ellipse fill is undoable');
+ const stroke=new Q.Stroke(d,{...pen},[255,0,0],20,1,sel); stroke.begin({x:8,y:8,pressure:1,t:1}); stroke.end();
+ ok(pixel(cel,8,8)[0]===255 && pixel(cel,2,2)[3]===0,'brush stroke preserves ellipse clipping'); d.history.undo();
+ const ctx=cel.getContext('2d'); ctx.fillStyle='#0000ff'; ctx.fillRect(0,0,16,16); d.history.clear();
+ App.fillThreshold=0; App.fillAt(8,8); await new Promise(r=>setTimeout(r,80)); ok(pixel(cel,8,8)[0]===255 && pixel(cel,2,2)[2]===255,'flood fill respects ellipse mask'); d.history.undo();
+ App.applyEffect('invert',1); await new Promise(r=>setTimeout(r,80)); ok(pixel(cel,8,8)[0]===255 && pixel(cel,2,2)[2]===255,'effects respect ellipse mask'); d.history.undo();
+ App.editSelection('clear'); ok(pixel(cel,8,8)[3]===0 && pixel(cel,2,2)[3]===255,'clear respects ellipse'); d.history.undo();
+ const erase=new Q.Stroke(d,{...pen,eraser:true},[0,0,0],20,1,sel); erase.begin({x:8,y:8,pressure:1,t:1}); erase.end(); ok(pixel(cel,8,8)[3]===0 && pixel(cel,2,2)[3]===255,'eraser respects ellipse selection'); d.history.undo();
+ const wet=new Q.Stroke(d,{...pen,flow:0.5},[255,0,0],20,0.5,sel); wet.begin({x:8,y:8,pressure:1,t:1}); wet.end(); ok(pixel(cel,8,8)[0]>0 && pixel(cel,2,2)[2]===255,'wet brush respects ellipse selection'); d.history.undo();
+ const copy=App.copyOrCut(false); ok(!copy.error && pixel(App.clipboard.canvas,6,6)[3]===255 && pixel(App.clipboard.canvas,0,0)[3]===0,'clipboard copy follows the ellipse rather than the bounding box');
+ const edge=Q.ellipseSelection({x:-8,y:2},{x:8,y:14},16,16), edgeMask=Q.selectionMask(edge); ok(edgeMask[(2-edge.y)*edge.w]===1 && edgeMask[7]===0,'off-canvas ellipse keeps the original curve');
+ const before=d.history.undoStack.length; App.editSelection('flipH'); App.moveScaleSelection(1,1,1); ok(d.history.undoStack.length===before,'ellipse transforms are rejected rather than editing bounds');
+ const inv=Q.invertSelection(sel,16,16); ok(!inv.error && Q.selectionMask(inv.selection)[2*inv.selection.w+2]===1,'ellipse inversion produces an outside mask');
+}
+{
+ const d=setup(); d.bg='#00ff00'; const ctx=d.activeCel(true).getContext('2d'); ctx.fillStyle='#ff0000'; ctx.fillRect(0,0,8,16); let saved=null;
+ Q.saveBytes=(url,mime,name)=>{saved={url,mime,name};return true;}; ok(App.exportJpeg(0.9) && saved.mime==='image/jpeg' && saved.name.endsWith('.jpg'),'JPEG export uses correct MIME and filename');
+ const decoded=createCanvas(16,16); decoded.getContext('2d').drawImage(await loadImage(saved.url),0,0);
+ ok(pixel(decoded,2,8)[0]>220 && pixel(decoded,13,8)[1]>220 && pixel(decoded,13,8)[3]===255,'JPEG encodes active frame with opaque canvas background');
+ const prev=saved; ok(!App.exportJpeg(NaN) && !App.exportJpeg(2) && saved===prev,'invalid JPEG quality never saves');
+ const old=d.flatten; d.flatten=()=>({toDataURL:()=> 'data:image/png;base64,AAAA'}); ok(!App.exportJpeg(0.9) && saved===prev,'unsupported JPEG encoding is not mislabeled or saved'); d.flatten=old;
+}
 console.log(`all ${n} raster integration checks passed`);

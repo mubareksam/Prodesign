@@ -380,9 +380,9 @@
       }
       if (this.tool === 'fill' || this.tool === 'wand') { this.pointers.get(e.pointerId).pendingFill = this.tool; return; }
       if (this.tool === 'motionGuide') { const rec=this.pointers.get(e.pointerId), p=this.toDoc(pos.x,pos.y); rec.guidePoints=[{x:Q.clamp(p.x,0,this.doc.width),y:Q.clamp(p.y,0,this.doc.height)}]; this.motionDraft=rec.guidePoints; return; }
-      if (this.tool === 'select' || this.tool === 'lasso') {
+      if (this.tool === 'select' || this.tool === 'lasso' || this.tool === 'ellipse') {
         const rec=this.pointers.get(e.pointerId), p=this.toDoc(pos.x,pos.y);
-        rec.selectStart=p; if (this.tool === 'lasso') rec.lassoPoints=[p]; this.selectionDraft=null; return;
+        rec.selectStart=p; rec.selectEllipse=this.tool==='ellipse'; if (this.tool === 'lasso') rec.lassoPoints=[p]; this.selectionDraft=null; return;
       }
       this._startStroke(pos, e);
     } else if (this.pointers.size === 2) {
@@ -442,7 +442,7 @@
         const points=rec.lassoPoints, last=points[points.length-1];
         if (points.length<2048 && Q.dist(last.x,last.y,p.x,p.y)*this.scale>=2) points.push(p);
         this.selectionDraft=Q.lassoSelection(points,this.doc.width,this.doc.height);
-      } else this.selectionDraft=Q.selectionRect(rec.selectStart,p,this.doc.width,this.doc.height);
+      } else this.selectionDraft=rec.selectEllipse ? Q.ellipseSelection(rec.selectStart,p,this.doc.width,this.doc.height) : Q.selectionRect(rec.selectStart,p,this.doc.width,this.doc.height);
       this.dirty=true; return;
     }
 

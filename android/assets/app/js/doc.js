@@ -8,6 +8,8 @@
     ['hard-light','Hard light'], ['soft-light','Soft light'], ['difference','Difference'], ['exclusion','Exclusion'],
     ['hue','Hue'], ['saturation','Saturation'], ['color','Colour'], ['luminosity','Luminosity']
   ];
+  Q.LAYER_TAGS = ['', 'red', 'orange', 'yellow', 'green', 'blue', 'violet'];
+  Q.layerTag = function(tag) { return Q.LAYER_TAGS.includes(tag) ? tag : ''; };
   Q.validAudioTrack = function (track) {
     return !!track && typeof track.name==='string' && track.name.length<=100 && typeof track.data==='string' &&
       track.data.length<=Math.ceil((2*1024*1024)/3)*4+64 &&
@@ -176,7 +178,7 @@
     addLayer(copyFrom) {
       return this.history.struct(function () {
         const at = this.activeLayer + 1, src = this.layers[copyFrom], layer = makeLayer(src ? src.name + ' copy' : null);
-        if (src) { layer.opacity = src.opacity; layer.blend = src.blend; layer.alphaLocked = !!src.alphaLocked; layer.clipped = !!src.clipped; layer.motionEnabled=!!src.motionEnabled; layer.motionKeys=(src.motionKeys || []).map(k=>({...k})); }
+        if (src) { layer.opacity = src.opacity; layer.blend = src.blend; layer.tag=Q.layerTag(src.tag); layer.alphaLocked = !!src.alphaLocked; layer.clipped = !!src.clipped; layer.motionEnabled=!!src.motionEnabled; layer.motionKeys=(src.motionKeys || []).map(k=>({...k})); }
         this.layers.splice(at,0,layer);
         for (const f of this.frames) { const c = src && f.cels[copyFrom]; f.cels.splice(at,0,c ? Q.copyCanvas(c) : null); }
         this.activeLayer = at; return at;

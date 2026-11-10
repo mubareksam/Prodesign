@@ -5,6 +5,18 @@ The supplied feature inventory is a roadmap, not a list of completed work.
 
 ## Available now
 
+- Ellipse selection uses a native curved path, temporary across the open artwork;
+  it clips painting, smudge, fill, effects and clipboard operations. It supports
+  inversion subject to the existing 4 MP/4096-run limits. Non-rectangular flips
+  and transforms remain unavailable. Selection edges are not feathered.
+- Layer colour tags (six colours or none) appear in the Layers list, are stored,
+  undoable and copied with layers; they do not alter artwork or exports.
+- JPEG export flattens the current frame over the background at 50/75/90/100%
+  quality. It is lossy, opaque and omits playback-only camera/layer motion; WebView
+  encoding and Android saving require device support and physical-device testing.
+- Colour harmony suggestions now include split complementary ±150°; suggestions
+  select the brush colour but are not saved palettes.
+
 - Multi-layer selection via right-swipe or accessible tap mode, Select all, and
   atomic batch show/hide, lock/unlock, duplicate, move to top/bottom and confirmed
   delete across all frames. Active layer remains the drawing target. Copies are
@@ -43,13 +55,13 @@ The supplied feature inventory is a roadmap, not a list of completed work.
   clutter. Effect thumbnails are generated offline from illustrative sample art,
   not a live preview. Real-device layout and touch testing remain necessary.
 
-- Colour tray harmony suggestions offer analogous, complementary and triadic
+- Colour tray harmony suggestions offer analogous, complementary, triadic and split-complementary
   hue-based colours with clickable previews. Saturation/brightness have minimums;
   neutral colours use the last picker hue. Suggestions are not saved as a palette.
 - Temporary checkerboard transparency preview replaces the canvas background in
   the editor, without changing artwork, saved thumbnails or exports; resets when
   switching artwork. It does not toggle transparent export.
-- Invert rectangle, lasso or wand selections into a hard run mask. It is temporary,
+- Invert rectangle, ellipse, lasso or wand selections into a hard run mask. It is temporary,
   has a bounding-box outline, and supports selection-clipped painting/fills/effects;
   transforms remain rectangle-only. Empty inverse, >4-megapixel canvas or >4096
   runs are refused without changing the selection; lasso edges use a 50% threshold.
@@ -169,18 +181,18 @@ The supplied feature inventory is a roadmap, not a list of completed work.
   tracks. Frame holds/skips do not change interpolation, out-of-canvas pixels are
   cropped and resampling can soften artwork. New allocation is capped at 64 MiB per
   operation; history and existing cels consume additional memory.
-- Temporary rectangular, freehand lasso and connected-colour magic-wand selections clip brushes, erasers, flood
+- Temporary rectangular, ellipse, freehand lasso and connected-colour magic-wand selections clip brushes, erasers, flood
   fill and effects. All support fill/clear and copy to a new layer. Rectangle-only
-  flips, 180° rotation and numeric move/scale are undoable; lasso and wand transforms are
+  flips, 180° rotation and numeric move/scale are undoable; ellipse, lasso and wand transforms are
   refused. Effects calculate within the bounding rectangle then mask output, so
-  blur can sample outside a lasso or wand mask. Selections are not saved or feathered and the
+  blur can sample outside an ellipse, lasso or wand mask. Selections are not saved or feathered and the
   outline is not restored by pixel undo. A separate precise transform accepts numeric
   dimensions, centre offsets and free rotation with an approximate active-cel preview,
   smooth/nearest sampling and a 64 MiB temporary allocation limit. Its rotated selection
   becomes an axis-aligned bounding box. No draggable handles or custom pivots.
 - Layer solo saves and restores per-layer visibility in one undoable operation; it persists across save/reopen. Clipped solo keeps its base visible. Manual visibility edits made during solo are replaced on restoration; newly added layers are left unchanged. Solo affects exports and thumbnails while active.
 - Hold the colour swatch to swap the previous colour; drag still performs colour drop. The eraser button toggles an eraser or, on hold, creates a temporary copy of the current paint brush's texture and dynamics. Brush tray offers up to six device-local size presets shared across brushes.
-- Cut/copy/paste uses an internal session-only clipboard, supports rectangle, lasso
+- Cut/copy/paste uses an internal session-only clipboard, supports rectangle, ellipse, lasso
   and wand masks, and pastes as a new top layer on the current frame. Three-finger
   swipe down opens the menu; three-finger tap still undoes. Cut/paste are undoable,
   clipboard contents are not; cross-app clipboard and persistent clipboard are absent.
@@ -216,7 +228,7 @@ The supplied feature inventory is a roadmap, not a list of completed work.
   brightness, saturation, contrast, hue shift, noise, chromatic shift, halftone
   dither and threshold. These are destructive pixel effects, not a full Procreate
   adjustment or live preview system.
-- Opaque or transparent PNG, numbered PNG sequence, PNG sprite sheet and GIF export.
+- Opaque JPEG, opaque or transparent PNG, numbered PNG sequence, PNG sprite sheet and GIF export.
   Sprite sheets and PNG sequences export all source frames once, including skipped frames, without hold timing
   or ping-pong repeats; sprite sheets are limited to 8192 px per side and 16,777,216
   pixels. PNG sequences contain one image per

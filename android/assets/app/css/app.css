@@ -738,3 +738,13 @@ button:focus-visible, input:focus-visible, select:focus-visible, summary:focus-v
 .layer-row.multi-selected .layer-name, .layer-row.multi-selected .layer-sub { color:#fff4d2; }
 :root[data-theme="light"] .layer-row.multi-selected { background:#fff0c5; border-color:#b78619; }
 :root[data-theme="light"] .layer-row.multi-selected .layer-name, :root[data-theme="light"] .layer-row.multi-selected .layer-sub { color:#493400; }
+/* Colour tags identify layers without changing artwork or active selection. */
+.layer-row { position:relative; }
+.layer-tag { position:absolute; left:1px; top:9px; bottom:9px; width:4px; border-radius:4px; }
+.tag-red { background:#f06a67; } .tag-orange { background:#f2a23c; }
+.tag-yellow { background:#f1d249; } .tag-green { background:#55bd80; }
+.tag-blue { background:#67a8f5; } .tag-violet { background:#c28df1; }
+/* Keep long labels and fields inside phone-width dialogs. */
+.field > .select, .field > select, .field > input[type=range] { min-width:0; }
+.harmony-item span:not(.harmony-sample) { min-width:0; overflow-wrap:anywhere; }
+@media (max-width: 370px) { .harmony-grid { grid-template-columns:minmax(0,1fr); } }

@@ -8,11 +8,11 @@ brushes, layers with blend modes, a colour wheel, a frame timeline with onion sk
 Procreate's gesture vocabulary, PNG/GIF export and device-dependent MP4 export — all offline, with no account and
 no network permissions at all.
 
-- Package: `com.qalam.studio` · version 5.1 (versionCode 42)
+- Package: `com.qalam.studio` · version 5.2 (versionCode 43)
 - minSdk 26 (Android 8.0) · targetSdk 33 · armeabi-v7a/arm64/x86/x86_64 independent
   (everything is HTML/JS running inside the app's own `WebView`, so the APK has no
   native code)
-- APK: **`artifacts/Qelem-5.1.apk`** (~318 KB), signed with a v1+v2 scheme
+- APK: **`artifacts/Qelem-5.2.apk`** (~319 KB), signed with a v1+v2 scheme
 - The written analysis of Procreate that this app was specified from:
   [`docs/procreate-analysis.md`](procreate-analysis.md)
 
@@ -20,7 +20,7 @@ no network permissions at all.
 
 ## 1. Install
 
-1. Copy `artifacts/Qelem-5.1.apk` to the phone (USB, Drive, chat to yourself — anything).
+1. Copy `artifacts/Qelem-5.2.apk` to the phone (USB, Drive, chat to yourself — anything).
 2. Open it with the phone's file manager. Android will ask to allow installs from
    that app the first time ("Install unknown apps").
 3. Install and open **Qelem**. If an earlier Qalam version is already installed, Android should offer an update that preserves its data. Back up important artwork first. Android does not allow this app to silently uninstall itself; do not uninstall it unless you have backed up its local artwork.
@@ -105,8 +105,8 @@ Android WebView touch and physical-device layout still need testing.
   → Smudge edge sets hardness from 0% (soft falloff) to 100% (hard, the default).
   Changes are saved on this device and apply to new strokes; Reset restores 100%.
 - **Colour harmonies** — tap the three-circle icon in the Colour tray to see
-  five clickable hue suggestions: two analogous (±30°), a complement (180°)
-  and two triadic (±120°). The suggestions use the current colour's hue, with
+  seven clickable hue suggestions: two analogous (±30°), a complement (180°),
+  two triadic (±120°), and two split complementary (±150°). The suggestions use the current colour's hue, with
   saturation at least 50% and brightness at least 65%; for grey or black the
   picker's last hue is used (initially blue). Tap a swatch to use it, or close
   without changing the colour. Reopen to generate from the new colour. These
@@ -118,7 +118,7 @@ Android WebView touch and physical-device layout still need testing.
   history, saved thumbnail or normal/transparent export. Guides and onion skins
   can still appear; camera/layer motion is only shown during playback as usual.
 - **Selection & transform → Invert selection** — selects the opposite pixels
-  across the canvas for an existing rectangle, lasso or magic-wand selection.
+  across the canvas for an existing rectangle, ellipse, lasso or magic-wand selection.
   The inverse is a hard pixel mask; lasso edges use the existing 50% alpha
   threshold, and its dashed outline shows only the bounding box. Inverting
   changes the temporary selection, not the artwork or undo history. If there is
@@ -156,7 +156,7 @@ Android WebView touch and physical-device layout still need testing.
   or enter a 3- or 6-digit HEX colour; the replacement defaults to the brush
   colour. The 0–128 tolerance is applied independently to each RGB channel;
   alpha is not used for matching and remains unchanged, including with alpha lock.
-  Transparent pixels are skipped. An active rectangle, lasso or wand selection
+  Transparent pixels are skipped. An active rectangle, ellipse, lasso or wand selection
   limits the result. Other layers and frames are untouched; one undo restores
   the change. The preview is downsampled and approximate, not a live canvas or
   transformed/composited output. This is not Procreate's interactive crosshair
@@ -227,6 +227,10 @@ Android WebView touch and physical-device layout still need testing.
   on the active layer; this is not full Procreate grouping or multi-layer transform.
   The layer row no longer adjusts opacity on a sideways drag: use its three-dot
   menu's **Opacity** slider instead. Touch behavior still needs Android-device testing.
+- **Layer colour tags** — use a layer’s three-dot menu → Colour tag to assign
+  red, orange, yellow, green, blue, violet or none. A coloured marker and accessible
+  name identify the layer in the list; tags are saved, undoable and copied on
+  duplication. They organize the list only and never affect pixels or exports.
 - **Layers tray** — add, duplicate, merge down, clear, delete, reorder (▲▼), rename,
   opacity and 16 blend modes (Normal, Multiply, Screen, Overlay, Darken, Lighten,
   Color dodge/burn, Hard/Soft light, Difference, Exclusion, Hue, Saturation, Color,
@@ -443,19 +447,20 @@ Android WebView touch and physical-device layout still need testing.
   and memory use still need testing on a physical Android device. Camera input and
   persistent reference images are not supported.
 - **Actions → Create & edit → Selection & transform** — choose **Draw rectangle**
-  and drag, **Draw lasso** and trace a freehand outline, or choose **Magic wand**
+  and drag, **Draw ellipse** and drag its bounding box, **Draw lasso** and trace a
+  freehand outline, or choose **Magic wand**
   and tap a connected colour on the active cel. Magic wand uses the Fill settings
   tolerance, replaces the previous selection, and selects transparent areas too.
   Its dashed outline shows the selection bounds only; edits use the exact pixel
   mask, including holes. Complex selections exceeding 4096 horizontal runs are
   refused rather than partially selected. The lasso closes from its last point to
-  its first. All three selections clip brushes, erasers, fill and
+  its first. All four selections clip brushes, erasers, fill and
   effects and support selection fill/clear and **Copy to layer**. Copy creates a
   new layer only in the current frame. Select all and Deselect are available.
   Effects are calculated within the selection's bounding rectangle and masked on
-  output; blur can sample pixels inside that rectangle but outside a lasso or wand mask.
+  output; blur can sample pixels inside that rectangle but outside an ellipse, lasso or wand mask.
   Rectangular selections also support flips, 180° rotation and **Move / scale**.
-  These transforms do not support lasso or wand masks and are refused instead of changing their
+  These transforms do not support ellipse, lasso or wand masks and are refused instead of changing their
   bounding rectangle. Move/scale uses numeric offsets and 25–400% scale anchored
   at top left, without live preview; off-canvas content is cropped. With no
   selection, transforms use the current cel. Undo restores pixels, not the selection
@@ -468,7 +473,7 @@ Android WebView touch and physical-device layout still need testing.
   transform cuts the source and composites it over the destination; pixel edits are
   saved and undoable in one step. A rotated rectangular selection becomes its
   clipped, axis-aligned bounding box, so that box can include unselected corners;
-  Undo restores pixels but not the selection. It refuses lasso/wand, locked or
+  Undo restores pixels but not the selection. It refuses ellipse/lasso/wand, locked or
   alpha-locked layers, and limits estimated temporary allocation to 64 MiB (the
   existing document and undo history need additional memory). Very large canvases
   may exceed this limit. Raster resampling and clipping can lose detail.
@@ -530,6 +535,12 @@ Android WebView touch and physical-device layout still need testing.
   bridge, which writes `Qelem-<timestamp>.png` into `Pictures/Qalam` through `MediaStore`
   (Android 10+; on 8.0–9.0 the file lands in the app's external folder, whose path
   `Bridge.folder()` reports).
+- **Export JPEG** — Actions → Export → Export JPEG flattens the current frame
+  over the canvas background at a choice of 50%, 75%, 90% or 100% encoder quality.
+  JPEG is lossy and cannot preserve transparency. Like PNG, it uses raw frame
+  pixels without animation camera or layer-motion playback transforms. It saves
+  as `.jpg` in the same Android folders as PNG and depends on WebView JPEG support.
+  Export and storage still require physical-device testing.
 - **Export animation** — encodes a GIF on the device (median-cut quantiser + LZW,
   no native dependency) with a size choice (50/100/150 %) and loop count (forever /
   once / 3×), saved the same way as `Qelem-<timestamp>.gif`.
@@ -607,7 +618,7 @@ tools/
   tests/gif_roundtrip.mjs    encodes a GIF and decodes it with an independent decoder
   tests/ui_smoke.mjs         jsdom boot + full UI drive (gallery -> export)
   tests/ui_layout_browser.mjs optional Chromium layout and interaction checks
-artifacts/Qelem-5.1.apk           the signed, installable artefact
+artifacts/Qelem-5.2.apk           the signed, installable artefact
 docs/procreate-analysis.md   the Procreate study this app was built from
 docs/qalam.md                this file
 ```
@@ -637,7 +648,7 @@ Design notes worth knowing before changing code:
 
 ```bash
 bash tools/fetch-toolchain.sh     # once per machine: JVM, apktool, aapt2, jars, npm
-bash tools/build.sh               # -> artifacts/Qelem-5.1.apk (signed + verified)
+bash tools/build.sh               # -> artifacts/Qelem-5.2.apk (signed + verified)
 bash tools/check_reference.sh     # optional: javac-check the Java mirrors
 ```
 

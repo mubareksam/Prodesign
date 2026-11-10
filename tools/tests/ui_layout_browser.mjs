@@ -60,5 +60,19 @@ try {
   await page.evaluate(()=>Q.UI.openTray('layers')); await page.getByText('Select layers',{exact:true}).click(); await page.locator('.layer-row').nth(1).click();
   ok(await page.locator('.layer-row[aria-pressed="true"]').count()===3,'tap selection mode works on a narrow phone');
   const brand=await page.locator('#splash span').textContent(); ok(brand==='Qelem','loading and app name use corrected spelling');
+  await page.evaluate(()=>{Q.UI.closeTray(); Q.App.createDoc(128,128,'Ellipse layout'); Q.UI.selectionDialog();});
+  await page.getByText('Draw ellipse',{exact:true}).click();
+  const points=await page.evaluate(()=>[Q.App.view.toScreen(35,35),Q.App.view.toScreen(90,90)]);
+  await page.mouse.move(points[0].x,points[0].y); await page.mouse.down(); await page.mouse.move(points[1].x,points[1].y,{steps:8}); await page.mouse.up();
+  ok(await page.evaluate(()=>Q.App.view.selection && Q.App.view.selection.shape==='ellipse'),'ellipse selection works with real browser pointer events');
+  await page.locator('#btnLayers').click(); await page.locator('[aria-label^="Layer options:"]').click(); await page.locator('[aria-label="Layer colour tag"]').selectOption('blue');
+  ok(await page.evaluate(()=>{const input=document.querySelector('#modalBody .field input.select').getBoundingClientRect(), card=document.querySelector('.modal-card').getBoundingClientRect(); return input.left>=card.left && input.right<=card.right;}),'layer name input stays inside narrow dialog');
+  ok(await page.locator('.layer-row .tag-blue').count()===1,'tag marker is visible in real layer panel'); await page.evaluate(()=>Q.UI.closeModal());
+  await page.evaluate(()=>{window.savedJpeg=null; Q.saveBytes=(url,mime,name)=>{window.savedJpeg={url,mime,name};return true;}; Q.UI.jpegDialog();});
+  await page.locator('[aria-label="JPEG quality"]').selectOption('0.75'); await page.locator('#modalBody .btn.primary').click();
+  ok(await page.evaluate(()=>savedJpeg && savedJpeg.url.startsWith('data:image/jpeg;base64,') && savedJpeg.mime==='image/jpeg' && savedJpeg.name.endsWith('.jpg')),'browser produces a real JPEG payload');
+  await page.evaluate(()=>{Q.UI.openTray('color');}); await page.locator('[aria-label="Colour harmonies"]').click();
+  ok(await page.evaluate(()=>[...document.querySelectorAll('.harmony-item')].every(el=>el.scrollWidth<=el.clientWidth)),'harmony labels fit narrow phone');
+  ok(await page.locator('.harmony-item').count()===7 && await page.getByRole('button',{name:'Split complementary −150°',exact:false}).count()===1,'split-complementary previews are available in browser'); await page.evaluate(()=>Q.UI.closeModal());
   ok(errors.length===0,'no browser runtime errors'); console.log(`all ${checks} browser layout checks passed`);
 } finally { await browser.close(); await new Promise(resolve=>server.close(resolve)); }

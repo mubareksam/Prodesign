@@ -450,7 +450,7 @@ async function run() {
 
   console.log('about');
   Q.UI.aboutSheet();
-  ok(doc.querySelector('#modalBody').textContent.includes('Developed by Qmer') && doc.querySelector('#modalBody').textContent.includes('Version 5.1'), 'About credits Qmer and shows current version');
+  ok(doc.querySelector('#modalBody').textContent.includes('Developed by Qmer') && doc.querySelector('#modalBody').textContent.includes('Version 5.2'), 'About credits Qmer and shows current version');
   Q.UI.closeModal();
 
   console.log('hardware back');
@@ -1333,8 +1333,9 @@ async function run() {
   console.log('4.7 creative helpers');
   App.createDoc(64,64,'Creative helpers'); const d=App.doc, v=App.view; d.activeCel(true); d.history.clear();
   App.setColor([255,0,0]); Q.UI.openTray('color'); const harmony=doc.querySelector('[aria-label="Colour harmonies"]'); ok(harmony && harmony.querySelector('svg'),'colour harmonies is accessible from the colour tray'); harmony.click();
-  let options=doc.querySelectorAll('#modalBody .harmony-item'); ok(options.length===5 && options[2].getAttribute('aria-label').includes('Complementary #00ffff') && options[2].querySelector('.harmony-sample'),'harmony dialog shows labeled colour previews');
+  let options=doc.querySelectorAll('#modalBody .harmony-item'); ok(options.length===7 && options[2].getAttribute('aria-label').includes('Complementary #00ffff') && options[2].querySelector('.harmony-sample'),'harmony dialog shows labeled colour previews');
   options[2].click(); ok(v.color.join(',')==='0,255,255' && !visible(doc.querySelector('#modal')) && doc.querySelector('[aria-label="Current hex colour"]').value==='#00ffff','choosing a harmony updates brush colour and picker');
+  harmony.click(); options=doc.querySelectorAll('#modalBody .harmony-item'); ok(options[5].getAttribute('aria-label').includes('Split complementary'),'split complementary harmony previews are labelled'); options[5].click(); ok(d.history.undoStack.length===0,'split complementary changes brush colour only');
   ok(d.history.undoStack.length===0,'colour suggestions do not edit artwork'); Q.UI.closeTray();
   Q.UI.openTray('menu'); let toggle=Array.from(doc.querySelectorAll('#trayBody button')).find(b=>b.textContent==='Preview transparency'); ok(toggle && toggle.querySelector('svg'),'transparency preview is discoverable in Actions'); toggle.click();
   ok(v.transparentPreview && d.bg==='#ffffff' && d.history.undoStack.length===0 && Array.from(doc.querySelectorAll('#trayBody button')).some(b=>b.textContent==='Show canvas background'),'checker preview toggles without changing document background or history');
@@ -1427,6 +1428,28 @@ async function run() {
   await App.saveNow(false); const loadedBatch=await Q.Store.load(d.id); ok(loadedBatch.layers.map(l=>l.visible).join()===d.layers.map(l=>l.visible).join(),'batch visibility survives saving and loading');
   ok(doc.title==='Qelem' && doc.querySelector('#splash span').textContent==='Qelem','corrected spelling is shown at launch and in the title');
   Q.UI.closeTray();
+  }
+
+  {
+  console.log('5.2 ellipse, layer tags and JPEG');
+  App.createDoc(64,64,'New features'); const d=App.doc;
+  Q.UI.selectionDialog(); let selectAction=label=>[...doc.querySelectorAll('#modalBody button')].find(b=>b.textContent===label).click(); selectAction('Draw ellipse');
+  const a=App.view.toScreen(8,9), b=App.view.toScreen(40,38), canvas=doc.querySelector('#view');
+  pointer(canvas,'pointerdown',a.x,a.y,{id:2401}); pointer(canvas,'pointermove',b.x,b.y,{id:2401}); pointer(canvas,'pointerup',b.x,b.y,{id:2401});
+  ok(App.view.selection && App.view.selection.shape==='ellipse' && !!App.view.selection.ellipse && App.view.tool==='brush','ellipse gesture creates a temporary elliptical selection');
+  Q.UI.selectionDialog(); ok(doc.querySelector('#modalBody').textContent.includes('Ellipse selected') && doc.querySelector('#modalBody').textContent.includes('Fill selection'),'ellipse state and fill action are labelled correctly'); selectAction('Deselect');
+  Q.UI.selectionDialog(); selectAction('Draw ellipse'); pointer(canvas,'pointerdown',a.x,a.y,{id:2402}); pointer(canvas,'pointermove',b.x,b.y,{id:2402}); pointer(canvas,'pointercancel',b.x,b.y,{id:2402}); ok(!App.view.selection,'cancelled ellipse does not commit');
+  Q.UI.openTray('layers'); doc.querySelector('[aria-label^="Layer options:"]').click(); const tag=doc.querySelector('[aria-label="Layer colour tag"]'); tag.value='violet'; tag.dispatchEvent(new win.Event('change',{bubbles:true}));
+  ok(d.layer().tag==='violet' && doc.querySelector('.layer-row .tag-violet') && doc.querySelector('.layer-row').getAttribute('aria-label').includes('violet tag'),'layer tag is visible and accessible');
+  App.undo(); ok(Q.layerTag(d.layer().tag)==='' && !doc.querySelector('.layer-row .layer-tag'),'tag change is undoable'); App.redo(); ok(d.layer().tag==='violet','tag redo restores colour'); Q.UI.closeModal();
+  await App.saveNow(false); const loaded=await Q.Store.load(d.id); ok(loaded.layer().tag==='violet','layer colour tag persists in project storage');
+  const records=JSON.parse(win.localStorage.getItem('qalam-projects')); delete records[d.id].layers[0].tag; win.localStorage.setItem('qalam-projects',JSON.stringify(records)); const oldProject=await Q.Store.load(d.id); ok(oldProject.layer().tag==='' && oldProject.name===d.name,'older saved project without tags opens normally');
+  records[d.id].layers[0].tag='malicious-class'; win.localStorage.setItem('qalam-projects',JSON.stringify(records)); const corrupted=await Q.Store.load(d.id); ok(corrupted.layer().tag==='','invalid saved tags are sanitized');
+  d.addLayer(0); ok(d.layer().tag==='violet','single-layer duplication retains tag'); const old=d.layers[0].id; ok(d.batchLayers([old],'duplicate')==='' && d.layers.some(l=>l.id!==old && l.tag==='violet'),'batch duplication retains tags');
+  Q.UI.openTray('menu'); const exp=[...doc.querySelectorAll('#trayBody details')].find(e=>e.textContent.includes('Export JPEG')); ok(!!exp,'JPEG export appears in Actions'); [...exp.querySelectorAll('button')].find(b=>b.textContent==='Export JPEG').click();
+  ok(doc.querySelector('[aria-label="JPEG quality"]').value==='0.9' && doc.querySelector('#modalBody').textContent.includes('no transparency'),'JPEG dialog explains export and defaults to high quality');
+  const originalExport=App.exportJpeg; let quality=null; App.exportJpeg=q=>{quality=q;}; doc.querySelector('[aria-label="JPEG quality"]').value='0.75'; click('#modalBody .btn.primary'); ok(quality===0.75,'selected JPEG quality is passed to export');
+  Q.UI.jpegDialog(); App.createDoc(64,64,'Different artwork'); click('#modalBody .btn.primary'); ok(quality===0.75,'stale JPEG dialog cannot export another artwork'); App.exportJpeg=originalExport; Q.UI.closeTray();
   }
 
   await App.saveNow(false);

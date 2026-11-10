@@ -2,22 +2,22 @@
 
 Developed by **Qmer**. An offline painting and frame-animation studio for Android, modelled on Procreate —
 brushes, layers, a colour wheel, a frame timeline with onion skin, Procreate's gesture
-vocabulary, and PNG/GIF export. No account, no ads, no network permission.
+vocabulary, and PNG/JPEG/GIF export. No account, no ads, no network permission.
 
-**Download:** [`Qelem-5.1.apk`](../artifacts/Qelem-5.1.apk) (~318 KB)
+**Download:** [`Qelem-5.2.apk`](../artifacts/Qelem-5.2.apk) (~319 KB)
 
 | | |
 |---|---|
 | Package | `com.qalam.studio` |
-| Version | 5.1 (versionCode 42) |
+| Version | 5.2 (versionCode 43) |
 | Requires | Android 8.0+ (minSdk 26), built for targetSdk 33 |
 | Permissions | `VIBRATE` only — no internet, no storage, no location |
 | Signing | APK Signature Scheme v1 + v2, self-signed with a public test key |
-| SHA-256 | `031e7356f9766d5f22428b3d19a85d26e81d8bcbd26ac0b614b97fee85acce11` |
+| SHA-256 | `91aca0bacf853209d7ecd1476114ee456b04625dd223cea6ad34dbeacc26520e` |
 
 ## Install
 
-1. Download `Qelem-5.1.apk` to the phone (or copy it over USB).
+1. Download `Qelem-5.2.apk` to the phone (or copy it over USB).
 2. Open it from the file manager. Android will ask you to allow installs from that
    app the first time ("Install unknown apps") — allow it, then install.
 3. Open **Qelem**.
@@ -36,6 +36,13 @@ This is inspired by Procreate, not an exact copy.
 **Canvas** — 2048², portrait, landscape, 1920×1080, 1280² animation and 1080×1920
 story presets and custom sizes from 64 to 4096 pixels per side; full-screen canvas with two-finger pan, pinch zoom and twist rotate.
 
+**Layer tags** — assign a saved, undoable colour marker in the three-dot layer
+menu; copied layers keep their tag. Markers affect the layer list, not artwork.
+
+**JPEG export** — export the current frame flattened over its background with a
+choice of quality. JPEG is lossy, has no transparency and omits playback-only
+camera/layer motion. Android-device export still needs testing.
+
 **Layer selection** — swipe right on layer rows or use Select layers to select
 multiple rows. Batch duplicate, show/hide, lock/unlock, move to top/bottom and
 confirmed delete are undoable across every frame. Restore solo first. Drawing and
@@ -43,7 +50,7 @@ transforms still use the active layer; selection is temporary. Duplicating is
 limited to 64 MiB of estimated new cel pixels. Reordering may change clipping.
 Layer opacity is now in the three-dot menu rather than a sideways row drag.
 
-**Selection & transform** — temporary rectangle or freehand lasso mask for brushes, erasers, fill
+**Selection & transform** — temporary rectangle, ellipse or freehand lasso mask for brushes, erasers, fill
 and effects; fill, clear, flips, 180° rotation, numeric move and scale, and copy to
 new layer on the current frame. Pixel edits are undoable; selection outlines are not.
 Transforms currently require a rectangle. Precise transform provides numeric dimensions and rotation with an approximate preview; there are no draggable handles, feathering or custom pivots.
@@ -65,7 +72,7 @@ current cel; paste creates a new top layer on the current frame at the original
 coordinates. The Qelem-only clipboard is temporary and does not share with Android.
 
 **Creative helpers** — the Colour tray offers analogous, complementary and
-triadic hue suggestions; Actions → Canvas & view can preview transparency over
+triadic and split-complementary hue suggestions; Actions → Canvas & view can preview transparency over
 checkerboard without changing exports; Selection & transform can invert a selection
 within the 4-megapixel/4096-run limits. See the guide for details and limitations.
 

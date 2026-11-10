@@ -194,7 +194,7 @@
     this.opacity = Q.clamp(opacity, 0.01, 1);
     this.eraser = !!brush.eraser;
     this.alphaLocked = !!(doc.layer && doc.layer() && doc.layer().alphaLocked);
-    this.selection = selection ? {x:selection.x,y:selection.y,w:selection.w,h:selection.h,points:selection.points ? selection.points.map(p=>({x:p.x,y:p.y})) : null,runs:selection.runs || null} : null;
+    this.selection = selection ? {x:selection.x,y:selection.y,w:selection.w,h:selection.h,points:selection.points ? selection.points.map(p=>({x:p.x,y:p.y})) : null,runs:selection.runs || null,shape:selection.shape,ellipse:selection.ellipse ? {...selection.ellipse} : null} : null;
     this.ctx = null;
     this.cel = null;
     this.dirty = null;

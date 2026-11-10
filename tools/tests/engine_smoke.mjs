@@ -96,7 +96,8 @@ ok(Q.sanitizeSmudgeHardness(undefined)===1 && Q.sanitizeSmudgeHardness(NaN)===1 
 
 console.log('colour harmony suggestions');
 const harmonies=Q.colorHarmonies(0,1,1), muted=Q.colorHarmonies(210,0,0);
-ok(harmonies.length===5 && harmonies[2].rgb.join(',')==='0,255,255' && harmonies[3].rgb.join(',')==='0,0,255' && harmonies[4].rgb.join(',')==='0,255,0','complement and triadic colours use the correct hue rotations');
+ok(harmonies.length===7 && harmonies[2].rgb.join(',')==='0,255,255' && harmonies[3].rgb.join(',')==='0,0,255' && harmonies[4].rgb.join(',')==='0,255,0','complement and triadic colours use the correct hue rotations');
+ok(harmonies[5].rgb.join(',')==='0,128,255' && harmonies[6].rgb.join(',')==='0,255,128', 'split complementary suggestions rotate hue by ±150°');
 ok(muted.every(c=>Math.max(...c.rgb)>=165 && Math.min(...c.rgb)<Math.max(...c.rgb)), 'neutral colours produce visible chromatic suggestions');
 
 console.log('gesture delay validation');

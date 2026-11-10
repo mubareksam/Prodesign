@@ -675,7 +675,7 @@
     if (layer.locked) { Q.toast('This layer is locked'); return; }
     if (layer.alphaLocked && operation !== 'fill') { Q.toast('Turn off alpha lock for this edit'); return; }
     const sel=v.selection;
-    if (sel && (sel.points || sel.runs) && (operation === 'flipH' || operation === 'flipV' || operation === 'rotate180')) { Q.toast('Non-rectangular transforms are not yet supported; use a rectangle'); return; }
+    if (sel && Q.complexSelection(sel) && (operation === 'flipH' || operation === 'flipV' || operation === 'rotate180')) { Q.toast('Non-rectangular transforms are not yet supported; use a rectangle'); return; }
     if (!sel && (operation === 'clear' || operation === 'fill')) { Q.toast('Draw a rectangle or select all first'); return; }
     const r=sel || {x:0,y:0,w:d.width,h:d.height};
     const cel=d.activeCel(operation === 'fill');
@@ -757,7 +757,7 @@
     if (layer.alphaLocked) { Q.toast('Turn off alpha lock to transform'); return; }
     if (!cel) { Q.toast('Draw on this layer first'); return; }
     if (!Number.isInteger(dx) || !Number.isInteger(dy) || Math.abs(dx)>d.width*2 || Math.abs(dy)>d.height*2 || !Number.isFinite(scale) || scale<0.25 || scale>4) { Q.toast('Invalid transform'); return; }
-    if (v.selection && (v.selection.points || v.selection.runs)) { Q.toast('Non-rectangular transforms are not yet supported; use a rectangle'); return; }
+    if (v.selection && Q.complexSelection(v.selection)) { Q.toast('Non-rectangular transforms are not yet supported; use a rectangle'); return; }
     const src=v.selection || {x:0,y:0,w:d.width,h:d.height};
     const dst={x:src.x+dx,y:src.y+dy,w:Math.max(1,Math.round(src.w*scale)),h:Math.max(1,Math.round(src.h*scale))};
     if (dx===0 && dy===0 && dst.w===src.w && dst.h===src.h) { Q.toast('Nothing changed'); return; }
@@ -783,7 +783,7 @@
     if(App.playing || v.locked) return {error:'Stop playback or the current operation first'};
     const layer=d.layer(),cel=d.activeCel(false); if(!layer.visible) return {error:'This layer is hidden'};
     if(layer.locked) return {error:'This layer is locked'}; if(layer.alphaLocked) return {error:'Turn off alpha lock to transform'};
-    if(!cel) return {error:'Draw on this layer first'}; if(v.selection && (v.selection.points || v.selection.runs)) return {error:'Use a rectangular selection for this transform'};
+    if(!cel) return {error:'Draw on this layer first'}; if(v.selection && Q.complexSelection(v.selection)) return {error:'Use a rectangular selection for this transform'};
     const src=v.selection || {x:0,y:0,w:d.width,h:d.height};
     if (src.x!==target.src.x || src.y!==target.src.y || src.w!==target.src.w || src.h!==target.src.h) return {error:'Selection changed; reopen the transform'};
     const plan=Q.planPreciseTransform(src,d.width,d.height,o); if(plan.error) return plan; if(plan.unchanged) return {error:'Nothing changed'};
@@ -849,7 +849,7 @@
     if(!Array.isArray(source) || !Array.isArray(replacement) || source.length!==3 || replacement.length!==3 || !source.concat(replacement).every(n=>Number.isInteger(n) && n>=0 && n<=255) || !Number.isInteger(tolerance) || tolerance<0 || tolerance>128) return {error:'Enter valid colours and tolerance'};
     const r=target.bounds, s=v.selection;
     if(!r || ![r.x,r.y,r.w,r.h].every(Number.isInteger) || r.x<0 || r.y<0 || r.w<1 || r.h<1 || r.x+r.w>d.width || r.y+r.h>d.height || (s && (s.x!==r.x || s.y!==r.y || s.w!==r.w || s.h!==r.h))) return {error:'Selection changed; reopen recolour'};
-    const complex=!!(s && (s.points || s.runs));
+    const complex=!!(s && Q.complexSelection(s));
     if(4*d.width*d.height+(complex ? 13 : 8)*r.w*r.h>64*1024*1024) return {error:'Recolour exceeds the 64 MiB temporary-memory limit'};
     if(target.undo.length!==d.history.undoStack.length || target.redo.length!==d.history.redoStack.length || target.undo.some((e,i)=>e!==d.history.undoStack[i]) || target.redo.some((e,i)=>e!==d.history.redoStack[i])) return {error:'Artwork changed; reopen recolour'};
     return {};
@@ -922,6 +922,16 @@
     const cv = d.flatten(d.activeFrame, {background: transparent ? false : d.bg});
     const ok = Q.saveBytes(cv.toDataURL('image/png'), 'image/png', 'Qelem-' + Q.stamp() + (transparent ? '-transparent' : '') + '.png');
     Q.toast(ok ? 'PNG saved' : 'Could not save PNG');
+  };
+
+  App.exportJpeg = function (quality) {
+    App.stopPlay(); const d=App.doc; if(!d) return false;
+    if(!Number.isFinite(quality) || quality<0 || quality>1) { Q.toast('Invalid JPEG quality'); return false; }
+    try {
+      const cv=d.flatten(d.activeFrame,{background:d.bg}), data=cv.toDataURL('image/jpeg',quality);
+      if(!data.startsWith('data:image/jpeg;base64,')) { Q.toast('JPEG export is not supported on this device',4000); return false; }
+      const ok=Q.saveBytes(data,'image/jpeg','Qelem-'+Q.stamp()+'.jpg'); Q.toast(ok ? 'JPEG saved' : 'Could not save JPEG'); return !!ok;
+    } catch(e) { Q.toast('Could not export JPEG on this device',4000); return false; }
   };
 
   App.exportPngSequence = function (transparent) {

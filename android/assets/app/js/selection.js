@@ -16,9 +16,21 @@
     if (!bounds || bounds.w<2 || bounds.h<2) return null;
     bounds.points=points.map(p=>({x:p.x,y:p.y})); return bounds;
   };
+  // Preserve the original ellipse when it extends beyond the canvas. Using a
+  // native path also avoids constructing hundreds of polygon edges per stamp.
+  Q.ellipseSelection = function(a,b,width,height) {
+    if(!a || !b || ![a.x,a.y,b.x,b.y].every(Number.isFinite)) return null;
+    const rx=Math.abs(b.x-a.x)/2, ry=Math.abs(b.y-a.y)/2;
+    if(rx<1 || ry<1) return null;
+    const bounds=Q.selectionRect(a,b,width,height);
+    if(!bounds || bounds.w<1 || bounds.h<1) return null;
+    bounds.shape='ellipse'; bounds.ellipse={cx:(a.x+b.x)/2,cy:(a.y+b.y)/2,rx:rx,ry:ry}; return bounds;
+  };
+  Q.complexSelection = function(s) { return !!(s && (s.points || s.runs || s.shape==='ellipse')); };
   Q.selectionPath = function (ctx,selection) {
     ctx.beginPath();
-    if (selection.runs) { for (const run of selection.runs) ctx.rect(run.x,run.y,run.w,1); }
+    if (selection.shape==='ellipse' && selection.ellipse) { const e=selection.ellipse; ctx.ellipse(e.cx,e.cy,e.rx,e.ry,0,0,Math.PI*2); }
+    else if (selection.runs) { for (const run of selection.runs) ctx.rect(run.x,run.y,run.w,1); }
     else if (selection.points && selection.points.length>=3) {
       ctx.moveTo(selection.points[0].x,selection.points[0].y);
       for (let i=1;i<selection.points.length;i++) ctx.lineTo(selection.points[i].x,selection.points[i].y);
@@ -27,7 +39,7 @@
   };
   Q.selectionMask = function (selection) {
     if (selection.runs) { const mask=new Uint8Array(selection.w*selection.h); for (const run of selection.runs) mask.fill(1,(run.y-selection.y)*selection.w+run.x-selection.x,(run.y-selection.y)*selection.w+run.x-selection.x+run.w); return mask; }
-    if (!selection.points) return null;
+    if (!selection.points && selection.shape!=='ellipse') return null;
     const canvas=Q.canvas(selection.w,selection.h), ctx=canvas.getContext('2d');
     ctx.translate(-selection.x,-selection.y); Q.selectionPath(ctx,selection); ctx.fillStyle='#000'; ctx.fill();
     const rgba=ctx.getImageData(0,0,selection.w,selection.h).data, mask=new Uint8Array(selection.w*selection.h);
@@ -41,7 +53,7 @@
     if (!selection) return {error:'Make a selection first'};
     if (!Number.isInteger(width) || !Number.isInteger(height) || width<1 || height<1 || !Number.isInteger(selection.x) || !Number.isInteger(selection.y) || !Number.isInteger(selection.w) || !Number.isInteger(selection.h) || selection.w<1 || selection.h<1 || selection.x<0 || selection.y<0 || selection.x+selection.w>width || selection.y+selection.h>height) return {error:'Invalid selection'};
     if (width*height>4*1024*1024) return {error:'Canvas exceeds the 4 megapixel inversion limit'};
-    if ((selection.points || selection.runs) && selection.w*selection.h>4*1024*1024) return {error:'Selection mask exceeds the 4 megapixel inversion limit'};
+    if (Q.complexSelection(selection) && selection.w*selection.h>4*1024*1024) return {error:'Selection mask exceeds the 4 megapixel inversion limit'};
     try {
       const mask=Q.selectionMask(selection), runs=[]; let minX=width,minY=height,maxX=0,maxY=0;
       for (let y=0;y<height;y++) {

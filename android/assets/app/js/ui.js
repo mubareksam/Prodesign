@@ -650,8 +650,9 @@
     for (let i = d.layers.length - 1; i >= 0; i--) {
       const layer = d.layers[i];
       const row = Q.crel('div', 'layer-row' + (i === d.activeLayer ? ' on' : '') + (layerSelection.has(layer.id) && i!==d.activeLayer ? ' multi-selected' : ''));
-      row.setAttribute('role','button'); row.setAttribute('tabindex','0'); row.setAttribute('aria-label',layer.name+(i===d.activeLayer ? ', active layer' : '')); row.setAttribute('aria-pressed',layerSelection.has(layer.id) ? 'true' : 'false');
+      row.setAttribute('role','button'); row.setAttribute('tabindex','0'); row.setAttribute('aria-label',layer.name+(i===d.activeLayer ? ', active layer' : '')+(Q.layerTag(layer.tag) ? ', '+Q.layerTag(layer.tag)+' tag' : '')); row.setAttribute('aria-pressed',layerSelection.has(layer.id) ? 'true' : 'false');
 
+      if(Q.layerTag(layer.tag)) { const marker=Q.crel('span','layer-tag tag-'+Q.layerTag(layer.tag)); marker.setAttribute('aria-hidden','true'); row.appendChild(marker); }
       const thumb = Q.crel('div', 'layer-thumb');
       const tcv = d.layerThumbnail(i, 46);
       thumb.appendChild(tcv);
@@ -780,6 +781,12 @@
     const output=Q.crel('span','val',slider.value+'%'); slider.addEventListener('input',function(){ output.textContent=slider.value+'%'; });
     slider.addEventListener('change',function(){ if(app().doc!==d || !d.layers[i] || d.layers[i].id!==layer.id) return; app().setLayerProp(i,'opacity',Number(slider.value)/100); });
     opacity.appendChild(slider); opacity.appendChild(output); card.appendChild(opacity);
+    const tagField=Q.crel('div','field'); tagField.appendChild(Q.crel('label',null,'Colour tag'));
+    const tagSelect=Q.crel('select'); tagSelect.setAttribute('aria-label','Layer colour tag');
+    Q.LAYER_TAGS.forEach(function(tag){ const option=Q.crel('option'); option.value=tag; option.textContent=tag ? tag[0].toUpperCase()+tag.slice(1) : 'None'; tagSelect.appendChild(option); }); tagSelect.value=Q.layerTag(layer.tag);
+    tagSelect.addEventListener('change',function(){ if(app().doc!==d || !d.layers[i] || d.layers[i].id!==layer.id) return; const tag=Q.layerTag(tagSelect.value); if(Q.layerTag(d.layers[i].tag)!==tag) app().setLayerProp(i,'tag',tag); });
+    tagField.appendChild(tagSelect); card.appendChild(tagField);
+
 
 
     const actions = Q.crel('div', 'menu-grid');
@@ -895,7 +902,7 @@
   UI.harmonyDialog = function (applyColor) {
     const source=currentHsv(), colors=Q.colorHarmonies(source.hue,source.sat,source.val), card=Q.crel('div');
     card.appendChild(Q.crel('h2',null,'Colour harmonies'));
-    card.appendChild(Q.crel('p','sub','Suggestions from the current hue: analogous, complementary and triadic. Saturation is at least 50% and brightness at least 65%; neutral colours use the last picker hue. Tap a suggestion to use it. Reopen to generate from your new colour.'));
+    card.appendChild(Q.crel('p','sub','Suggestions from the current hue: analogous, complementary, triadic and split complementary. Saturation is at least 50% and brightness at least 65%; neutral colours use the last picker hue. Tap a suggestion to use it. Reopen to generate from your new colour.'));
     const grid=Q.crel('div','harmony-grid');
     colors.forEach(function (entry) {
       const hex=Q.rgbToHex(entry.rgb), b=Q.crel('button','harmony-item'); b.setAttribute('aria-label',entry.name+' '+hex); b.title=entry.name+' '+hex;
@@ -1052,7 +1059,7 @@
     if (d && d.frames.length>1) animation.push(['Delete frame',ICON.trash,()=>app().deleteFrame()]);
     group('Animation',animation);
     group('Export', [
-      ['Export PNG',ICON.photo,()=>app().exportPng()], ['Transparent PNG',ICON.photo,()=>app().exportPng(true)],
+      ['Export PNG',ICON.photo,()=>app().exportPng()], ['Transparent PNG',ICON.photo,()=>app().exportPng(true)], ['Export JPEG',ICON.photo,()=>UI.jpegDialog()],
       ['Export GIF',ICON.film,()=>UI.exportDialog()], ['Export PNG frames',ICON.photo,()=>{UI.closeTray(); app().exportPngSequence();}],
       ['Transparent PNG frames',ICON.photo,()=>{UI.closeTray(); app().exportPngSequence(true);}], ['Export sprite sheet',ICON.photo,()=>UI.spriteSheetDialog()],
       ['Export MP4',ICON.film,()=>{UI.closeTray(); UI.mp4Dialog();}]
@@ -1188,7 +1195,7 @@
   UI.selectionDialog = function () {
     const v=app().view, d=app().doc; if (!d) return;
     const card=Q.crel('div'); card.appendChild(Q.crel('h2',null,'Selection & transform'));
-    card.appendChild(Q.crel('p','sub', v.selection ? ((v.selection.points || v.selection.runs) ? (v.selection.runs ? 'Magic wand selected. The dashed box shows bounds, not the exact selected pixels. Transforms require a rectangle.' : 'Lasso selected. Transforms currently require a rectangle.') : 'Rectangle selected. Edits affect the current layer and frame.') : 'No selection. Flips and rotation use the whole current layer and frame.'));
+    card.appendChild(Q.crel('p','sub', v.selection ? (Q.complexSelection(v.selection) ? (v.selection.runs ? 'Masked selection. The dashed box shows bounds, not the exact selected pixels. Transforms require a rectangle.' : (v.selection.shape==='ellipse' ? 'Ellipse selected. Transforms currently require a rectangle.' : 'Lasso selected. Transforms currently require a rectangle.')) : 'Rectangle selected. Edits affect the current layer and frame.') : 'No selection. Flips and rotation use the whole current layer and frame.'));
     card.appendChild(Q.crel('p','sub','The selection clips brushes, erasers, flood fill and effects. It is temporary and applies to the current layer and frame.'));
     const actions=Q.crel('div','menu-grid');
     function action(label, fn, ico) { const b=Q.crel('button','menu-item'); if(ico) b.innerHTML=icon(ico); b.appendChild(document.createTextNode(label)); b.addEventListener('click',function () { UI.closeModal(); UI.closeTray(); fn(); }); actions.appendChild(b); }
@@ -1196,13 +1203,14 @@
       v.tool='select'; UI.syncBrushUi(); v.selectionDraft=null; Q.el('#btnFill').classList.remove('on'); Q.el('#btnEyedrop').classList.remove('on');
       Q.hint('Drag on the canvas to select a rectangle',3000);
     });
+    action('Draw ellipse',function () { v.tool='ellipse'; UI.syncBrushUi(); v.selectionDraft=null; Q.el('#btnFill').classList.remove('on'); Q.el('#btnEyedrop').classList.remove('on'); Q.hint('Drag on the canvas to select an ellipse',3000); });
     action('Draw lasso',function () { v.tool='lasso'; UI.syncBrushUi(); v.selectionDraft=null; Q.el('#btnFill').classList.remove('on'); Q.el('#btnEyedrop').classList.remove('on'); Q.hint('Draw a closed selection around an area',3000); });
     action('Magic wand',function () { v.tool='wand'; UI.syncBrushUi(); v.selectionDraft=null; Q.el('#btnFill').classList.remove('on'); Q.el('#btnEyedrop').classList.remove('on'); Q.hint('Tap connected pixels on the active layer · tolerance in Fill settings',3500); });
     action('Select all',function () { v.selection={x:0,y:0,w:d.width,h:d.height}; v.dirty=true; Q.hint('Entire canvas selected',1600); });
     action('Invert selection',function () { const result=Q.invertSelection(v.selection,d.width,d.height); if(result.error) { Q.toast(result.error,3500); return; } v.selection=result.selection; v.selectionDraft=null; v.dirty=true; Q.hint('Selection inverted · dashed box shows bounds',2500); },ICON.invertSelection);
-    action('Deselect',function () { v.selection=null; v.selectionDraft=null; if (v.tool === 'select' || v.tool === 'lasso' || v.tool === 'wand') v.tool='brush'; v.dirty=true; });
-    action(v.selection && (v.selection.points || v.selection.runs) ? 'Fill selection' : 'Fill rectangle',function () { app().editSelection('fill'); });
-    action(v.selection && (v.selection.points || v.selection.runs) ? 'Clear selection' : 'Clear rectangle',function () { app().editSelection('clear'); });
+    action('Deselect',function () { v.selection=null; v.selectionDraft=null; if (v.tool === 'select' || v.tool === 'lasso' || v.tool === 'ellipse' || v.tool === 'wand') v.tool='brush'; v.dirty=true; });
+    action(v.selection && Q.complexSelection(v.selection) ? 'Fill selection' : 'Fill rectangle',function () { app().editSelection('fill'); });
+    action(v.selection && Q.complexSelection(v.selection) ? 'Clear selection' : 'Clear rectangle',function () { app().editSelection('clear'); });
     action('Copy to layer',function () { app().copySelectionToLayer(); });
     action('Cut, copy & paste',function () { UI.quickEditDialog(); },ICON.paste);
     action('Flip horizontal',function () { app().editSelection('flipH'); });
@@ -1212,6 +1220,18 @@
     action('Precise transform',function () { UI.preciseTransformDialog(); },ICON.controls);
     card.appendChild(actions);
     const done=Q.crel('button','btn ghost','Close'); done.addEventListener('click',function () { UI.closeModal(); }); card.appendChild(done); UI.openModal(card);
+  };
+
+  UI.jpegDialog = function () {
+    const d=app().doc; if(!d) return;
+    const card=Q.crel('div'); card.appendChild(Q.crel('h2',null,'Export JPEG'));
+    card.appendChild(Q.crel('p','sub','Exports the current frame flattened over the canvas background. JPEG has no transparency and is lossy. Camera and layer motion are not applied, just like PNG export.'));
+    const row=Q.crel('div','field'); row.appendChild(Q.crel('label',null,'Quality'));
+    const sel=Q.crel('select'); sel.setAttribute('aria-label','JPEG quality');
+    [['0.5','Small · 50%'],['0.75','Balanced · 75%'],['0.9','High · 90%'],['1','Maximum · 100%']].forEach(function(x){ const o=Q.crel('option'); o.value=x[0]; o.textContent=x[1]; sel.appendChild(o); }); sel.value='0.9'; row.appendChild(sel); card.appendChild(row);
+    const actions=Q.crel('div','modal-actions'), cancel=Q.crel('button','btn ghost','Cancel'), save=Q.crel('button','btn primary','Export JPEG');
+    cancel.addEventListener('click',UI.closeModal); save.addEventListener('click',function(){ if(app().doc!==d) { Q.toast('Artwork changed; reopen export'); UI.closeModal(); return; } UI.closeModal(); UI.closeTray(); app().exportJpeg(Number(sel.value)); });
+    actions.appendChild(cancel); actions.appendChild(save); card.appendChild(actions); UI.openModal(card);
   };
 
   UI.clearCelDialog = function () {
@@ -1282,7 +1302,7 @@
     const factor=Math.min(192/d.width,192/d.height); preview.width=Math.max(1,Math.round(d.width*factor)); preview.height=Math.max(1,Math.round(d.height*factor));
     function read() {
       if([width,height,dx,dy,angle].some(x=>!x.value.trim() || !Number.isFinite(Number(x.value)))) return {error:'Enter a number in every transform field'};
-      if(selection && (selection.points || selection.runs)) return {error:'Use a rectangular selection for this transform'};
+      if(selection && Q.complexSelection(selection)) return {error:'Use a rectangular selection for this transform'};
       if(!target.cel) return {error:'Draw on this layer first'};
       if(!target.layer || !target.layer.visible) return {error:'This layer is hidden'};
       if(target.layer.locked) return {error:'This layer is locked'}; if(target.layer.alphaLocked) return {error:'Turn off alpha lock to transform'};
@@ -1947,7 +1967,7 @@
     card.appendChild(Q.crel('p', 'sub', 'A paint, sketch and frame-by-frame animation studio for Android. Artwork is stored on this device only — nothing is uploaded.'));
     card.appendChild(Q.crel('p', 'sub', 'Developed by Qmer'));
     card.appendChild(Q.crel('p', 'sub', 'ቀለም (qalam) means “pen” or “ink”.'));
-    card.appendChild(Q.crel('p', 'sub', 'Version 5.1'));
+    card.appendChild(Q.crel('p', 'sub', 'Version 5.2'));
     const actions = Q.crel('div', 'modal-actions');
     const close = Q.crel('button', 'btn primary', 'Close');
     close.addEventListener('click', function () { UI.closeModal(); });
