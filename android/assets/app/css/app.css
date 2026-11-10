@@ -472,3 +472,5 @@ select, .select {
 .reference-actions { display: flex; gap: 6px; padding: 0 8px 6px; }
 .reference-actions button { display: grid; place-items: center; width: 36px; height: 32px; border-radius: 8px; background: #393942; color: #f4f4f8; }
 .reference-actions svg { width: 19px; height: 19px; }
+
+.precision-preview { display: block; max-width: 100%; margin: 10px auto; border-radius: 8px; background: repeating-conic-gradient(#41414b 0% 25%, #292932 0% 50%) 0 0 / 16px 16px; }

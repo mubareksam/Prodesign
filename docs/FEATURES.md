@@ -96,7 +96,10 @@ The supplied feature inventory is a roadmap, not a list of completed work.
   flips, 180° rotation and numeric move/scale are undoable; lasso and wand transforms are
   refused. Effects calculate within the bounding rectangle then mask output, so
   blur can sample outside a lasso or wand mask. Selections are not saved or feathered and the
-  outline is not restored by pixel undo. No live transform preview.
+  outline is not restored by pixel undo. A separate precise transform accepts numeric
+  dimensions, centre offsets and free rotation with an approximate active-cel preview,
+  smooth/nearest sampling and a 64 MiB temporary allocation limit. Its rotated selection
+  becomes an axis-aligned bounding box. No draggable handles or custom pivots.
 - Layer solo saves and restores per-layer visibility in one undoable operation; it persists across save/reopen. Clipped solo keeps its base visible. Manual visibility edits made during solo are replaced on restoration; newly added layers are left unchanged. Solo affects exports and thumbnails while active.
 - Hold the colour swatch to swap the previous colour; drag still performs colour drop. The eraser button toggles an eraser or, on hold, creates a temporary copy of the current paint brush's texture and dynamics. Brush tray offers up to six device-local size presets shared across brushes.
 - Alpha lock lets brush painting, fill and effects recolour existing layer pixels
@@ -142,7 +145,7 @@ The supplied feature inventory is a roadmap, not a list of completed work.
 ## Not yet implemented
 
 Snapping/drawing assist for grids and perspective, camera references, layer masks/groups, automatic selection,
-feathered selection, interactive transforms and free rotation, cross-layer ColorDrop/reference fill, smudge, advanced filters and liquify, typography,
+feathered selection, interactive transform handles and custom pivots, cross-layer ColorDrop/reference fill, smudge, advanced filters and liquify, typography,
 DPI settings, timelapse, gallery stacks, PSD/Procreate/PDF/TIFF compatibility, brush
 import/export, and most advanced colour-management and accessibility features.
 Apple Pencil-specific controls are not applicable on Android. See the original

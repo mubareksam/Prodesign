@@ -39,6 +39,25 @@
     const right=Math.min(a.x+a.w,b.x+b.w), bottom=Math.min(a.y+a.h,b.y+b.h);
     return right > x && bottom > y ? {x:x,y:y,w:right-x,h:bottom-y} : null;
   };
+  // Geometry and allocation checks shared by the precision dialog and commit.
+  Q.planPreciseTransform = function (src,canvasWidth,canvasHeight,o) {
+    if (!src || !o || !Number.isInteger(src.x) || !Number.isInteger(src.y) || !Number.isInteger(src.w) || !Number.isInteger(src.h) || src.w<1 || src.h<1 || src.x<0 || src.y<0 || src.x+src.w>canvasWidth || src.y+src.h>canvasHeight) return {error:'Choose a valid rectangular selection'};
+    if (!Number.isInteger(o.dx) || !Number.isInteger(o.dy) || Math.abs(o.dx)>canvasWidth*2 || Math.abs(o.dy)>canvasHeight*2) return {error:'Move offsets must be whole pixels within twice the canvas size'};
+    if (!Number.isInteger(o.width) || !Number.isInteger(o.height) || o.width<1 || o.height<1 || o.width>Math.min(8192,canvasWidth*4) || o.height>Math.min(8192,canvasHeight*4)) return {error:'Width and height must be whole pixels within the size limit'};
+    if (!Number.isFinite(o.angle) || Math.abs(o.angle)>360 || !['smooth','nearest'].includes(o.resampling)) return {error:'Angle must be between −360° and 360°'};
+    const theta=o.angle*Math.PI/180, cos=Math.cos(theta), sin=Math.sin(theta), cx=src.x+src.w/2+o.dx, cy=src.y+src.h/2+o.dy;
+    const hw=o.width/2, hh=o.height/2, points=[[-hw,-hh],[hw,-hh],[hw,hh],[-hw,hh]].map(([x,y])=>({x:cx+x*cos-y*sin,y:cy+x*sin+y*cos}));
+    function stable(x) { const r=Math.round(x); return Math.abs(x-r)<1e-9 ? r : x; }
+    const left=Math.floor(stable(Math.min(...points.map(p=>p.x)))), top=Math.floor(stable(Math.min(...points.map(p=>p.y))));
+    const right=Math.ceil(stable(Math.max(...points.map(p=>p.x)))), bottom=Math.ceil(stable(Math.max(...points.map(p=>p.y))));
+    const bounds={x:left,y:top,w:right-left,h:bottom-top};
+    const union={x:Math.min(src.x,left),y:Math.min(src.y,top),w:Math.max(src.x+src.w,right)-Math.min(src.x,left),h:Math.max(src.y+src.h,bottom)-Math.min(src.y,top)};
+    const rect=Q.intersectRect(union,{x:0,y:0,w:canvasWidth,h:canvasHeight});
+    if ((src.w*src.h+3*rect.w*rect.h)*4>64*1024*1024) return {error:'Transform needs more than the 64 MiB temporary-memory limit'};
+    const angle=((o.angle%360)+360)%360, unchanged=o.dx===0 && o.dy===0 && o.width===src.w && o.height===src.h && angle===0;
+    return {src:{...src},cx:cx,cy:cy,theta:theta,bounds:bounds,rect:rect,points:points,clipped:left<0 || top<0 || right>canvasWidth || bottom>canvasHeight,unchanged:unchanged};
+  };
+
   Q.flipImage = function (image, horizontal, vertical) {
     const w=image.width, h=image.height, data=image.data;
     if (!horizontal && !vertical) return;

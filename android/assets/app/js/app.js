@@ -712,6 +712,29 @@
     } catch (err) { Q.toast('Could not transform this area on this device',4000); }
   };
 
+  // Render to a bounded staging canvas and prepare undo pixels before touching the cel.
+  App.preciseTransform = function (o,target) {
+    const d=App.doc,v=App.view; if(!d || !target || target.doc!==d || d.frames[d.activeFrame]!==target.frame || d.layer()!==target.layer || d.activeCel(false)!==target.cel || v.selection!==target.selection) return {error:'Artwork, frame, layer or selection changed; reopen the transform'};
+    if(App.playing || v.locked) return {error:'Stop playback or the current operation first'};
+    const layer=d.layer(),cel=d.activeCel(false); if(!layer.visible) return {error:'This layer is hidden'};
+    if(layer.locked) return {error:'This layer is locked'}; if(layer.alphaLocked) return {error:'Turn off alpha lock to transform'};
+    if(!cel) return {error:'Draw on this layer first'}; if(v.selection && (v.selection.points || v.selection.runs)) return {error:'Use a rectangular selection for this transform'};
+    const src=v.selection || {x:0,y:0,w:d.width,h:d.height};
+    if (src.x!==target.src.x || src.y!==target.src.y || src.w!==target.src.w || src.h!==target.src.h) return {error:'Selection changed; reopen the transform'};
+    const plan=Q.planPreciseTransform(src,d.width,d.height,o); if(plan.error) return plan; if(plan.unchanged) return {error:'Nothing changed'};
+    const r=plan.rect;
+    try {
+      const copy=Q.canvas(src.w,src.h), stage=Q.canvas(r.w,r.h), c=stage.getContext('2d'), ctx=cel.getContext('2d');
+      copy.getContext('2d').drawImage(cel,src.x,src.y,src.w,src.h,0,0,src.w,src.h);
+      c.drawImage(cel,r.x,r.y,r.w,r.h,0,0,r.w,r.h); c.clearRect(src.x-r.x,src.y-r.y,src.w,src.h);
+      c.save(); c.translate(plan.cx-r.x,plan.cy-r.y); c.rotate(plan.theta); c.imageSmoothingEnabled=o.resampling==='smooth'; c.drawImage(copy,0,0,src.w,src.h,-o.width/2,-o.height/2,o.width,o.height); c.restore();
+      const before=ctx.getImageData(r.x,r.y,r.w,r.h), after=c.getImageData(0,0,r.w,r.h);
+      ctx.putImageData(after,r.x,r.y); d.history.push({type:'pixels',f:d.activeFrame,l:d.activeLayer,rect:r,before:before});
+      if(v.selection) v.selection=Q.intersectRect(plan.bounds,{x:0,y:0,w:d.width,h:d.height});
+      v.dirty=true; App.markDirty(); Q.toast('Transform applied · Undo to revert',3000); return {clipped:plan.clipped};
+    } catch(err) { return {error:'Could not transform this area on this device'}; }
+  };
+
   App.wandAt = function (x,y) {
     const d=App.doc, v=App.view; if(!d || v.locked || x<0 || y<0 || x>=d.width || y>=d.height) return;
     const layer=d.layer(), cel=d.activeCel(false), frame=d.activeFrame, layerIndex=d.activeLayer;

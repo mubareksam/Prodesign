@@ -8,11 +8,11 @@ brushes, layers with blend modes, a colour wheel, a frame timeline with onion sk
 Procreate's gesture vocabulary, PNG/GIF export and device-dependent MP4 export — all offline, with no account and
 no network permissions at all.
 
-- Package: `com.qalam.studio` · version 3.6 (versionCode 27)
+- Package: `com.qalam.studio` · version 3.7 (versionCode 28)
 - minSdk 26 (Android 8.0) · targetSdk 33 · armeabi-v7a/arm64/x86/x86_64 independent
   (everything is HTML/JS running inside the app's own `WebView`, so the APK has no
   native code)
-- APK: **`artifacts/Qalam-3.6.apk`** (~293 KB), signed with a v1+v2 scheme
+- APK: **`artifacts/Qalam-3.7.apk`** (~296 KB), signed with a v1+v2 scheme
 - The written analysis of Procreate that this app was specified from:
   [`docs/procreate-analysis.md`](procreate-analysis.md)
 
@@ -20,7 +20,7 @@ no network permissions at all.
 
 ## 1. Install
 
-1. Copy `artifacts/Qalam-3.6.apk` to the phone (USB, Drive, chat to yourself — anything).
+1. Copy `artifacts/Qalam-3.7.apk` to the phone (USB, Drive, chat to yourself — anything).
 2. Open it with the phone's file manager. Android will ask to allow installs from
    that app the first time ("Install unknown apps").
 3. Install and open **Qalam**. If an earlier Qalam version is already installed, Android should offer an update that preserves its data. Back up important artwork first. Android does not allow this app to silently uninstall itself; do not uninstall it unless you have backed up its local artwork.
@@ -308,7 +308,20 @@ Bottom bar: **Gallery · Layer · Brush · Colour · Timeline · Menu** (plus **
   bounding rectangle. Move/scale uses numeric offsets and 25–400% scale anchored
   at top left, without live preview; off-canvas content is cropped. With no
   selection, transforms use the current cel. Undo restores pixels, not the selection
-  outline. Selections are temporary, unsaved and cleared when switching artworks;
+  outline. **Precise transform** adds independent whole-pixel width and height,
+  centre-relative whole-pixel move offsets, and a numeric clockwise angle from
+  −360° to 360°. Dimensions describe the unrotated frame; the rotated bounding box
+  may be larger. Choose smooth or nearest-neighbour resampling. The dialog shows an
+  approximate preview of the active cel only and warns about canvas cropping. It
+  does not show the composite, and it has no draggable nodes or custom pivot. The
+  transform cuts the source and composites it over the destination; pixel edits are
+  saved and undoable in one step. A rotated rectangular selection becomes its
+  clipped, axis-aligned bounding box, so that box can include unselected corners;
+  Undo restores pixels but not the selection. It refuses lasso/wand, locked or
+  alpha-locked layers, and limits estimated temporary allocation to 64 MiB (the
+  existing document and undo history need additional memory). Very large canvases
+  may exceed this limit. Raster resampling and clipping can lose detail.
+  Selections are temporary, unsaved and cleared when switching artworks;
   they apply across layer/frame switches. Lasso paths are limited to 2048 sampled
   points, are not feathered, and large edits can take time and memory.
 - **Menu → Drawing guides** — show an adjustable 2D, isometric or one-, two- or
@@ -424,7 +437,7 @@ tools/
   tests/pixel_integration.mjs real raster and animation export checks
   tests/gif_roundtrip.mjs    encodes a GIF and decodes it with an independent decoder
   tests/ui_smoke.mjs         jsdom boot + full UI drive (gallery -> export)
-artifacts/Qalam-3.6.apk           the signed, installable artefact
+artifacts/Qalam-3.7.apk           the signed, installable artefact
 docs/procreate-analysis.md   the Procreate study this app was built from
 docs/qalam.md                this file
 ```
@@ -454,7 +467,7 @@ Design notes worth knowing before changing code:
 
 ```bash
 bash tools/fetch-toolchain.sh     # once per machine: JVM, apktool, aapt2, jars, npm
-bash tools/build.sh               # -> artifacts/Qalam-3.6.apk (signed + verified)
+bash tools/build.sh               # -> artifacts/Qalam-3.7.apk (signed + verified)
 bash tools/check_reference.sh     # optional: javac-check the Java mirrors
 ```
 
@@ -491,9 +504,9 @@ install, not merely that a build command exited 0.
 
 This is not a full Procreate replacement. Canvas sizes are finite (up to 4096 px per side), and artwork is raster: magnification up to 64× reveals pixels rather than creating infinite detail. Layer groups, multi-track audio mixing, deformable rigging, morphing and live particle systems are not implemented. A limited two-layer IK key generator is available. Editable per-layer transform tracks are limited to position, uniform scale and rotation. A basic baked particle generator is available. A global editable camera track is available for animation playback and GIF/MP4 export. Audio-in-MP4 export is conditional on device support and requires physical-device testing. Path and two-pose transform animation generate raster cels rather than live keyframes. Onion skins provide ghost frames. Brush Studio edits existing presets only;
 custom tips/grains, dual brushes and import/export are not implemented. Guide
-snapping, adjustable vanishing-point placement, rectangle/arc QuickShape, imported
-persistent image references, automatic selection beyond Magic Wand, feathered masks, interactive
-transform previews and free rotation, layer masks/groups, text, cross-layer reference fill,
+snapping, adjustable vanishing-point placement, rectangle/arc QuickShape, persistent
+image references, automatic selection beyond Magic Wand, feathered masks, interactive
+transform handles, layer masks/groups, text, cross-layer reference fill,
 smudge, timelapse, PSD and many other requested features remain unimplemented. Frame labels are not full nested frame groups; PNG sequences and sprite sheets
 contain one image per frame without hold metadata. MP4 availability depends on the
 WebView and has not been verified on a physical Android phone. See

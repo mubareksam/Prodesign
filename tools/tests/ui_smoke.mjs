@@ -1096,6 +1096,25 @@ async function run() {
   ok(App.view.globalPressure===0.75 && App.view.globalSmoothing===0.3,'global pressure and smoothing are restored at application startup');
   }
 
+  {
+  console.log('3.7 precise transform');
+  App.createDoc(64,64,'Precision'); App.doc.activeCel(true); App.doc.history.clear(); App.view.selection={x:8,y:10,w:4,h:6};
+  Q.UI.selectionDialog(); const choice=Array.from(doc.querySelectorAll('#modalBody button')).find(b=>b.textContent==='Precise transform'); ok(!!choice && !!choice.querySelector('svg'),'precise transform is available from selection tools'); choice.click();
+  const field=label=>doc.querySelector('#modalBody [aria-label="'+label+'"]'); const w=field('Precise width (px)'),h=field('Precise height (px)'),dx=field('Precise move X (px)'),dy=field('Precise move Y (px)'),angle=field('Precise rotation (degrees)'),sample=field('Transform resampling');
+  ok(w.value==='4' && h.value==='6' && !!field('Approximate transformed layer preview') && doc.querySelector('#modalBody').textContent.includes('bounding box'),'dialog starts with current dimensions and explains the preview and selection');
+  w.value=''; click('#modalBody .btn.primary'); ok(doc.querySelector('.canvas-error').textContent.includes('every transform field') && App.doc.history.undoStack.length===0,'blank numeric transform input is rejected');
+  w.value='257'; click('#modalBody .btn.primary'); ok(doc.querySelector('.canvas-error').textContent.includes('size limit'),'excessive precision dimensions are rejected');
+  w.value='6'; h.value='4'; dx.value='1'; dy.value='2'; angle.value='90'; sample.value='nearest'; sample.dispatchEvent(new win.Event('change',{bubbles:true}));
+  ok(!doc.querySelector('.canvas-error').textContent && App.doc.history.undoStack.length===0,'preview validates changes without editing the document');
+  click('#modalBody .btn.primary'); ok(App.doc.history.undoStack.length===1 && App.view.selection.x===9 && App.view.selection.y===12 && App.view.selection.w===4 && App.view.selection.h===6,'apply commits precise transform and updates bounding selection');
+  App.undo(); ok(App.doc.history.undoStack.length===0,'precise transform is one undo step'); App.redo(); ok(App.doc.history.undoStack.length===1,'precise transform can be redone');
+  Q.UI.preciseTransformDialog(); const mx=field('Precise move X (px)'); mx.value='128'; mx.dispatchEvent(new win.Event('input',{bubbles:true})); ok(doc.querySelector('#modalBody').textContent.includes('cropped'),'precision preview warns when output is off canvas');
+  const history=App.doc.history.undoStack.length; click('#modalBody .btn.ghost'); ok(App.doc.history.undoStack.length===history,'cancelling precision transform leaves artwork unchanged');
+  Q.UI.preciseTransformDialog(); App.view.selection.x++; click('#modalBody .btn.primary'); ok(doc.querySelector('.canvas-error').textContent.includes('Selection changed') && App.doc.history.undoStack.length===history,'stale selection is rejected before mutation'); Q.UI.closeModal();
+  Q.UI.preciseTransformDialog(); App.doc.layer().locked=true; click('#modalBody .btn.primary'); ok(doc.querySelector('.canvas-error').textContent.includes('locked') && App.doc.history.undoStack.length===history,'precision dialog rechecks locks on apply'); App.doc.layer().locked=false; Q.UI.closeModal();
+  App.view.selection={x:1,y:1,w:4,h:4,points:[{x:1,y:1},{x:5,y:1},{x:1,y:5}]}; Q.UI.preciseTransformDialog(); ok(doc.querySelector('.canvas-error').textContent.includes('rectangular'),'precision dialog rejects lasso selections'); Q.UI.closeModal();
+  }
+
   await App.saveNow(false);
   console.log(failures ? `\n${failures} check(s) FAILED` : '\nall UI checks passed');
   process.exit(failures ? 1 : 0);

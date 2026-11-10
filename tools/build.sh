@@ -14,7 +14,7 @@ APKTOOL="$TC/apktool_2.4.1.jar"
 ANDROID_JAR="$TC/android-33.jar"
 BUILD="$ROOT/build"
 DIST="$ROOT/artifacts"
-VERSION="${QALAM_VERSION:-3.6}"
+VERSION="${QALAM_VERSION:-3.7}"
 
 for f in "$JAVA" "$APKTOOL" "$TC/aapt2"; do
   [ -e "$f" ] || { echo "missing toolchain file: $f (run tools/fetch-toolchain.sh)" >&2; exit 1; }

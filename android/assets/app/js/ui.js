@@ -937,7 +937,7 @@
     card.appendChild(Q.crel('p','sub', v.selection ? ((v.selection.points || v.selection.runs) ? (v.selection.runs ? 'Magic wand selected. The dashed box shows bounds, not the exact selected pixels. Transforms require a rectangle.' : 'Lasso selected. Transforms currently require a rectangle.') : 'Rectangle selected. Edits affect the current layer and frame.') : 'No selection. Flips and rotation use the whole current layer and frame.'));
     card.appendChild(Q.crel('p','sub','The selection clips brushes, erasers, flood fill and effects. It is temporary and applies to the current layer and frame.'));
     const actions=Q.crel('div','menu-grid');
-    function action(label, fn) { const b=Q.crel('button','menu-item',label); b.addEventListener('click',function () { UI.closeModal(); UI.closeTray(); fn(); }); actions.appendChild(b); }
+    function action(label, fn, ico) { const b=Q.crel('button','menu-item'); if(ico) b.innerHTML=icon(ico); b.appendChild(document.createTextNode(label)); b.addEventListener('click',function () { UI.closeModal(); UI.closeTray(); fn(); }); actions.appendChild(b); }
     action('Draw rectangle',function () {
       v.tool='select'; v.selectionDraft=null; Q.el('#btnFill').classList.remove('on'); Q.el('#btnEyedrop').classList.remove('on');
       Q.hint('Drag on the canvas to select a rectangle',3000);
@@ -953,6 +953,7 @@
     action('Flip vertical',function () { app().editSelection('flipV'); });
     action('Rotate 180°',function () { app().editSelection('rotate180'); });
     action('Move / scale',function () { UI.transformDialog(); });
+    action('Precise transform',function () { UI.preciseTransformDialog(); },ICON.controls);
     card.appendChild(actions);
     const done=Q.crel('button','btn ghost','Close'); done.addEventListener('click',function () { UI.closeModal(); }); card.appendChild(done); UI.openModal(card);
   };
@@ -975,6 +976,46 @@
       }
       UI.closeModal(); app().moveScaleSelection(x,y,pct/100);
     });
+    actions.appendChild(cancel); actions.appendChild(apply); card.appendChild(actions); UI.openModal(card);
+  };
+
+  UI.preciseTransformDialog = function () {
+    app().stopPlay(); const d=app().doc,v=app().view; if(!d) return;
+    const selection=v.selection, src=selection ? {x:selection.x,y:selection.y,w:selection.w,h:selection.h} : {x:0,y:0,w:d.width,h:d.height};
+    const target={doc:d,frame:d.frames[d.activeFrame],layer:d.layer(),cel:d.activeCel(false),selection:selection,src:src};
+    const card=Q.crel('div'); card.appendChild(Q.crel('h2',null,'Precise transform'));
+    card.appendChild(Q.crel('p','sub','Enter whole-pixel dimensions before rotation, offsets from the original centre and a clockwise angle. This edits the current cel; pixels outside the canvas are cropped. The preview is approximate.'));
+    card.appendChild(Q.crel('p','sub','Only rectangles or the whole cel are supported. Rotated selections become an axis-aligned bounding box. Resizing resamples raster artwork; undo restores pixels, not the selection. Temporary allocations are limited to 64 MiB.'));
+    const grid=Q.crel('div','transform-grid'); card.appendChild(grid);
+    function field(label,value,step){const row=Q.crel('div','transform-field'), name=Q.crel('label',null,label), el=Q.crel('input','select'); el.type='number'; el.step=step; el.value=String(value); el.setAttribute('aria-label',label); row.appendChild(name); row.appendChild(el); grid.appendChild(row); return el;}
+    const width=field('Precise width (px)',src.w,'1'), height=field('Precise height (px)',src.h,'1'), dx=field('Precise move X (px)',0,'1'), dy=field('Precise move Y (px)',0,'1'), angle=field('Precise rotation (degrees)',0,'any');
+    const row=Q.crel('div','transform-field'), label=Q.crel('label',null,'Resampling'), sampling=Q.crel('select'); sampling.setAttribute('aria-label','Transform resampling'); [['smooth','Smooth'],['nearest','Nearest neighbour (pixel art)']].forEach(x=>{const option=Q.crel('option'); option.value=x[0]; option.textContent=x[1]; sampling.appendChild(option);}); row.appendChild(label); row.appendChild(sampling); grid.appendChild(row);
+    const error=Q.crel('p','canvas-error'); error.setAttribute('role','alert'); card.appendChild(error);
+    const preview=Q.canvas(192,192); preview.className='precision-preview'; preview.setAttribute('aria-label','Approximate transformed layer preview'); card.appendChild(preview);
+    const info=Q.crel('p','sub'); card.appendChild(info);
+    const factor=Math.min(192/d.width,192/d.height); preview.width=Math.max(1,Math.round(d.width*factor)); preview.height=Math.max(1,Math.round(d.height*factor));
+    function read() {
+      if([width,height,dx,dy,angle].some(x=>!x.value.trim() || !Number.isFinite(Number(x.value)))) return {error:'Enter a number in every transform field'};
+      if(selection && (selection.points || selection.runs)) return {error:'Use a rectangular selection for this transform'};
+      if(!target.cel) return {error:'Draw on this layer first'};
+      if(!target.layer || !target.layer.visible) return {error:'This layer is hidden'};
+      if(target.layer.locked) return {error:'This layer is locked'}; if(target.layer.alphaLocked) return {error:'Turn off alpha lock to transform'};
+      const options={width:Number(width.value),height:Number(height.value),dx:Number(dx.value),dy:Number(dy.value),angle:Number(angle.value),resampling:sampling.value}, plan=Q.planPreciseTransform(src,d.width,d.height,options);
+      return plan.error ? plan : {options:options,plan:plan};
+    }
+    function update() {
+      const value=read(); if(value.error) { error.textContent=value.error; info.textContent=''; return null; } error.textContent='';
+      const o=value.options,p=value.plan; info.textContent=(p.clipped ? 'Warning: part of the transformed frame lies outside the canvas and will be cropped. ' : '')+'Preview shows the current layer only, not other layers or blend modes.';
+      try {
+        const c=preview.getContext('2d'), temp=Q.canvas(preview.width,preview.height), tc=temp.getContext('2d'), sx=preview.width/d.width,sy=preview.height/d.height;
+        c.clearRect(0,0,preview.width,preview.height); c.drawImage(target.cel,0,0,preview.width,preview.height);
+        tc.drawImage(target.cel,0,0,preview.width,preview.height); c.save(); c.scale(sx,sy); c.clearRect(src.x,src.y,src.w,src.h); c.translate(p.cx,p.cy); c.rotate(p.theta); c.imageSmoothingEnabled=o.resampling==='smooth'; c.drawImage(temp,src.x*sx,src.y*sy,src.w*sx,src.h*sy,-o.width/2,-o.height/2,o.width,o.height); c.restore();
+      } catch(e) { info.textContent='Preview unavailable on this device; settings are still validated before applying.'; }
+      return value;
+    }
+    [width,height,dx,dy,angle].forEach(el=>el.addEventListener('input',update)); sampling.addEventListener('change',update); update();
+    const actions=Q.crel('div','modal-actions'), cancel=Q.crel('button','btn ghost','Cancel'), apply=Q.crel('button','btn primary','Apply');
+    cancel.addEventListener('click',()=>UI.closeModal()); apply.addEventListener('click',function(){ const value=update(); if(!value) return; const result=app().preciseTransform(value.options,target); if(result.error) { error.textContent=result.error; return; } UI.closeModal(); });
     actions.appendChild(cancel); actions.appendChild(apply); card.appendChild(actions); UI.openModal(card);
   };
 

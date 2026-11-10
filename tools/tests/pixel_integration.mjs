@@ -750,4 +750,43 @@ function ikOptions(overrides={}) { return {upper:0,lower:1,start:0,end:2,root:{x
  delay=30; App.loadReferenceFile(f,target); token++; await new Promise(r=>setTimeout(r,100)); ok(!selected,'stale reference picker results cannot replace a newer reference');
 }
 
+
+function precisionTarget(d) { const sel=App.view.selection; return {doc:d,frame:d.frames[d.activeFrame],layer:d.layer(),cel:d.activeCel(false),selection:sel,src:sel ? {x:sel.x,y:sel.y,w:sel.w,h:sel.h} : {x:0,y:0,w:d.width,h:d.height}}; }
+function precisionOptions(opts={}) { return {width:2,height:4,dx:0,dy:0,angle:90,resampling:'nearest',...opts}; }
+{
+ const src={x:4,y:4,w:2,h:4}, p=Q.planPreciseTransform(src,16,16,precisionOptions());
+ ok(!p.error && p.bounds.x===3 && p.bounds.y===5 && p.bounds.w===4 && p.bounds.h===2 && !p.clipped,'precision geometry calculates exact cardinal-rotation bounds');
+ const off=Q.planPreciseTransform(src,16,16,precisionOptions({dx:15,angle:45})); ok(!off.error && off.clipped && off.rect.w<=16,'precision geometry reports off-canvas cropping');
+ const invalid=[{width:0},{height:2.5},{dx:33},{dy:NaN},{angle:361},{angle:Infinity},{resampling:'bad'}];
+ ok(invalid.every(o=>Q.planPreciseTransform(src,16,16,precisionOptions(o)).error),'precision geometry rejects invalid sizes, offsets, angles and sampling');
+ ok(Q.planPreciseTransform(src,16,16,precisionOptions({angle:360})).unchanged,'full-turn identity is recognised as unchanged');
+ ok(!!Q.planPreciseTransform({x:0,y:0,w:4096,h:4096},4096,4096,precisionOptions({width:4096,height:4096})).error,'precision geometry enforces temporary allocation cap');
+}
+{
+ const d=setup(),cel=d.activeCel(true),c=cel.getContext('2d'); c.fillStyle='#ff0000';c.fillRect(4,4,2,2);c.fillStyle='#0000ff';c.fillRect(4,6,2,2); c.fillStyle='#00ff00';c.fillRect(12,12,1,1);
+ d.addFrame(false); d.activeFrame=0; App.view.selection={x:4,y:4,w:2,h:4};d.history.clear(); const t=precisionTarget(d),r=App.preciseTransform(precisionOptions(),t);
+ ok(!r.error && same(pixel(cel,6,5),[255,0,0,255]) && same(pixel(cel,3,5),[0,0,255,255]),'90 degree precise rotation produces correct clockwise coloured pixels');
+ ok(pixel(cel,4,4)[3]===0 && same(pixel(cel,12,12),[0,255,0,255]) && d.history.undoStack.length===1,'precision transform clears the source and preserves unrelated pixels in one undo step');
+ const exported=d.flatten(0,{background:false});ok(same(pixel(exported,6,5),[255,0,0,255]) && !d.cel(1,0,false),'precise pixels appear in exports and other frames remain untouched');
+ ok(App.view.selection.x===3 && App.view.selection.y===5 && App.view.selection.w===4 && App.view.selection.h===2,'rotated selection becomes its axis-aligned bounding rectangle');
+ d.history.undo();ok(same(pixel(cel,4,4),[255,0,0,255]) && same(pixel(cel,4,7),[0,0,255,255]) && pixel(cel,3,5)[3]===0,'precision transform undo restores exact original pixels');
+ d.history.redo();ok(same(pixel(cel,6,5),[255,0,0,255]) && same(pixel(cel,3,5),[0,0,255,255]),'precision transform redo restores transformed pixels');
+}
+{
+ const d=setup(),cel=d.activeCel(true),c=cel.getContext('2d'); c.fillStyle='#ff0000';c.fillRect(4,4,2,4); App.view.selection={x:4,y:4,w:2,h:4};d.history.clear();
+ const result=App.preciseTransform(precisionOptions({width:4,height:2,dx:3,dy:1,angle:0}),precisionTarget(d));
+ ok(!result.error && same(pixel(cel,6,6),[255,0,0,255]) && same(pixel(cel,9,7),[255,0,0,255]) && pixel(cel,10,7)[3]===0,'precision resize uses requested independent width and height and centre offset');
+ d.history.undo(); App.view.selection={x:4,y:4,w:2,h:4}; const off=App.preciseTransform(precisionOptions({dx:-5,angle:0}),precisionTarget(d));
+ ok(!off.error && off.clipped && pixel(cel,4,4)[3]===0 && d.history.undoStack.length===1,'off-canvas precision transform crops pixels but remains undoable'); d.history.undo(); ok(pixel(cel,4,4)[3]===255,'undo restores pixels cropped by the precise transform');
+}
+{
+ const d=setup(),cel=d.activeCel(true);cel.getContext('2d').fillRect(4,4,2,4);App.view.selection={x:4,y:4,w:2,h:4};d.history.clear();const t=precisionTarget(d), original=Q.canvas;
+ let calls=0; Q.canvas=(w,h)=>{if(++calls===2) throw Error('allocation');return original(w,h);}; const r=App.preciseTransform(precisionOptions(),t); Q.canvas=original;
+ ok(!!r.error && d.history.undoStack.length===0 && pixel(cel,4,4)[3]===255,'failed precision allocation leaves pixels and history unchanged');
+ App.view.locked=true;ok(!!App.preciseTransform(precisionOptions(),t).error && d.history.undoStack.length===0,'precision transform refuses to run during another operation');App.view.locked=false;
+ d.layer().locked=true;ok(!!App.preciseTransform(precisionOptions(),t).error && d.history.undoStack.length===0,'precision transform respects layer lock');d.layer().locked=false; d.layer().alphaLocked=true;ok(!!App.preciseTransform(precisionOptions(),t).error,'precision transform respects alpha lock');d.layer().alphaLocked=false;
+ App.view.selection={x:4,y:4,w:2,h:4,points:[{x:4,y:4},{x:6,y:4},{x:4,y:8}]};ok(!!App.preciseTransform(precisionOptions(),precisionTarget(d)).error,'precision transform refuses non-rectangular masks');
+ App.view.selection={x:4,y:4,w:2,h:4};const stale=precisionTarget(d);App.view.selection.x=3;ok(!!App.preciseTransform(precisionOptions(),stale).error && d.history.undoStack.length===0,'precision transform refuses stale selection geometry');
+}
+
 console.log(`all ${n} raster integration checks passed`);

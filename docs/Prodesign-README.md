@@ -4,20 +4,20 @@ Developed by **Qmer**. An offline painting and frame-animation studio for Androi
 brushes, layers, a colour wheel, a frame timeline with onion skin, Procreate's gesture
 vocabulary, and PNG/GIF export. No account, no ads, no network permission.
 
-**Download:** [`Qalam-3.6.apk`](../artifacts/Qalam-3.6.apk) (~293 KB)
+**Download:** [`Qalam-3.7.apk`](../artifacts/Qalam-3.7.apk) (~296 KB)
 
 | | |
 |---|---|
 | Package | `com.qalam.studio` |
-| Version | 3.6 (versionCode 27) |
+| Version | 3.7 (versionCode 28) |
 | Requires | Android 8.0+ (minSdk 26), built for targetSdk 33 |
 | Permissions | `VIBRATE` only — no internet, no storage, no location |
 | Signing | APK Signature Scheme v1 + v2, self-signed with a public test key |
-| SHA-256 | `2c7888234cc889d1942e1c6643de3dfcee4057fdfc6d1c16f160e51e5bf9ae40` |
+| SHA-256 | `e290fe115e66c9c2d239d7c78104551e0262a52f8a600c2b360508af9a502187` |
 
 ## Install
 
-1. Download `Qalam-3.6.apk` to the phone (or copy it over USB).
+1. Download `Qalam-3.7.apk` to the phone (or copy it over USB).
 2. Open it from the file manager. Android will ask you to allow installs from that
    app the first time ("Install unknown apps") — allow it, then install.
 3. Open **Qalam**.
@@ -33,7 +33,7 @@ story presets and custom sizes from 64 to 4096 pixels per side; full-screen canv
 **Selection & transform** — temporary rectangle or freehand lasso mask for brushes, erasers, fill
 and effects; fill, clear, flips, 180° rotation, numeric move and scale, and copy to
 new layer on the current frame. Pixel edits are undoable; selection outlines are not.
-Transforms currently require a rectangle; there is no feathering, live transform preview or free rotation.
+Transforms currently require a rectangle. Precise transform provides numeric dimensions and rotation with an approximate preview; there are no draggable handles, feathering or custom pivots.
 
 **Brushes** — 20 presets, including: Studio pen, Inking pen, Monoline, Technical pencil,
 6B pencil, Marker, Airbrush, Charcoal, Watercolour, Hard eraser, Soft eraser. Stylus
