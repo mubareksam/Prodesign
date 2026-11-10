@@ -81,6 +81,7 @@
     window.qalamBack = function () {
       if (App.cancelAudioExport) { App.cancelAudioExport(); return 0; }
       if (!Q.el('#modal').classList.contains('hidden')) { Q.UI.closeModal(); return 0; }
+      if (Q.UI.isFocusMode()) { Q.UI.setFocusMode(false); return 0; }
       if (!Q.el('#tray').classList.contains('hidden')) { Q.UI.closeTray(); return 0; }
       if (!Q.el('#referenceWindow').classList.contains('hidden')) { Q.UI.closeReference(); return 0; }
       if (App.playing) { App.togglePlay(); return 0; }

@@ -51,6 +51,7 @@
     sparkle: '<path d="M12 3l1.8 5.2L19 10l-5.2 1.8L12 17l-1.8-5.2L5 10l5.2-1.8z"/>',
     swatch: '<rect x="4" y="4" width="16" height="16" rx="3"/><path d="M4 16l8-8 8 8"/>',
     gradient: '<rect x="4" y="4" width="16" height="16" rx="3"/><path d="M8 5v14M12 5v14M16 5v14"/>',
+    focus: '<path d="M4 9V4h5M15 4h5v5M20 15v5h-5M9 20H4v-5"/><path d="M8 12h8"/>',
     pureHue: '<path d="M12 3C9 7 6 10 6 14a6 6 0 0012 0c0-4-3-7-6-11z"/><path d="M12 9v7M9 12.5h6"/>',
     railLayout: '<path d="M5 4v16M19 4v16M9 8h6M11 6L9 8l2 2M13 14h-4M13 12l2 2-2 2"/><circle cx="5" cy="8" r="2"/><circle cx="19" cy="16" r="2"/>',
     controls: '<path d="M4 7h16M4 17h16"/><circle cx="9" cy="7" r="2"/><circle cx="15" cy="17" r="2"/>',
@@ -106,6 +107,7 @@
     handle.addEventListener('pointerup', function () { dragging=null; });
     handle.addEventListener('pointercancel', function () { dragging=null; });
     el('#btnGallery').addEventListener('click', function () { app().backToGallery(); });
+    el('#btnRestoreInterface').addEventListener('click', function () { UI.setFocusMode(false); });
 
     el('#btnUndo').addEventListener('click', function () { app().undo(); });
     el('#btnRedo').addEventListener('click', function () { app().redo(); });
@@ -206,7 +208,7 @@
 
     // keyboard shortcuts for desktop testing
     window.addEventListener('keydown', function (e) {
-      if (e.key === 'Escape') { UI.closeTray(); UI.closeModal(); }
+      if (e.key === 'Escape') { if (!Q.el('#modal').classList.contains('hidden')) UI.closeModal(); else if (UI.isFocusMode()) UI.setFocusMode(false); else UI.closeTray(); }
       if ((e.ctrlKey || e.metaKey) && e.key === 'z') { e.preventDefault(); if (e.shiftKey) app().redo(); else app().undo(); }
       if (e.key === '[' ) app().setSize(app().view.size * 0.85);
       if (e.key === ']' ) app().setSize(app().view.size * 1.18);
@@ -261,7 +263,17 @@
     });
   }
 
+  UI.isFocusMode = function () { return Q.el('#studio').classList.contains('focus-mode'); };
+  UI.setFocusMode = function (enabled) {
+    const studio=Q.el('#studio'), restore=Q.el('#btnRestoreInterface');
+    if (enabled && (studio.classList.contains('hidden') || !app().doc)) return;
+    if (enabled) UI.closeTray();
+    studio.classList.toggle('focus-mode',!!enabled); restore.classList.toggle('hidden',!enabled);
+    if (!enabled) UI.scheduleRailLayout();
+  };
+
   UI.showGallery = function () {
+    UI.setFocusMode(false);
     Q.el('#studio').classList.add('hidden');
     UI.closeReference();
     Q.el('#gallery').classList.remove('hidden');
@@ -272,6 +284,7 @@
   };
 
   UI.showStudio = function () {
+    UI.setFocusMode(false);
     Q.el('#gallery').classList.add('hidden');
     Q.el('#studio').classList.remove('hidden');
     const v = app().view;
@@ -318,7 +331,7 @@
     if (railLayoutFrame) return; railLayoutFrame=requestAnimationFrame(function(){ railLayoutFrame=0; UI.layoutRails(); });
   };
   UI.layoutRails = function () {
-    const studio=Q.el('#studio'); if(!studio || studio.classList.contains('hidden')) return;
+    const studio=Q.el('#studio'); if(!studio || studio.classList.contains('hidden') || UI.isFocusMode()) return;
     const box=studio.getBoundingClientRect(), height=studio.clientHeight || box.height || window.innerHeight || 600;
     const topBar=studio.querySelector('.topbar'), topRect=topBar.getBoundingClientRect();
     let top=topBar.offsetHeight || (topRect.height && topRect.height<height/2 ? topRect.height : 52); top=Math.min(height,top+8);
@@ -909,7 +922,8 @@
     group('Canvas & view', [
       ['Canvas background',ICON.sparkle,()=>UI.backgroundDialog()], ['Drawing guides',ICON.sparkle,()=>UI.guideDialog()],
       ['Canvas reference',ICON.photo,()=>{UI.closeTray(); UI.openReference();}], ['Flip canvas',ICON.flip,()=>app().flipCanvas()],
-      ['Rotate 90°',ICON.reset,()=>app().view.rotateBy(90)], ['Zoom to fit',ICON.layers,()=>app().view.fit()]
+      ['Rotate 90°',ICON.reset,()=>app().view.rotateBy(90)], ['Zoom to fit',ICON.layers,()=>app().view.fit()],
+      ['Hide interface',ICON.focus,()=>UI.setFocusMode(true)]
     ]);
     const animation=[['Add frame',ICON.film,()=>app().addFrame(true)], ['Animation timeline',ICON.film,()=>{UI.closeTray(); if (!timelineOpen) UI.toggleTimeline();}],
       ['Onion skin',ICON.sparkle,()=>{if (!d) return; d.onion=!d.onion; app().view.dirty=true; app().markDirty(); Q.toast(d.onion ? 'Onion skin on' : 'Onion skin off'); root.innerHTML=''; buildMenu(root);}]];
@@ -1677,6 +1691,7 @@
       ['Three-finger tap', 'Undo'],
       ['Three-finger swipe down', 'Open cut, copy and paste'],
       ['Four-finger tap', 'Redo'],
+      ['Hide interface', 'Actions → Canvas & view; tap the corner button or Android Back to restore'],
       ['Long press', 'Pick a colour (eyedropper)'],
       ['Hold at the end of a stroke', 'Snap a line, circle or ellipse; drag another finger to move, then lift the first to commit'],
       ['Drag the colour swatch', 'Drop on the active layer to flood fill'],

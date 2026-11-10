@@ -1188,6 +1188,31 @@ async function run() {
   Q.UI.applyRailPreferences({side:'left',position:50},true); studio.getBoundingClientRect=oldStudioRect; bar.getBoundingClientRect=oldBarRect; timeline.getBoundingClientRect=oldTimeRect;
   }
 
+  {
+  console.log('4.1 distraction-free canvas');
+  App.createDoc(64,64,'Focus view'); const studio=doc.querySelector('#studio'), timeline=doc.querySelector('#timeline'), restore=doc.querySelector('#btnRestoreInterface'), ref=doc.querySelector('#referenceWindow');
+  if (timeline.classList.contains('hidden')) Q.UI.toggleTimeline(); Q.UI.openReference();
+  App.view.zoomAt(1.2); const viewport=[App.view.scale,App.view.rot,App.view.tx,App.view.ty]; App.doc.history.clear();
+  Q.UI.openTray('menu'); const section=Array.from(doc.querySelectorAll('#trayBody details')).find(e=>e.textContent.includes('Canvas & view')); section.open=true;
+  const hide=Array.from(section.querySelectorAll('button')).find(b=>b.textContent==='Hide interface'); ok(hide && hide.querySelector('svg'),'focus view is discoverable in canvas actions with a distinctive icon'); hide.click();
+  ok(Q.UI.isFocusMode() && visible(restore) && !visible(studio.querySelector('.topbar')) && !visible(studio.querySelector('.rail-left')) && !visible(studio.querySelector('.rail-right')) && !visible(timeline) && !visible(ref) && !visible(doc.querySelector('#tray')) && visible(doc.querySelector('#view')), 'focus mode hides chrome but leaves canvas and labelled restore button visible');
+  ok(restore.getAttribute('aria-label')==='Show interface' && !timeline.classList.contains('hidden') && !ref.classList.contains('hidden'),'open timeline and reference are hidden temporarily, not closed');
+  ok(viewport.every((x,i)=>x===[App.view.scale,App.view.rot,App.view.tx,App.view.ty][i]) && App.doc.history.undoStack.length===0, 'focus mode leaves viewport and document history unchanged');
+  App.addLayer(); const n=App.doc.history.undoStack.length, v=App.view, ev=(type,id,x,y)=>({type,pointerId:id,pointerType:'touch',clientX:x,clientY:y,pressure:1}); v.tool='select';
+  for(let i=0;i<3;i++) v._down(ev('pointerdown',900+i,200+i*40,200)); for(let i=0;i<3;i++) v._up(ev('pointerup',900+i,200+i*40,200));
+  ok(App.doc.history.undoStack.length===n-1 && Q.UI.isFocusMode(),'three-finger undo still works in focus mode');
+  for(let i=0;i<4;i++) v._down(ev('pointerdown',910+i,200+i*40,200)); for(let i=0;i<4;i++) v._up(ev('pointerup',910+i,200+i*40,200));
+  ok(App.doc.history.undoStack.length===n && Q.UI.isFocusMode(),'four-finger redo still works in focus mode'); v.tool='brush';
+  const point=v.toScreen(32,32), beforeDraw=App.doc.history.undoStack.length; const pen=(type,x,y)=>({type,pointerId:925,pointerType:'pen',clientX:x,clientY:y,pressure:0.7}); v._down(pen('pointerdown',point.x,point.y)); v._move(pen('pointermove',point.x+12,point.y+6)); v._up(pen('pointerup',point.x+12,point.y+6)); ok(App.doc.history.undoStack.length===beforeDraw+1 && Q.UI.isFocusMode(),'drawing remains active in focus mode');
+  restore.click(); ok(!Q.UI.isFocusMode() && !visible(restore) && visible(timeline) && visible(ref) && visible(studio.querySelector('.topbar')), 'restore button returns timeline, reference and controls');
+  Q.UI.setFocusMode(true); Q.UI.quickEditDialog(); ok(win.qalamBack()===0 && Q.UI.isFocusMode() && !visible(doc.querySelector('#modal')),'Back closes an open dialog before leaving focus mode');
+  ok(win.qalamBack()===0 && !Q.UI.isFocusMode() && visible(ref) && !studio.classList.contains('hidden'),'Android Back restores interface without closing reference or leaving artwork');
+  Q.UI.setFocusMode(true); win.dispatchEvent(new win.KeyboardEvent('keydown',{key:'Escape'})); ok(!Q.UI.isFocusMode(),'Escape restores the interface');
+  Q.UI.setFocusMode(true); App.createDoc(64,64,'Another artwork'); ok(!Q.UI.isFocusMode() && !visible(restore), 'switching artwork resets focus mode');
+  Q.UI.setFocusMode(true); App.backToGallery(); ok(!Q.UI.isFocusMode() && studio.classList.contains('hidden') && !visible(restore),'returning to gallery resets focus mode');
+  App.createDoc(64,64,'Post focus');
+  }
+
   await App.saveNow(false);
   console.log(failures ? `\n${failures} check(s) FAILED` : '\nall UI checks passed');
   process.exit(failures ? 1 : 0);

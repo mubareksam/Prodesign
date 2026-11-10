@@ -8,11 +8,11 @@ brushes, layers with blend modes, a colour wheel, a frame timeline with onion sk
 Procreate's gesture vocabulary, PNG/GIF export and device-dependent MP4 export — all offline, with no account and
 no network permissions at all.
 
-- Package: `com.qalam.studio` · version 4.0 (versionCode 31)
+- Package: `com.qalam.studio` · version 4.1 (versionCode 32)
 - minSdk 26 (Android 8.0) · targetSdk 33 · armeabi-v7a/arm64/x86/x86_64 independent
   (everything is HTML/JS running inside the app's own `WebView`, so the APK has no
   native code)
-- APK: **`artifacts/Qalam-4.0.apk`** (~300 KB), signed with a v1+v2 scheme
+- APK: **`artifacts/Qalam-4.1.apk`** (~300 KB), signed with a v1+v2 scheme
 - The written analysis of Procreate that this app was specified from:
   [`docs/procreate-analysis.md`](procreate-analysis.md)
 
@@ -20,7 +20,7 @@ no network permissions at all.
 
 ## 1. Install
 
-1. Copy `artifacts/Qalam-4.0.apk` to the phone (USB, Drive, chat to yourself — anything).
+1. Copy `artifacts/Qalam-4.1.apk` to the phone (USB, Drive, chat to yourself — anything).
 2. Open it with the phone's file manager. Android will ask to allow installs from
    that app the first time ("Install unknown apps").
 3. Install and open **Qalam**. If an earlier Qalam version is already installed, Android should offer an update that preserves its data. Back up important artwork first. Android does not allow this app to silently uninstall itself; do not uninstall it unless you have backed up its local artwork.
@@ -88,6 +88,15 @@ Bottom bar: **Gallery · Layer · Brush · Colour · Timeline · Menu** (plus **
   little spare space. The brush tray also provides horizontal size and opacity
   sliders as an alternative. Screen layout and touch scrolling need physical-device
   testing, especially in landscape with the timeline open.
+- **Actions → Canvas & view → Hide interface** — temporarily hides the top bar,
+  side rails, timeline, reference panel and tray, leaving the canvas and one
+  corner button. Tap the **Show interface** corner icon or press Android Back to
+  restore them. An open timeline or reference returns as it was; the Actions
+  tray closes. The view resets when leaving or switching artwork. Playback and
+  canvas overlays such as guides or selections are not disabled, and system bars
+  are not hidden. Drawing and three-finger undo/four-finger redo still work;
+  three-finger swipe can open Quick Edit above the canvas. The focus view itself
+  is not saved in the artwork and does not change pixels or zoom.
 - **Colour tray** — HSB wheel with a value/saturation square, HEX entry, 24 swatches
   and the 12 most recent colours. Tap the droplet-plus icon or double-tap the
   upper-right corner of the square to select the current hue at 100% saturation and
@@ -470,7 +479,7 @@ tools/
   tests/pixel_integration.mjs real raster and animation export checks
   tests/gif_roundtrip.mjs    encodes a GIF and decodes it with an independent decoder
   tests/ui_smoke.mjs         jsdom boot + full UI drive (gallery -> export)
-artifacts/Qalam-4.0.apk           the signed, installable artefact
+artifacts/Qalam-4.1.apk           the signed, installable artefact
 docs/procreate-analysis.md   the Procreate study this app was built from
 docs/qalam.md                this file
 ```
@@ -500,7 +509,7 @@ Design notes worth knowing before changing code:
 
 ```bash
 bash tools/fetch-toolchain.sh     # once per machine: JVM, apktool, aapt2, jars, npm
-bash tools/build.sh               # -> artifacts/Qalam-4.0.apk (signed + verified)
+bash tools/build.sh               # -> artifacts/Qalam-4.1.apk (signed + verified)
 bash tools/check_reference.sh     # optional: javac-check the Java mirrors
 ```
 

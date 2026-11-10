@@ -13,6 +13,11 @@ The supplied feature inventory is a roadmap, not a list of completed work.
   clutter. Effect thumbnails are generated offline from illustrative sample art,
   not a live preview. Real-device layout and touch testing remain necessary.
 
+- Distraction-free view hides editor controls, timeline and reference temporarily;
+  a visible corner button and Android Back restore them. The tray closes, while
+  the timeline/reference state remains. Drawing, undo/redo gestures, playback,
+  canvas overlays and system bars are unchanged. Switching artwork resets the view.
+  Physical-device layout and Android Back need testing.
 - Colour picker pure hue button and square-corner double tap set saturation and
   brightness to 100%; hue for neutral colours is remembered within the picker session.
   Real-device touch behaviour has not been verified.
