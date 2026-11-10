@@ -127,21 +127,6 @@
       });
     },
 
-    // Duplicate the last saved record, including every cel and future metadata,
-    // without decoding/re-rendering it. add() refuses an ID collision.
-    duplicate: function(id) {
-      function copy(r) { return {...r,id:Q.uid(),name:String(r.name || 'Untitled').slice(0,59)+' copy',updated:Date.now()}; }
-      if(useLocal) {
-        try { const all=lsAll(), original=all[id]; if(!original) return Promise.reject(new Error('Artwork not found')); const rec=copy(original); if(Object.prototype.hasOwnProperty.call(all,rec.id)) return Promise.reject(new Error('Artwork ID collision')); all[rec.id]=rec; localStorage.setItem(LS_KEY,JSON.stringify(all)); return Promise.resolve(rec.id); }
-        catch(e) { return Promise.reject(e); }
-      }
-      return openDb().then(db=>new Promise((resolve,reject)=>{
-        const t=db.transaction(STORE,'readwrite'), store=t.objectStore(STORE), get=store.get(id); let newId=null;
-        get.onsuccess=function(){ if(!get.result) { t.abort(); return; } const rec=copy(get.result); newId=rec.id; store.add(rec); };
-        t.oncomplete=()=>resolve(newId); t.onabort=()=>reject(t.error || new Error('Artwork not found or copy failed')); t.onerror=()=>{};
-      }));
-    },
-
     remove: function (id) {
       if (useLocal) { lsDel(id); return Promise.resolve(); }
       return tx('readwrite', function (store) { store.delete(id); return true; });
@@ -178,25 +163,9 @@
       fps: doc.fps,
       bg: doc.bg,
       onion: doc.onion,
-      onionAlpha: doc.onionAlpha,
-      onionFrames: doc.onionFrames,
-      onionPrevFrames: doc.onionPrevFrames, onionNextFrames: doc.onionNextFrames,
-      onionIncludeSkipped: doc.onionIncludeSkipped, onionLayerOnly: doc.onionLayerOnly,
-      onionOriginalColor: doc.onionOriginalColor, onionAbove: doc.onionAbove,
-      onionPrevColor: doc.onionPrevColor,
-      onionNextColor: doc.onionNextColor,
-      frameDurations: doc.frames.map(function (f) { return f.duration || 1; }),
-      frameGroups: doc.frames.map(function (f) { return f.group || ''; }),
-      frameSkipped: doc.frames.map(function (f) { return !!f.skipped; }),
-      playMode: doc.playMode,
-      playRange: doc.playRange ? {...doc.playRange} : null,
-      guide: doc.guide,
-      motionGuide:doc.motionGuide, motionGuideVisible:doc.motionGuideVisible,
-      audioTrack:doc.audioTrack, cameraEnabled:doc.cameraEnabled, cameraKeys:doc.cameraKeys.map(k=>({...k})),
-      solo:doc.solo ? {target:doc.solo.target,visibility:doc.solo.visibility.map(v=>({...v}))} : null,
       frameCount: doc.frames.length,
       layers: doc.layers.map(function (l) {
-        return { id: l.id, name: l.name, visible: l.visible, opacity: l.opacity, blend: l.blend, tag:Q.layerTag(l.tag), assisted: !!l.assisted, locked: !!l.locked, alphaLocked: !!l.alphaLocked, clipped: !!l.clipped, motionEnabled:!!l.motionEnabled, motionKeys:(l.motionKeys || []).map(k=>({...k})) };
+        return { id: l.id, name: l.name, visible: l.visible, opacity: l.opacity, blend: l.blend };
       }),
       activeFrame: doc.activeFrame,
       activeLayer: doc.activeLayer,
@@ -232,25 +201,19 @@
   }
 
   function deserialize(rec) {
-    const doc = new Q.Doc({ id: rec.id, name: rec.name, width: rec.w, height: rec.h, fps: rec.fps, bg: rec.bg, onion: rec.onion, onionAlpha: rec.onionAlpha, onionFrames: rec.onionFrames, onionPrevFrames: rec.onionPrevFrames, onionNextFrames: rec.onionNextFrames, onionIncludeSkipped: rec.onionIncludeSkipped, onionLayerOnly: rec.onionLayerOnly, onionOriginalColor: rec.onionOriginalColor, onionAbove: rec.onionAbove, onionPrevColor: rec.onionPrevColor, onionNextColor: rec.onionNextColor, playMode: rec.playMode, playRange: rec.playRange, guide: rec.guide, motionGuide:rec.motionGuide, motionGuideVisible:rec.motionGuideVisible, cameraEnabled:rec.cameraEnabled, cameraKeys:rec.cameraKeys, audioTrack:rec.audioTrack });
+    const doc = new Q.Doc({ id: rec.id, name: rec.name, width: rec.w, height: rec.h, fps: rec.fps, bg: rec.bg, onion: rec.onion });
     doc.layers = (rec.layers || []).map(function (l) {
-      return { id: l.id || Q.uid(), name: l.name || 'Layer', visible: l.visible !== false, opacity: l.opacity == null ? 1 : l.opacity, blend: l.blend || 'source-over', tag:Q.layerTag(l.tag), assisted: !!l.assisted, locked: !!l.locked, alphaLocked: !!l.alphaLocked, clipped: !!l.clipped, motionEnabled:!!l.motionEnabled, motionKeys:Q.sanitizeLayerMotion(l,doc.width,doc.height) };
+      return { id: l.id || Q.uid(), name: l.name || 'Layer', visible: l.visible !== false, opacity: l.opacity == null ? 1 : l.opacity, blend: l.blend || 'source-over' };
     });
     if (!doc.layers.length) doc.layers = [Q.makeLayer('Layer 1')];
-    if (rec.solo && typeof rec.solo.target==='string' && Array.isArray(rec.solo.visibility)) {
-      const ids=new Set(doc.layers.map(l=>l.id)), seen=new Set(), visibility=[];
-      rec.solo.visibility.slice(0,Math.max(1024,doc.layers.length)).forEach(v=>{ if(v && typeof v.id==='string' && ids.has(v.id) && !seen.has(v.id) && typeof v.visible==='boolean') { visibility.push({id:v.id,visible:v.visible}); seen.add(v.id); } });
-      if(visibility.length) doc.solo={target:rec.solo.target,visibility:visibility};
-    }
 
     const frames = [];
     for (let i = 0; i < (rec.frameCount || 1); i++) {
       const cels = [];
       for (let j = 0; j < doc.layers.length; j++) cels.push(null);
-      frames.push({ cels: cels, duration: Q.clamp(Math.round((rec.frameDurations || [])[i]) || 1, 1, 60), group: String((rec.frameGroups || [])[i] || '').slice(0,32), skipped: !!(rec.frameSkipped || [])[i] });
+      frames.push({ cels: cels });
     }
     doc.frames = frames;
-    doc.normalizePlayRange(); doc.normalizeCameraKeys();
     doc.activeFrame = Q.clamp(rec.activeFrame || 0, 0, frames.length - 1);
     doc.activeLayer = Q.clamp(rec.activeLayer || 0, 0, doc.layers.length - 1);
     doc.history = new Q.History(doc);

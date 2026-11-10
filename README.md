@@ -1,37 +1,30 @@
-# Qelem
+# Qelem 1.0
 
-Developed by **Qmer**. Qelem is an offline painting and frame-animation app for Android, inspired by Procreate, with a canvas-first studio, streamlined toolbar and adaptive panels. It includes a three-stop Gradient Map adjustment, streamlined colour-drop and brush-slider interactions, canvas transforms for ellipse, lasso and wand masks, on-canvas flip controls and transformed selection footprints, approximate live canvas-transform previews, smooth or pixelated resampling, combined transform styles, canvas transform handles for uniform and freeform scaling, rotation, distortion and basic mesh warp, visible-layer and all-matching fill and Magic Wand sampling, named device-local palettes and HEX colour lists, improved smudge with optional stylus pressure, batch blank-frame insertion, cel-range clearing, frame navigation, brush favorites, palette extraction and organization, device-local custom brush copies, expanded brush dynamics and live previews, add/subtract selection operations, device-local saved palettes, gallery artwork duplication, ellipse selections, layer colour tags, JPEG export and split-complementary colour suggestions, right-swipe and tap-based multi-layer selection with batch actions, yellow-accented light/dark themes, 28 searchable brush presets with stroke thumbnails, a basic smudge tool with adjustable edge, visual solid and gradient layer controls with transparency and custom angle, pressure-sensitive brushes with global pressure, smoothing and hold-timing controls, external reference images, brush-size presets, adjustable brush-slider layout, light/dark appearance, quick-fit and layer alpha-lock controls, a distraction-free canvas view, read-only gallery previews, a matched-brush eraser, layer solo and blend modes, a colour picker with pure-hue and harmony shortcuts, a transparency preview, invert selection, image import as a layer, a timeline with onion skin, a motion guide with baked path animation, two-pose transforms, editable camera and layer keyframes, a limited two-layer IK key generator, easing and baked particle animation, an audio track for preview and compatible MP4 export, playback ranges and batch frame tools, gesture shortcuts, guides, drag-to-fill, a fill tool and matching-colour recolour, rectangular, elliptical, freehand lasso and connected-colour magic-wand selection masking, numeric resize and rotation, session-only cut/copy/paste, confirmed current-cel clearing, layer and alpha locking, clipping masks, basic transforms and transparent PNG and sprite-sheet export, canvas reference, brush customization and layer effects, autosave, PNG/JPEG/GIF export, and capability-dependent MP4 export.
+Qelem is an independent, offline Android painting and frame-animation app, developed by **Qmer** and inspired by Procreate. This is a retrospective release of its first version.
 
-## Download and install
+## Download
 
-- [Qelem 6.3 APK](artifacts/Qelem-6.3.apk) · Android 8.0 or later
-- [Download bundle](artifacts/Qelem-6.3-package.zip) · APK, README and documentation
+- [Qelem 1.0 APK](artifacts/releases/Qelem-1.0.apk) · Android 8.0 or later
+- [Matching historical source archive](artifacts/releases/Qelem-1.0-source.zip)
+- [Release notes](https://github.com/mubareksam/Qelem/releases/tag/v1.0)
 
-Qelem is the corrected spelling of Qalam, not a separate app: the package, signing key and storage identifiers remain unchanged. Export filenames now start with `Qelem-`, while Android 10+ exports remain in `Pictures/Qalam` or `Movies/Qalam`.
+**Known issue:** New canvas has failed on a phone in this original version. It is not recommended for everyday artwork. Back up artwork before changing versions; Android normally won't install this older version over a newer version. Removing an app to downgrade can erase its data. Physical-device performance and compatibility have not been verified.
 
-Copy the APK to your device and open it with a file manager. You may need to allow installation from that source. Version 6.3 is signed with the same key as earlier versions and should install as an update, keeping your artwork; Android asks for confirmation and does not let the app silently uninstall or replace itself. Back up important artwork before updating. The app requests `VIBRATE` only and has no internet permission. See the [user guide](docs/qalam.md) for controls and export instructions.
-
-**Signing:** The included APK and default build use the publicly available key in `tools/apksign/key.pem`. It is suitable only for testing, not a trusted production release: anyone can use it to sign an APK claiming to be this app. Use a private, securely stored signing key for a release; changing keys means Android will not accept it as an update to the included APK.
+This build has brushes, layers, a colour picker, an animation timeline with onion skin, autosave and PNG/GIF export. Three-finger tap undoes; four-finger tap redoes. It uses the original 1.0 feature set with Qelem display branding, Qmer's About credit, Qelem export names and the updated gesture mapping. Its Android package and storage identifiers remain unchanged.
 
 ## Build and test
 
-The app uses HTML/CSS/JavaScript in an Android WebView and is packaged without Gradle or the Android SDK. The toolchain fetch script requires Python, pip, Node.js/npm, Git and network access; it downloads tools into `~/.cache/tc` by default.
+The app uses HTML, CSS and JavaScript in an Android WebView, packaged without Gradle or the Android SDK. The toolchain script requires Python, pip, Node.js/npm, Git and network access, and installs tools under `~/.cache/tc` by default.
 
 ```sh
 bash tools/fetch-toolchain.sh
-(cd tools/tests && npm test)
+(cd tools/apksign && npm ci)
+(cd tools/tests && npm ci && npm test)
 bash tools/build.sh
 ```
 
-The build writes `artifacts/Qelem-6.3.apk`, checks the Java reference sources, assembles and signs the APK, then verifies it. Builds need not be byte-for-byte identical. `QALAM_TOOLCHAIN` overrides the toolchain directory. The automated tests use a headless DOM/canvas harness. For optional real-browser layout checks, install a local Chromium and run `(cd tools/tests && CHROMIUM_PATH=/path/to/chromium npm run test:browser)`. An optional desktop raster benchmark is `(cd tools/tests && npm run bench:smudge)`; it does not measure Android performance. Neither replaces testing on a real Android device.
+The build writes `artifacts/Qelem-1.0.apk`. Automated tests don't replace Android device testing. The historical app was imported from the public `arena/38db308d-guzo` branch of `mubareksam/guzo` at commit `525d0de`.
 
-## Documentation
-
-- [User guide and architecture](docs/qalam.md)
-- [Procreate analysis and feature comparison](docs/procreate-analysis.md)
-- [Feature coverage and remaining work](docs/FEATURES.md)
-- [Implementation blueprint](docs/BLUEPRINT.md)
-
-The Android app and its supporting files were imported from the public `arena/38db308d-guzo` branch of `mubareksam/guzo` at commit `525d0de`.
+**Signing:** The included APK and default build use a publicly available test key in `tools/apksign/key.pem`. Anyone can use it; it is not appropriate for trusted production distribution. A private production key would not be accepted as an update to builds signed with this key.
 
 Qelem is independent and not affiliated with Procreate or Savage Interactive.

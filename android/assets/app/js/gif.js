@@ -201,14 +201,12 @@
     this._byte(0x70);          // no global colour table, 8 bit colour resolution
     this._byte(0);             // background index
     this._byte(0);             // pixel aspect ratio
-    // A missing loop extension means play exactly once; zero means forever.
-    if (this.loop >= 0) {
-      this._byte(0x21); this._byte(0xff); this._byte(0x0b);
-      this._str('NETSCAPE2.0');
-      this._byte(0x03); this._byte(0x01);
-      this._short(this.loop);
-      this._byte(0x00);
-    }
+    // Netscape looping extension
+    this._byte(0x21); this._byte(0xff); this._byte(0x0b);
+    this._str('NETSCAPE2.0');
+    this._byte(0x03); this._byte(0x01);
+    this._short(this.loop);
+    this._byte(0x00);
   };
 
   GifWriter.prototype.frame = function (frame, delayCs) {
@@ -279,7 +277,7 @@
           c.fillRect(0, 0, outW, outH);
           c.drawImage(src, 0, 0, outW, outH);
           const data = c.getImageData(0, 0, outW, outH).data;
-          writer.frame(quantize(data, 256), opts.delaysCs ? opts.delaysCs[i] : delayCs);
+          writer.frame(quantize(data, 256), delayCs);
           i++;
           if (opts.onProgress) opts.onProgress(i / canvases.length);
         }
