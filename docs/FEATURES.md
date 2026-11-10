@@ -13,6 +13,13 @@ The supplied feature inventory is a roadmap, not a list of completed work.
   clutter. Effect thumbnails are generated offline from illustrative sample art,
   not a live preview. Real-device layout and touch testing remain necessary.
 
+- Light/dark interface appearance is saved locally and leaves artwork and exports
+  unchanged; the workspace outside the canvas and system bars remain dark. Real
+  Android display contrast and layout have not been tested.
+- A tool-rail fit button centres the canvas and resets zoom/rotation without editing
+  the artwork; it is not a pinch-to-fit gesture. Rails may scroll on short screens.
+- Each layer row has an undoable alpha-lock button with a pressed state; it targets
+  that layer without changing selection or opacity. This is not a two-finger swipe.
 - Recolour matching non-transparent RGB pixels in the current cel, including
   disconnected areas; tap the approximate preview to sample the original cel or
   enter source and replacement HEX colours. Per-channel tolerance is 0–128; alpha

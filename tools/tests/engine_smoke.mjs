@@ -84,6 +84,7 @@ function ok(cond, label) {
 console.log('responsive brush rails');
 const rails0=Q.computeRailLayout(800,60,792,0), rails100=Q.computeRailLayout(800,60,792,100);
 ok(rails0.brushTop===60 && rails100.brushTop+rails100.brushHeight===792 && rails0.sliderHeight===156, 'rail position stays inside the portrait workspace');
+ok(rails0.toolsHeight===326 && rails0.toolsTop+rails0.toolsHeight<=792, 'six tool buttons fit the computed rail height');
 const compact=Q.computeRailLayout(320,60,312,50);
 ok(compact.sliderHeight===93 && compact.brushHeight<=compact.available && compact.toolsHeight<=compact.available, 'short screens compact the slider rail and constrain tool rails');
 const crowded=Q.computeRailLayout(320,60,140,50);

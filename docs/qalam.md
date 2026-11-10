@@ -8,11 +8,11 @@ brushes, layers with blend modes, a colour wheel, a frame timeline with onion sk
 Procreate's gesture vocabulary, PNG/GIF export and device-dependent MP4 export — all offline, with no account and
 no network permissions at all.
 
-- Package: `com.qalam.studio` · version 4.5 (versionCode 36)
+- Package: `com.qalam.studio` · version 4.6 (versionCode 37)
 - minSdk 26 (Android 8.0) · targetSdk 33 · armeabi-v7a/arm64/x86/x86_64 independent
   (everything is HTML/JS running inside the app's own `WebView`, so the APK has no
   native code)
-- APK: **`artifacts/Qalam-4.5.apk`** (~305 KB), signed with a v1+v2 scheme
+- APK: **`artifacts/Qalam-4.6.apk`** (~306 KB), signed with a v1+v2 scheme
 - The written analysis of Procreate that this app was specified from:
   [`docs/procreate-analysis.md`](procreate-analysis.md)
 
@@ -20,7 +20,7 @@ no network permissions at all.
 
 ## 1. Install
 
-1. Copy `artifacts/Qalam-4.5.apk` to the phone (USB, Drive, chat to yourself — anything).
+1. Copy `artifacts/Qalam-4.6.apk` to the phone (USB, Drive, chat to yourself — anything).
 2. Open it with the phone's file manager. Android will ask to allow installs from
    that app the first time ("Install unknown apps").
 3. Install and open **Qalam**. If an earlier Qalam version is already installed, Android should offer an update that preserves its data. Back up important artwork first. Android does not allow this app to silently uninstall itself; do not uninstall it unless you have backed up its local artwork.
@@ -65,8 +65,8 @@ Everything is autosaved on the device (`IndexedDB`, with a `localStorage` fallba
 
 ## 3. Tools and panels
 
-Bottom bar: **Gallery · Layer · Brush · Colour · Timeline · Menu** (plus **Undo**,
-**Redo** and the eyedropper on the top bar, and a size/opacity strip).
+The top bar provides **Gallery, Undo, Redo, Timeline, Effects** and **Actions**.
+Side rails provide brushes, size/opacity, colour, eyedropper, fill, eraser, fit and layers.
 
 - **Brush tray** — 20 presets, with labelled ink, pencil, paint and eraser icons.
   Select a brush and open **Brush studio** to adjust spacing, flow, opacity, edge
@@ -79,6 +79,21 @@ Bottom bar: **Gallery · Layer · Brush · Colour · Timeline · Menu** (plus **
   keeps the current size and opacity, is temporary and does not change the original
   brush. Switch back to the painting brush to edit its settings. Erasing is blocked
   on alpha-locked layers. This is a basic editor, not the full Procreate Brush Studio.
+- **Actions → Preferences → Interface appearance** — switch between dark and
+  light interface colours. Changes apply immediately and are saved on this device;
+  Reset restores dark. This changes the interface, not canvas background, artwork
+  or exports. The area around the canvas and system bars remain dark. Real-device
+  contrast and layout should be checked, especially in short landscape view.
+- **Fit canvas** — tap the framed-square icon on the tool rail to centre the canvas,
+  fit it on screen and reset its rotation. This only changes the view, not pixels,
+  selection or undo history. On short screens the rail may need to scroll. This is
+  a button shortcut, not a pinch-to-fit gesture; ordinary pinch/rotate is unchanged.
+- **Layer alpha-lock shortcut** — tap the checkerboard icon on a layer row to toggle
+  alpha lock without opening layer options. The highlighted/pressed state means alpha
+  is locked; this protects transparency when painting and can be undone/redone.
+  It changes that row's layer without selecting it or changing its opacity. You can
+  still change this setting on a hidden or locked layer, as in Layer options; editing
+  locked pixels remains blocked. This is a button, not a two-finger swipe.
 - **Actions → Preferences → Pressure & smoothing** — device-wide settings for future
   strokes. The pressure curve changes reported stylus pressure: 100% is neutral,
   lower values make light pressure stronger and higher values make it lighter. Finger
@@ -121,7 +136,7 @@ Bottom bar: **Gallery · Layer · Brush · Colour · Timeline · Menu** (plus **
   button holds and other gesture timings are not changed.
 - **Actions → Preferences → Brush slider layout** — choose whether the brush
   button and size/opacity sliders sit on the left or right, and set their vertical
-  position. Colour, fill, eraser and layer buttons move to the opposite edge so
+  position. Colour, eyedropper, fill, eraser, fit and layer buttons move to the opposite edge so
   the rails do not overlap. Changes apply immediately and are saved on the device;
   Reset returns to left and centred. On shorter screens or with the timeline open,
   rails shrink and may scroll vertically; positioning has less effect when there is
@@ -519,7 +534,7 @@ tools/
   tests/pixel_integration.mjs real raster and animation export checks
   tests/gif_roundtrip.mjs    encodes a GIF and decodes it with an independent decoder
   tests/ui_smoke.mjs         jsdom boot + full UI drive (gallery -> export)
-artifacts/Qalam-4.5.apk           the signed, installable artefact
+artifacts/Qalam-4.6.apk           the signed, installable artefact
 docs/procreate-analysis.md   the Procreate study this app was built from
 docs/qalam.md                this file
 ```
@@ -549,7 +564,7 @@ Design notes worth knowing before changing code:
 
 ```bash
 bash tools/fetch-toolchain.sh     # once per machine: JVM, apktool, aapt2, jars, npm
-bash tools/build.sh               # -> artifacts/Qalam-4.5.apk (signed + verified)
+bash tools/build.sh               # -> artifacts/Qalam-4.6.apk (signed + verified)
 bash tools/check_reference.sh     # optional: javac-check the Java mirrors
 ```
 

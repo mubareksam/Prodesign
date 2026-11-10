@@ -51,6 +51,8 @@
     sparkle: '<path d="M12 3l1.8 5.2L19 10l-5.2 1.8L12 17l-1.8-5.2L5 10l5.2-1.8z"/>',
     swatch: '<rect x="4" y="4" width="16" height="16" rx="3"/><path d="M4 16l8-8 8 8"/>',
     gradient: '<rect x="4" y="4" width="16" height="16" rx="3"/><path d="M8 5v14M12 5v14M16 5v14"/>',
+    alphaLock: '<rect x="4" y="4" width="16" height="16" rx="2"/><path d="M8 4v4H4M16 20v-4h4M8 12h4V8M12 16v4M16 8h4M8 16H4"/>',
+    appearance: '<circle cx="12" cy="12" r="7"/><path d="M12 5v14M12 2v1M12 21v1M2 12h1M21 12h1"/>',
     gestureDelay: '<circle cx="12" cy="12" r="8"/><path d="M12 7v5l3 2M8 2h8"/>',
     focus: '<path d="M4 9V4h5M15 4h5v5M20 15v5h-5M9 20H4v-5"/><path d="M8 12h8"/>',
     pureHue: '<path d="M12 3C9 7 6 10 6 14a6 6 0 0012 0c0-4-3-7-6-11z"/><path d="M12 9v7M9 12.5h6"/>',
@@ -86,6 +88,7 @@
   UI.init = function () {
     const el = Q.el;
     UI.applyRailPreferences(Q.Store.meta('railPreferences'),false);
+    UI.setTheme(Q.Store.meta('interfaceTheme'),false);
 
     el('#btnNew').addEventListener('click', function () { UI.newCanvasDialog(); });
     el('#referenceClose').addEventListener('click', function () { UI.closeReference(); });
@@ -126,6 +129,7 @@
       if (file && target) { if (target.kind==='reference') app().loadReferenceFile(file,target); else app().importImageFile(file,target); }
     });
 
+    el('#btnFitCanvas').addEventListener('click', function () { if(app().view && app().doc) { app().view.fit(); Q.toast('Canvas fitted'); } });
     el('#btnBrush').addEventListener('click', function () { UI.toggleTray('brushes'); });
     el('#btnLayers').addEventListener('click', function () { UI.toggleTray('layers'); });
     // A tap opens the picker; a drag from the swatch drops the captured colour
@@ -608,7 +612,13 @@
       eye.addEventListener('click', function (e) { e.stopPropagation(); if(suppressEye) { suppressEye=false; return; } app().setLayerProp(i, 'visible', !layer.visible); buildLayers(root); });
       tools.appendChild(eye);
 
+      const alpha=Q.crel('button','mini-btn alpha-lock'+(layer.alphaLocked ? ' on' : ''),icon(ICON.alphaLock));
+      alpha.setAttribute('aria-label',(layer.alphaLocked ? 'Unlock alpha: ' : 'Lock alpha: ')+layer.name); alpha.setAttribute('aria-pressed',layer.alphaLocked ? 'true' : 'false'); alpha.title='Toggle alpha lock';
+      alpha.addEventListener('click',function(e) { e.stopPropagation(); if(app().doc!==d || !d.layers[i] || d.layers[i].id!==layer.id) return; app().stopPlay(); app().setLayerProp(i,'alphaLocked',!d.layers[i].alphaLocked); Q.toast(d.layers[i].alphaLocked ? 'Alpha lock on' : 'Alpha lock off'); });
+      tools.appendChild(alpha);
+
       const more = Q.crel('button', 'mini-btn', '<svg viewBox="0 0 24 24"><circle cx="5" cy="12" r="1.6"/><circle cx="12" cy="12" r="1.6"/><circle cx="19" cy="12" r="1.6"/></svg>');
+      more.setAttribute('aria-label','Layer options: '+layer.name); more.title='Layer options';
       more.addEventListener('click', function (e) {
         e.stopPropagation();
         UI.layerSheet(i);
@@ -957,7 +967,7 @@
       ['Transparent PNG frames',ICON.photo,()=>{UI.closeTray(); app().exportPngSequence(true);}], ['Export sprite sheet',ICON.photo,()=>UI.spriteSheetDialog()],
       ['Export MP4',ICON.film,()=>{UI.closeTray(); UI.mp4Dialog();}]
     ]);
-    group('Preferences', [ ['Pressure & smoothing',ICON.controls,()=>UI.pressurePreferences()], ['Brush slider layout',ICON.railLayout,()=>UI.railPreferencesDialog()], ['Hold gesture timing',ICON.gestureDelay,()=>UI.gesturePreferences()] ]);
+    group('Preferences', [ ['Interface appearance',ICON.appearance,()=>UI.themeDialog()], ['Pressure & smoothing',ICON.controls,()=>UI.pressurePreferences()], ['Brush slider layout',ICON.railLayout,()=>UI.railPreferencesDialog()], ['Hold gesture timing',ICON.gestureDelay,()=>UI.gesturePreferences()] ]);
     group('File & help', [ ['Save now',ICON.save,()=>app().saveNow(true)], ['Gestures & help',ICON.sparkle,()=>UI.helpSheet()], ['About Qalam',ICON.layers,()=>UI.aboutSheet()] ]);
 
     const info = Q.crel('div', 'layer-sub');
@@ -1002,6 +1012,19 @@
       const thumb = app().doc.thumbnail(app().doc.activeFrame, 260), cv = Q.el('#referenceCanvas');
       cv.width = thumb.width; cv.height = thumb.height; cv.getContext('2d').drawImage(thumb, 0, 0);
     }, 120);
+  };
+
+  UI.setTheme = function (theme,persist) {
+    theme=theme==='light' ? 'light' : 'dark'; document.documentElement.setAttribute('data-theme',theme);
+    if(persist) Q.Store.meta('interfaceTheme',theme);
+  };
+  UI.themeDialog = function () {
+    const card=Q.crel('div'); card.appendChild(Q.crel('h2',null,'Interface appearance'));
+    card.appendChild(Q.crel('p','sub','Choose a light or dark interface. This setting is saved on this device and does not change your artwork, canvas background or exports. The canvas workspace remains dark around the artwork.'));
+    const row=Q.crel('div','field studio-field'), select=Q.crel('select'); row.appendChild(Q.crel('label',null,'Appearance')); select.setAttribute('aria-label','Interface appearance');
+    [['dark','Dark'],['light','Light']].forEach(function(pair){ const option=Q.crel('option'); option.value=pair[0]; option.textContent=pair[1]; select.appendChild(option); });
+    select.value=document.documentElement.getAttribute('data-theme')==='light' ? 'light' : 'dark'; select.addEventListener('change',function(){ UI.setTheme(select.value,true); }); row.appendChild(select); card.appendChild(row);
+    const actions=Q.crel('div','modal-actions'), reset=Q.crel('button','btn ghost','Reset'), done=Q.crel('button','btn primary','Done'); reset.addEventListener('click',function(){ UI.setTheme('dark',true); select.value='dark'; }); done.addEventListener('click',()=>UI.closeModal()); actions.appendChild(reset); actions.appendChild(done); card.appendChild(actions); UI.openModal(card);
   };
 
   UI.railPreferencesDialog = function () {
@@ -1786,6 +1809,8 @@
       ['Hold a layer eye', 'Solo that layer; hold again to restore'],
       ['Eraser', 'Tap to toggle eraser; hold to match the current brush'],
       ['Magic wand', 'Select connected pixels via Selection & transform'],
+      ['Fit canvas', 'Tap the fit icon in the tool rail to reset zoom and rotation'],
+      ['Alpha lock', 'Tap the checkerboard icon on a layer row to protect transparency'],
       ['Drag a layer row sideways', 'Change layer opacity'],
       ['Double-tap a frame', 'Duplicate, reorder or delete it']
     ];
@@ -1794,7 +1819,7 @@
       line.style.alignItems = 'flex-start';
       line.innerHTML = '<label style="width:132px">' + r[0] + '</label>';
       const txt = Q.crel('div');
-      txt.style.cssText = 'flex:1;font-size:12.5px;color:#b9b9c4';
+      txt.style.cssText = 'flex:1;font-size:12.5px;color:var(--txt-2)';
       txt.textContent = r[1];
       line.appendChild(txt);
       card.appendChild(line);
@@ -1813,7 +1838,7 @@
     card.appendChild(Q.crel('p', 'sub', 'A paint, sketch and frame-by-frame animation studio for Android. Artwork is stored on this device only — nothing is uploaded.'));
     card.appendChild(Q.crel('p', 'sub', 'Developed by Qmer'));
     card.appendChild(Q.crel('p', 'sub', 'ቀለም (qalam) means “pen” or “ink”.'));
-    card.appendChild(Q.crel('p', 'sub', 'Version 4.5'));
+    card.appendChild(Q.crel('p', 'sub', 'Version 4.6'));
     const actions = Q.crel('div', 'modal-actions');
     const close = Q.crel('button', 'btn primary', 'Close');
     close.addEventListener('click', function () { UI.closeModal(); });

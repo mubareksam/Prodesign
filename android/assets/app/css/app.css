@@ -506,3 +506,49 @@ select, .select {
 .gallery-preview p.gallery-preview-note { margin: 12px 0; }
 
 .recolor-preview { display: block; max-width: 100%; margin: 10px auto; border-radius: 8px; touch-action: none; background: repeating-conic-gradient(#41414b 0% 25%, #292932 0% 50%) 0 0 / 16px 16px; }
+
+/* Optional light interface. Artwork, canvas pixels and the dark workspace
+   outside the paper are deliberately unaffected. */
+:root[data-theme="light"] {
+  color-scheme: light;
+  --bg: #f4f2ef; --panel: #ffffff; --panel-2: #f2f0ec; --line: #bab5ae;
+  --txt: #242321; --txt-2: #41403d; --txt-3: #5d5a55; --accent: #84500e;
+  --accent-2: #24577c; --danger: #a32424;
+}
+:root[data-theme="light"] #gallery { background: linear-gradient(145deg,#f8f5ef,#e9eff1); }
+:root[data-theme="light"] .gal-create { background: #fffdfa; border-color: #c7beb1; }
+:root[data-theme="light"] .gal-empty-art { background: #ebe6df; color: #55504a; }
+:root[data-theme="light"] .g-card { background: #fff; border-color: #b8b2aa; }
+:root[data-theme="light"] .topbar { background: #fbfaf6f5; border-color: #aaa49a; }
+:root[data-theme="light"] .icon-btn, :root[data-theme="light"] .rail-btn, :root[data-theme="light"] .focus-restore { background: #fffefbf5; border-color: #99948d; color: #272623; box-shadow: 0 2px 8px #0004; }
+:root[data-theme="light"] .icon-btn.on, :root[data-theme="light"] .rail-btn.on, :root[data-theme="light"] .focus-restore:active { color: #21170a; background: #f0b46a; border-color: #8a5a21; }
+:root[data-theme="light"] .vslider { background: #fffefbf5; border-color: #99948d; }
+:root[data-theme="light"] input[type=range]::-webkit-slider-runnable-track { background: #88847d; }
+:root[data-theme="light"] input[type=range]::-webkit-slider-thumb { background: #3f3d39; }
+:root[data-theme="light"] .tray, :root[data-theme="light"] .timeline, :root[data-theme="light"] .modal-card { background: #fffefb; border-color: #aaa49a; }
+:root[data-theme="light"] .chip, :root[data-theme="light"] .icon-chip, :root[data-theme="light"] .tl-audio { background: #f2efea; border-color: #b6afa5; color: #2b2926; }
+:root[data-theme="light"] .chip.on { background: #f8d9aa; border-color: #986725; color: #49300e; }
+:root[data-theme="light"] .brush-card, :root[data-theme="light"] .layer-row, :root[data-theme="light"] .menu-item, :root[data-theme="light"] .preset, :root[data-theme="light"] .effect-card { background: #f3f0eb; border-color: #c1bbb1; color: #302e2b; }
+:root[data-theme="light"] .brush-card.on, :root[data-theme="light"] .layer-row.on, :root[data-theme="light"] .preset.on { background: #fbe8cc; border-color: #986725; }
+:root[data-theme="light"] .brush-card .brush-kind, :root[data-theme="light"] .brush-card .brush-name, :root[data-theme="light"] .brush-card.on span { color: #49300e; }
+:root[data-theme="light"] .studio-field label, :root[data-theme="light"] .canvas-dimensions label, :root[data-theme="light"] .tl-position { color: #41403d; }
+:root[data-theme="light"] select, :root[data-theme="light"] .select, :root[data-theme="light"] .hexrow input { background: #fff; border-color: #a6a098; color: #242321; }
+:root[data-theme="light"] .action-heading { background: #eeebe5; border-color: #aaa49a; color: #302e2b; }
+:root[data-theme="light"] .effect-card.on { border-color: #986725; box-shadow: 0 0 0 1px #986725 inset; }
+:root[data-theme="light"] .tl-frame, :root[data-theme="light"] .tl-add { background: #e9e5de; border-color: #b1aaa0; color: #45413b; }
+:root[data-theme="light"] .tl-frame.on { border-color: #986725; }
+:root[data-theme="light"] .camera-badge, :root[data-theme="light"] .layer-motion-badge { color: #594015; }
+:root[data-theme="light"] .reference-window { background: #fffefb; border-color: #aaa49a; }
+:root[data-theme="light"] .reference-head, :root[data-theme="light"] .reference-zoom { color: #302e2b; }
+:root[data-theme="light"] .reference-head button, :root[data-theme="light"] .reference-actions button { background: #e9e5de; color: #302e2b; }
+:root[data-theme="light"] .canvas-error { color: #a32424; }
+:root[data-theme="light"] .btn.danger { color: #8d1717; background: #fce9e6; border-color: #c76a61; }
+:root[data-theme="light"] .hint, :root[data-theme="light"] .toast { color: #fff; }
+:root[data-theme="light"] .g-preview, :root[data-theme="light"] .g-del { color: #fff; }
+:root[data-theme="light"] .gallery-preview-empty { color: #dedee8; }
+
+/* The row shortcut is a separate button, not a replacement for opacity drag. */
+.alpha-lock { width: 36px; height: 36px; color: #f4f4f8; border: 1px solid #565661; }
+.alpha-lock.on { background: #f0b46a; color: #21170a; border-color: #f6d8a9; }
+:root[data-theme="light"] .alpha-lock { color: #302e2b; border-color: #9c968d; }
+:root[data-theme="light"] .alpha-lock.on { background: #f8d9aa; color: #49300e; border-color: #986725; }

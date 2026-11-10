@@ -216,7 +216,7 @@ async function run() {
   Array.from(doc.querySelectorAll('#modalBody button')).find(x=>x.textContent==='Blank layer').click();
   ok(App.doc.layers.length === 2, 'add layer from the tray');
   ok(doc.querySelectorAll('#trayBody .layer-row').length === 2, 'layer list refreshed');
-  const more = doc.querySelectorAll('#trayBody .layer-row .mini-btn')[1];
+  const more = doc.querySelector('#trayBody .layer-row [aria-label^="Layer options:"]');
   more.dispatchEvent(new win.Event('click', { bubbles: true }));
   ok(!doc.querySelector('#modal').classList.contains('hidden'), 'layer action sheet opens');
   Q.UI.closeModal();
@@ -450,7 +450,7 @@ async function run() {
 
   console.log('about');
   Q.UI.aboutSheet();
-  ok(doc.querySelector('#modalBody').textContent.includes('Developed by Qmer') && doc.querySelector('#modalBody').textContent.includes('Version 4.5'), 'About credits Qmer and shows current version');
+  ok(doc.querySelector('#modalBody').textContent.includes('Developed by Qmer') && doc.querySelector('#modalBody').textContent.includes('Version 4.6'), 'About credits Qmer and shows current version');
   Q.UI.closeModal();
 
   console.log('hardware back');
@@ -1181,7 +1181,7 @@ async function run() {
   side.value='right'; side.dispatchEvent(new win.Event('change',{bubbles:true})); position.value='0'; position.dispatchEvent(new win.Event('input',{bubbles:true}));
   ok(studio.getAttribute('data-slider-side')==='right' && brush.style.top==='60px' && Q.Store.meta('railPreferences').side==='right' && Q.Store.meta('railPreferences').position===0,'side and top position apply immediately and persist');
   position.value='100'; position.dispatchEvent(new win.Event('input',{bubbles:true}));
-  ok(brush.style.top==='414px' && tools.style.top==='291px' && doc.querySelector('#sizeWrap').style.height==='156px','bottom position keeps rails within portrait workspace');
+  ok(brush.style.top==='414px' && tools.style.top==='263px' && doc.querySelector('#sizeWrap').style.height==='156px','bottom position keeps rails within portrait workspace');
   Q.UI.closeModal(); Q.UI.closeTray(); Q.UI.toggleTimeline(); Q.UI.layoutRails();
   ok(brush.style.top==='60px' && brush.style.maxHeight==='332px' && doc.querySelector('#sizeWrap').style.height==='133px','timeline space compacts rails above the panel');
   Q.UI.toggleTimeline(); Q.UI.layoutRails(); ok(doc.querySelector('#sizeWrap').style.height==='156px' && brush.style.top==='414px','closing timeline restores portrait rail layout');
@@ -1298,6 +1298,35 @@ async function run() {
   ok(!visible(doc.querySelector('#modal')) && !App.view.locked && d.history.undoStack.length===0,'no matching pixels leave no history and release UI');
   Q.UI.recolorDialog(); d.layer().locked=true; click('#modalBody .btn.primary'); ok(doc.querySelector('.canvas-error').textContent.includes('unlock') && d.history.undoStack.length===0, 'locked layer is rejected before applying'); d.layer().locked=false; Q.UI.closeModal();
   Q.UI.recolorDialog(); d.addLayer(); click('#modalBody .btn.primary'); ok(doc.querySelector('.canvas-error').textContent.includes('changed'), 'stale layer is rejected'); Q.UI.closeModal();
+  }
+
+  {
+  console.log('4.6 appearance, fit and alpha shortcuts');
+  App.createDoc(64,48,'Three features'); const d=App.doc, v=App.view; d.activeCel(true); d.history.clear();
+  Q.UI.openTray('menu'); const pref=Array.from(doc.querySelectorAll('#trayBody details')).find(e=>e.textContent.includes('Interface appearance')); pref.open=true; const appearance=Array.from(pref.querySelectorAll('button')).find(b=>b.textContent==='Interface appearance');
+  ok(appearance && appearance.querySelector('svg'),'light and dark interface settings are discoverable'); appearance.click(); const theme=doc.querySelector('[aria-label="Interface appearance"]');
+  ok(theme.value==='dark' && doc.documentElement.getAttribute('data-theme')==='dark','appearance defaults to dark');
+  const docBg=d.bg, undoBefore=d.history.undoStack.length; theme.value='light'; theme.dispatchEvent(new win.Event('change',{bubbles:true}));
+  ok(doc.documentElement.getAttribute('data-theme')==='light' && Q.Store.meta('interfaceTheme')==='light' && d.bg===docBg && d.history.undoStack.length===undoBefore,'light theme applies and persists without changing artwork');
+  ok(win.getComputedStyle(doc.querySelector('#modalBody')).backgroundColor==='rgb(255, 254, 251)' && win.getComputedStyle(doc.querySelector('.topbar')).color!=='rgb(244, 244, 248)','light theme sets a light modal surface and distinct toolbar styling');
+  Array.from(doc.querySelectorAll('#modalBody button')).find(b=>b.textContent==='Reset').click(); ok(theme.value==='dark' && Q.Store.meta('interfaceTheme')==='dark' && doc.documentElement.getAttribute('data-theme')==='dark','appearance reset returns to dark');
+  theme.value='light'; theme.dispatchEvent(new win.Event('change',{bubbles:true})); Q.UI.closeModal(); Q.UI.closeTray();
+  App.createDoc(32,64,'Another canvas'); ok(doc.documentElement.getAttribute('data-theme')==='light','appearance persists between artworks');
+  App.init(); await tick(); ok(doc.documentElement.getAttribute('data-theme')==='light','appearance is restored on startup');
+  App.createDoc(64,48,'Fit and alpha'); const current=App.doc, view=App.view; current.activeCel(true); current.history.clear(); view.selection={x:4,y:4,w:8,h:8}; view.scale=3; view.rot=1.1; view.tx=32; view.ty=55;
+  const fit=doc.querySelector('#btnFitCanvas'), frame=current.frames[current.activeFrame], before=current.history.undoStack.length; ok(fit && fit.getAttribute('aria-label')==='Fit canvas' && fit.querySelector('svg'),'fit canvas has an accessible icon in the tool rail'); fit.click();
+  const expected=Math.max(0.02,Math.min(view.cssW/current.width,view.cssH/current.height)*0.86);
+  ok(Math.abs(view.scale-expected)<1e-8 && view.rot===0 && Math.abs(view.tx-(view.cssW-view.scale*current.width)/2)<1e-8 && Math.abs(view.ty-(view.cssH-view.scale*current.height)/2)<1e-8,'fit button centres artwork and resets rotation and zoom');
+  ok(current.history.undoStack.length===before && current.frames[current.activeFrame]===frame && view.selection.x===4,'fit changes only the view, not artwork, frame or selection');
+  App.addLayer(); current.history.clear(); current.layers[0].opacity=0.6; const active=current.activeLayer; Q.UI.openTray('layers');
+  let lock=Array.from(doc.querySelectorAll('.layer-row .alpha-lock')).find(b=>b.getAttribute('aria-label')==='Lock alpha: '+current.layers[0].name);
+  ok(lock && lock.getAttribute('aria-pressed')==='false' && lock.querySelector('svg'),'each layer exposes an accessible checkerboard alpha-lock button');
+  pointer(lock,'pointerdown',100,100,{id:1500}); pointer(lock,'pointermove',170,100,{id:1500}); pointer(lock,'pointerup',170,100,{id:1500}); ok(current.layers[0].opacity===0.6 && current.history.undoStack.length===0, 'touching the alpha button cannot start layer opacity dragging'); lock.click();
+  lock=Array.from(doc.querySelectorAll('.layer-row .alpha-lock')).find(b=>b.getAttribute('aria-label')==='Unlock alpha: '+current.layers[0].name);
+  ok(current.layers[0].alphaLocked && current.activeLayer===active && current.layers[0].opacity===0.6 && current.history.undoStack.length===1 && lock && lock.getAttribute('aria-pressed')==='true','shortcut toggles the intended layer, without changing selection or opacity');
+  App.undo(); ok(!current.layers[0].alphaLocked && current.activeLayer===active,'alpha-lock shortcut can be undone'); App.redo(); ok(current.layers[0].alphaLocked,'alpha-lock shortcut can be redone');
+  await App.saveNow(false); const loaded=await Q.Store.load(current.id); ok(loaded.layers[0].alphaLocked && loaded.layers[0].opacity===0.6,'alpha lock and opacity survive save and reopen');
+  Q.UI.closeTray(); Q.UI.setTheme('invalid',true); ok(doc.documentElement.getAttribute('data-theme')==='dark' && Q.Store.meta('interfaceTheme')==='dark','invalid themes fall back to dark');
   }
 
   await App.saveNow(false);
