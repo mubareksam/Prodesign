@@ -5,6 +5,21 @@ The supplied feature inventory is a roadmap, not a list of completed work.
 
 ## Available now
 
+- Up to eight named device-local palettes, each with up to 24 unique swatches.
+  Switch, create, duplicate, rename or delete with confirmation; the last palette
+  cannot be deleted. Duplicates are independent and palette names render as text.
+  The previous single palette becomes the default on the first set operation.
+  That legacy key is retained unchanged at migration; older app versions use the
+  legacy snapshot and do not synchronize edits back into the new sets.
+- Palette HEX codes can be selected for manual copying, and pasted HEX lists can
+  be validated and added atomically. This is text transfer, not file-based palette
+  import/export; Android clipboard selection/paste needs physical-device testing.
+  Invalid or overflowing lists do not partially modify a palette.
+- Palette set records are bounded and validated; unreadable or unsupported data
+  is not overwritten, and the legacy palette is shown read-only as a fallback.
+  Storage failures are reported. Palettes remain local preferences, not project
+  content or artwork undo steps, and can be lost if app data is removed.
+
 - Smudge uses distance-spaced dabs to reduce dependence on event frequency,
   includes the final pointer-up position, and blends alpha as well as colour so
   transparent source can reduce opacity. Up to 256 dabs per input segment bound
@@ -63,9 +78,10 @@ The supplied feature inventory is a roadmap, not a list of completed work.
   size is capped at 4 megapixels and results at 4096 runs. Empty results are
   refused; select Deselect to clear. Magic wand still replaces. Non-rectangular
   transforms remain unavailable; combining can briefly block on large masks.
-- One device-local saved palette stores up to 24 unique colours; swatches can be
-  added, selected, removed or cleared with confirmation. It is not saved inside
-  projects and does not support palette import/export or multiple palette sets.
+- Each device-local saved palette stores up to 24 unique colours; swatches can be
+  added, selected, removed or cleared with confirmation. Palettes are not saved
+  inside projects; text-based HEX transfer is available, but no palette file format
+  is supported.
 - Gallery preview can duplicate the last saved project record including all
   layers, frames and saved metadata; the original is not overwritten. Unsaved
   edits, undo history and device preferences are not copied. Duplication may

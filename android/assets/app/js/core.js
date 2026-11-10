@@ -118,13 +118,73 @@
     }).join('');
   };
 
-  // One device-local palette; never stored in or exported with artworks.
-  Q.readSavedPalette = function () {
-    try { const saved=JSON.parse(localStorage.getItem('qelem-palette') || '[]'); if(!Array.isArray(saved)) return []; const out=[]; for(const value of saved.slice(0,256)) { if(typeof value!=='string' || !/^#(?:[0-9a-f]{3}|[0-9a-f]{6})$/i.test(value)) continue; const c=Q.rgbToHex(Q.hexToRgb(value)); if(!out.includes(c)) out.push(c); if(out.length===24) break; } return out; } catch(e) { return []; }
+  // Versioned sets are migrated only on the first multi-palette operation.
+  // The old key remains untouched as a downgrade/legacy snapshot.
+  const PALETTE_KEY='qelem-palettes-v1', LEGACY_PALETTE='qelem-palette';
+  function validColors(colors) { if(!Array.isArray(colors) || colors.length>24) return false; for(const c of colors) if(typeof c!=='string' || !/^#[0-9a-f]{6}$/.test(c)) return false; return new Set(colors).size===colors.length; }
+  function legacyPalette() {
+    const raw=localStorage.getItem(LEGACY_PALETTE); let saved;
+    try { saved=JSON.parse(raw || '[]'); } catch(e) { return []; }
+    if(!Array.isArray(saved)) return []; const out=[];
+    for(const value of saved.slice(0,256)) { if(typeof value!=='string' || !/^#(?:[0-9a-f]{3}|[0-9a-f]{6})$/i.test(value)) continue; const c=Q.rgbToHex(Q.hexToRgb(value)); if(!out.includes(c)) out.push(c); if(out.length===24) break; } return out;
+  }
+  function paletteState() {
+    try {
+      const raw=localStorage.getItem(PALETTE_KEY);
+      if(raw===null) return {legacy:true,active:'default',palettes:[{id:'default',name:'My palette',colors:legacyPalette()}]};
+      if(raw.length>65536) throw Error('invalid'); const data=JSON.parse(raw);
+      if(!data || data.version!==1 || !Array.isArray(data.palettes) || data.palettes.length<1 || data.palettes.length>8 || typeof data.active!=='string') throw Error('invalid');
+      const ids=new Set(), palettes=[];
+      for(const p of data.palettes) {
+        if(!p || typeof p.id!=='string' || !(p.id==='default' || /^palette-[a-z0-9]{1,40}$/.test(p.id)) || ids.has(p.id) || typeof p.name!=='string' || !p.name.trim() || p.name.length>40 || !validColors(p.colors)) throw Error('invalid');
+        ids.add(p.id); palettes.push({id:p.id,name:p.name,colors:p.colors.slice()});
+      }
+      if(!ids.has(data.active)) throw Error('invalid'); return {legacy:false,active:data.active,palettes:palettes};
+    } catch(e) {
+      // Do not overwrite unreadable/newer data. Preserve and show the old palette
+      // as a read-only fallback, even if storage itself is unavailable.
+      let colors=[]; try { colors=legacyPalette(); } catch(ignore) {}
+      return {error:'Palette storage is unavailable or invalid. Existing data was not changed.',legacy:true,active:'default',palettes:[{id:'default',name:'My palette (read only)',colors:colors}]};
+    }
+  }
+  function savePaletteState(state) { try { localStorage.setItem(PALETTE_KEY,JSON.stringify({version:1,active:state.active,palettes:state.palettes})); return true; } catch(e) { return false; } }
+  Q.paletteSets = function () { return paletteState(); };
+  Q.readSavedPalette = function () { const s=paletteState(); return s.palettes.find(p=>p.id===s.active).colors.slice(); };
+  Q.writeSavedPalette = function (colors,expectedId) {
+    if(!validColors(colors)) return false; const state=paletteState(); if(state.error || (expectedId && state.active!==expectedId)) return false;
+    if(state.legacy) { try { localStorage.setItem(LEGACY_PALETTE,JSON.stringify(colors)); return true; } catch(e) { return false; } }
+    state.palettes.find(p=>p.id===state.active).colors=colors.slice(); return savePaletteState(state);
   };
-  Q.writeSavedPalette = function (colors) {
-    if(!Array.isArray(colors) || colors.length>24 || colors.some(c=>typeof c!=='string'||!/^#[0-9a-f]{6}$/.test(c)) || new Set(colors).size!==colors.length) return false;
-    try { localStorage.setItem('qelem-palette',JSON.stringify(colors)); return true; } catch(e) { return false; }
+  Q.managePalette = function (op,id,name) {
+    const s=paletteState(); if(s.error) return {error:s.error};
+    const selected=s.palettes.find(p=>p.id===id);
+    if(!selected || s.active!==id) return {error:'Palette changed; reopen the dialog.'};
+    if(op==='select') return {error:'Use the palette selector.'};
+    if(op==='create' || op==='duplicate' || op==='rename') {
+      name=typeof name==='string' ? name.trim() : ''; if(!name || name.length>40) return {error:'Enter a name of up to 40 characters.'};
+      if(op==='rename') selected.name=name;
+      else {
+        if(s.palettes.length>=8) return {error:'Palette limit reached (8).'};
+        const newId='palette-'+Q.uid(); if(!/^palette-[a-z0-9]{1,40}$/.test(newId) || s.palettes.some(p=>p.id===newId)) return {error:'Could not create a unique palette ID.'};
+        s.palettes.push({id:newId,name:name,colors:op==='duplicate' ? selected.colors.slice() : []}); s.active=newId;
+      }
+    } else if(op==='delete') {
+      if(s.palettes.length===1) return {error:'Keep at least one palette.'};
+      s.palettes=s.palettes.filter(p=>p.id!==id); s.active=s.palettes[0].id;
+    } else return {error:'Unknown palette operation.'};
+    return savePaletteState(s) ? {active:s.active} : {error:'Could not save palette on this device.'};
+  };
+  Q.selectPalette = function (id) {
+    const s=paletteState(); if(s.error) return {error:s.error};
+    if(!s.palettes.some(p=>p.id===id)) return {error:'Palette not found.'};
+    if(s.active===id) return {active:id}; s.active=id;
+    return savePaletteState(s) ? {active:id} : {error:'Could not save palette on this device.'};
+  };
+  Q.parsePaletteHex = function (text) {
+    if(typeof text!=='string' || text.length>2048) return {error:'Enter at most 2048 characters.'};
+    const parts=text.trim() ? text.trim().split(/[\s,;]+/) : []; if(!parts.length || parts.length>96) return {error:'Enter 1–96 HEX colour codes.'};
+    const out=[]; for(const p of parts) { if(!/^#?(?:[0-9a-f]{3}|[0-9a-f]{6})$/i.test(p)) return {error:'Invalid HEX colour: '+p.slice(0,30)}; const hex=Q.rgbToHex(Q.hexToRgb(p)); if(!out.includes(hex)) out.push(hex); }
+    return {colors:out};
   };
 
   // Extract approximate frequent colours from a small downscaled copy of one cel.

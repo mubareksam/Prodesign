@@ -915,15 +915,17 @@
   }
 
   UI.savedPaletteDialog = function () {
-    const target=app().doc; let mode='use', selected=null;
+    const target=app().doc; let mode='use', selected=null, active=Q.paletteSets().active;
     const card=Q.crel('div'), heading=Q.crel('h2',null,'Saved palette'); card.appendChild(heading);
-    card.appendChild(Q.crel('p','sub','Save up to 24 colours on this device. Use swatches, remove them, or swap two in reorder mode. Extract adds approximate frequent colours from the active layer on this frame. This palette is not stored in projects.'));
+    card.appendChild(Q.crel('p','sub','Keep up to 8 device-local palettes of 24 colours. Use swatches, remove or swap them, or extract approximate colours from the active layer. Palettes are not stored in projects.'));
+    const setRow=Q.crel('div','field studio-field'); setRow.appendChild(Q.crel('label',null,'Palette')); const setSelect=Q.crel('select'); setSelect.setAttribute('aria-label','Palette set'); setRow.appendChild(setSelect); card.appendChild(setRow);
     const status=Q.crel('p','sub'), grid=Q.crel('div','saved-palette-grid'); card.appendChild(status); card.appendChild(grid);
     const actions=Q.crel('div','palette-actions'), add=Q.crel('button','btn primary','Add current colour'), extract=Q.crel('button','btn ghost','Extract layer colours'), remove=Q.crel('button','btn ghost','Remove mode'), reorder=Q.crel('button','btn ghost','Reorder mode'), sortHue=Q.crel('button','btn ghost','Sort by hue'), sortValue=Q.crel('button','btn ghost','Sort by brightness'), clear=Q.crel('button','btn ghost','Clear palette'), close=Q.crel('button','btn ghost','Close');
-    function save(colors) { if(!Q.writeSavedPalette(colors)) { Q.toast('Could not save palette on this device',4000); return false; } return true; }
+    function save(colors,expected) { if(!Q.writeSavedPalette(colors,expected || active)) { Q.toast('Could not save palette on this device',4000); return false; } return true; }
     function draw() {
+      const state=Q.paletteSets(); active=state.active; setSelect.innerHTML=''; state.palettes.forEach(function(p){const o=Q.crel('option'); o.value=p.id; o.textContent=p.name; setSelect.appendChild(o);}); setSelect.value=active; setSelect.disabled=!!state.error;
       const colors=Q.readSavedPalette(); if(selected && !colors.includes(selected)) selected=null;
-      status.textContent=colors.length+' / 24 colours'+(mode==='remove' ? ' · tap a swatch to remove' : mode==='reorder' ? (selected ? ' · tap a second swatch to swap' : ' · tap a swatch to move') : ''); grid.innerHTML='';
+      status.textContent=(state.error ? state.error+' · ' : '')+colors.length+' / 24 colours'+(mode==='remove' ? ' · tap a swatch to remove' : mode==='reorder' ? (selected ? ' · tap a second swatch to swap' : ' · tap a swatch to move') : ''); grid.innerHTML='';
       remove.setAttribute('aria-pressed',mode==='remove' ? 'true' : 'false'); remove.classList.toggle('on',mode==='remove'); reorder.setAttribute('aria-pressed',mode==='reorder' ? 'true' : 'false'); reorder.classList.toggle('on',mode==='reorder'); clear.disabled=!colors.length; sortHue.disabled=sortValue.disabled=colors.length<2;
       colors.forEach(function(hex){ const button=Q.crel('button','saved-palette-swatch'); button.style.background=hex; button.setAttribute('aria-label',(mode==='remove' ? 'Remove ' : mode==='reorder' ? 'Reorder ' : 'Use ')+hex); button.title=hex;
         if(mode==='reorder') { button.setAttribute('aria-pressed',selected===hex ? 'true' : 'false'); button.classList.toggle('selected',selected===hex); }
@@ -935,6 +937,7 @@
         }); grid.appendChild(button);
       });
     }
+    setSelect.addEventListener('change',function(){ const result=Q.selectPalette(setSelect.value); if(result.error) { Q.toast(result.error,4000); setSelect.value=active; return; } active=result.active; selected=null; mode='use'; draw(); });
     add.addEventListener('click',function(){ const colors=Q.readSavedPalette(), hex=Q.rgbToHex(app().view.color); if(colors.includes(hex)) { Q.toast('Colour is already saved'); return; } if(colors.length>=24) { Q.toast('Palette is full'); return; } colors.push(hex); if(save(colors)) draw(); });
     extract.addEventListener('click',function(){
       if(!target || app().doc!==target) { Q.toast('Artwork changed; reopen the palette'); return; }
@@ -950,8 +953,40 @@
     reorder.addEventListener('click',function(){ mode=mode==='reorder' ? 'use' : 'reorder'; selected=null; draw(); });
     sortHue.addEventListener('click',function(){ if(save(Q.sortPalette(Q.readSavedPalette(),'hue'))) { selected=null; draw(); } });
     sortValue.addEventListener('click',function(){ if(save(Q.sortPalette(Q.readSavedPalette(),'brightness'))) { selected=null; draw(); } });
-    clear.addEventListener('click',function(){ UI.confirm('Clear saved palette?', 'This removes all saved palette colours from this device. Artwork pixels will not change.',function(){ if(save([])) Q.toast('Palette cleared'); }); });
-    close.addEventListener('click',UI.closeModal); [add,extract,remove,reorder,sortHue,sortValue,clear,close].forEach(b=>actions.appendChild(b)); card.appendChild(actions); UI.openModal(card); Q.el('#modalBody').scrollTop=0; draw();
+    clear.addEventListener('click',function(){ const id=active; UI.confirm('Clear saved palette?', 'This clears colours from the selected palette on this device. Other palettes and artwork pixels will not change.',function(){ if(save([],id)) Q.toast('Palette cleared'); }); });
+    const manage=Q.crel('button','btn ghost','Manage palettes'), codes=Q.crel('button','btn ghost','Palette HEX codes'); manage.addEventListener('click',function(){UI.paletteManager();}); codes.addEventListener('click',function(){UI.paletteHexDialog();});
+    close.addEventListener('click',UI.closeModal); [add,extract,remove,reorder,sortHue,sortValue,manage,codes,clear,close].forEach(b=>actions.appendChild(b)); card.appendChild(actions); UI.openModal(card); Q.el('#modalBody').scrollTop=0; draw();
+  };
+
+  UI.paletteManager = function () {
+    const state=Q.paletteSets(), active=state.palettes.find(p=>p.id===state.active);
+    const card=Q.crel('div'); card.appendChild(Q.crel('h2',null,'Manage palettes')); const info=Q.crel('p','sub'); info.textContent=state.error || ('Selected: '+active.name+' · '+state.palettes.length+' / 8 palettes. Palettes are saved on this device, not inside artwork.'); card.appendChild(info);
+    const actions=Q.crel('div','palette-actions');
+    [['New palette','create'],['Duplicate palette','duplicate'],['Rename palette','rename']].forEach(function(pair){const b=Q.crel('button','btn ghost',pair[0]); b.disabled=!!state.error; b.addEventListener('click',function(){UI.paletteNameDialog(pair[1],state.active);}); actions.appendChild(b);});
+    const del=Q.crel('button','btn danger','Delete palette'); del.disabled=!!state.error || state.palettes.length<=1; del.addEventListener('click',function(){ UI.confirm('Delete selected palette?', 'This removes the selected palette and its colours from this device. Artwork and other palettes are unchanged.',function(){const result=Q.managePalette('delete',state.active); if(result.error) Q.toast(result.error,4000); UI.savedPaletteDialog();},'Delete palette'); }); actions.appendChild(del);
+    const close=Q.crel('button','btn primary','Back to palette'); close.addEventListener('click',function(){UI.savedPaletteDialog();}); actions.appendChild(close); card.appendChild(actions); UI.openModal(card); Q.el('#modalBody').scrollTop=0;
+  };
+  UI.paletteNameDialog = function (op,id) {
+    const state=Q.paletteSets(), palette=state.palettes.find(p=>p.id===id); if(state.error || !palette || state.active!==id) { Q.toast('Palette changed; reopen the dialog',4000); UI.savedPaletteDialog(); return; }
+    const title=op==='create' ? 'New palette' : op==='duplicate' ? 'Duplicate palette' : 'Rename palette', card=Q.crel('div'); card.appendChild(Q.crel('h2',null,title));
+    const row=Q.crel('div','field'); row.appendChild(Q.crel('label',null,'Name')); const input=Q.crel('input','select'); input.maxLength=40; input.value=op==='create' ? '' : op==='duplicate' ? palette.name.slice(0,35)+' copy' : palette.name; input.setAttribute('aria-label','Palette name'); row.appendChild(input); card.appendChild(row);
+    const error=Q.crel('p','canvas-error'); error.setAttribute('role','alert'); card.appendChild(error); const actions=Q.crel('div','modal-actions'), cancel=Q.crel('button','btn ghost','Cancel'), save=Q.crel('button','btn primary','Save');
+    cancel.addEventListener('click',function(){UI.paletteManager();}); save.addEventListener('click',function(){const result=Q.managePalette(op,id,input.value); if(result.error) {error.textContent=result.error;return;} UI.savedPaletteDialog();}); actions.appendChild(cancel); actions.appendChild(save); card.appendChild(actions); UI.openModal(card); Q.el('#modalBody').scrollTop=0;
+  };
+  UI.paletteHexDialog = function () {
+    const state=Q.paletteSets(), id=state.active, palette=state.palettes.find(p=>p.id===id), card=Q.crel('div'); card.appendChild(Q.crel('h2',null,'Palette HEX codes'));
+    card.appendChild(Q.crel('p','sub','Select and copy the current codes using your device. Paste HEX codes below, separated by spaces, commas or new lines, to add them. Duplicates are skipped; no artwork is changed.'));
+    const current=Q.crel('textarea','select palette-textarea'); current.readOnly=true; current.value=palette.colors.join('\n'); current.setAttribute('aria-label','Current palette HEX codes'); card.appendChild(current);
+    const input=Q.crel('textarea','select palette-textarea'); input.maxLength=2048; input.placeholder='#ff0000, #00ff00, #0000ff'; input.setAttribute('aria-label','Paste HEX colours'); card.appendChild(input);
+    const error=Q.crel('p','canvas-error'); error.setAttribute('role','alert'); card.appendChild(error); const actions=Q.crel('div','palette-actions'), select=Q.crel('button','btn ghost','Select current codes'), add=Q.crel('button','btn primary','Add HEX colours'), close=Q.crel('button','btn ghost','Back to palette');
+    select.disabled=!palette.colors.length; select.addEventListener('click',function(){current.focus();current.select();});
+    add.disabled=!!state.error; add.addEventListener('click',function(){
+      const currentState=Q.paletteSets(); if(currentState.error || currentState.active!==id) {error.textContent=currentState.error || 'Palette changed; reopen this dialog.';return;}
+      const parsed=Q.parsePaletteHex(input.value); if(parsed.error) {error.textContent=parsed.error;return;}
+      const colors=Q.readSavedPalette(), additions=parsed.colors.filter(c=>!colors.includes(c)); if(!additions.length) {error.textContent='All those colours are already saved.';return;}
+      if(colors.length+additions.length>24) {error.textContent='Not enough space; a palette holds 24 colours.';return;}
+      if(!Q.writeSavedPalette(colors.concat(additions),id)) {error.textContent='Could not save palette on this device.';return;} UI.savedPaletteDialog(); Q.toast('Added '+additions.length+' colour'+(additions.length===1 ? '' : 's'));
+    }); close.addEventListener('click',function(){UI.savedPaletteDialog();}); [select,add,close].forEach(b=>actions.appendChild(b)); card.appendChild(actions); UI.openModal(card); Q.el('#modalBody').scrollTop=0;
   };
 
   UI.harmonyDialog = function (applyColor) {
@@ -2081,7 +2116,7 @@
     card.appendChild(Q.crel('p', 'sub', 'A paint, sketch and frame-by-frame animation studio for Android. Artwork is stored on this device only — nothing is uploaded.'));
     card.appendChild(Q.crel('p', 'sub', 'Developed by Qmer'));
     card.appendChild(Q.crel('p', 'sub', 'ቀለም (qalam) means “pen” or “ink”.'));
-    card.appendChild(Q.crel('p', 'sub', 'Version 5.7'));
+    card.appendChild(Q.crel('p', 'sub', 'Version 5.8'));
     const actions = Q.crel('div', 'modal-actions');
     const close = Q.crel('button', 'btn primary', 'Close');
     close.addEventListener('click', function () { UI.closeModal(); });

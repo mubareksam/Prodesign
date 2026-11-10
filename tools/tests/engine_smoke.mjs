@@ -182,6 +182,34 @@ console.log('custom brush storage validation');
  entries.set('qelem-custom-brushes','invalid json'); Q.restoreCustomBrushes(); ok(Q.BRUSHES.length===28,'corrupt custom storage does not affect built-ins'); delete globalThis.localStorage;
 }
 
+console.log('5.8 palette sets and migration');
+{
+ const entries=new Map(), storage={getItem:k=>entries.has(k)?entries.get(k):null,setItem:(k,v)=>entries.set(k,String(v))}; globalThis.localStorage=storage;
+ entries.set('qelem-palette',JSON.stringify(['#abc','#ff0000','bad'])); let state=Q.paletteSets(); ok(state.legacy && Q.readSavedPalette().join()==='#aabbcc,#ff0000','legacy palette is readable without migration');
+ const raw=entries.get('qelem-palette'); let r=Q.managePalette('create','default','Second'); state=Q.paletteSets(); const second=state.active;
+ ok(!r.error && state.palettes.length===2 && state.palettes[0].colors.join()==='#aabbcc,#ff0000' && Q.readSavedPalette().length===0 && entries.get('qelem-palette')===raw,'creating a palette migrates without overwriting the original key');
+ ok(Q.writeSavedPalette(['#123456'],second) && !Q.writeSavedPalette([], 'default'),'writes only affect the expected active palette');
+ ok(!Q.writeSavedPalette(Array(1),second) && Q.readSavedPalette().join()==='#123456','malformed sparse swatch arrays cannot corrupt stored data');
+ ok(!Q.selectPalette('default').error && Q.readSavedPalette().join()==='#aabbcc,#ff0000','switching palettes restores the original colours');
+ r=Q.managePalette('duplicate','default','Copy'); state=Q.paletteSets(); const copy=state.active; ok(!r.error && Q.readSavedPalette().join()==='#aabbcc,#ff0000','duplicate copies the selected colours');
+ Q.writeSavedPalette(['#ffffff']); Q.selectPalette('default'); ok(Q.readSavedPalette().join()==='#aabbcc,#ff0000','duplicate is independent of original');
+ ok(!!Q.managePalette('rename',copy,'Wrong').error && !Q.managePalette('rename','default','<img src=x>').error,'stale palette management is rejected and names remain data');
+ const uid=Q.uid; Q.uid=()=>second.slice('palette-'.length); const collisionState=entries.get('qelem-palettes-v1'); ok(!!Q.managePalette('create','default','Collision').error && entries.get('qelem-palettes-v1')===collisionState,'duplicate palette IDs are rejected without overwriting'); Q.uid=uid;
+ const before=entries.get('qelem-palettes-v1'), set=storage.setItem; storage.setItem=()=>{throw Error('quota');}; ok(!!Q.managePalette('delete','default').error && !!Q.selectPalette(copy).error && !Q.writeSavedPalette([]) && entries.get('qelem-palettes-v1')===before,'storage failure preserves all palette sets atomically'); storage.setItem=set;
+ ok(!Q.managePalette('delete','default').error && Q.paletteSets().active===second,'deleting active palette switches to another');
+ while(Q.paletteSets().palettes.length<8) {const s=Q.paletteSets();ok(!Q.managePalette('create',s.active,'Palette').error,'palette set created within limit');}
+ const full=entries.get('qelem-palettes-v1'), active=Q.paletteSets().active; ok(!!Q.managePalette('create',active,'Overflow').error && entries.get('qelem-palettes-v1')===full,'palette set count is capped at eight');
+ const prevUid=Q.uid; Q.uid=()=>second.slice('palette-'.length); ok(!!Q.managePalette('duplicate',active,'Overflow').error,'palette limit safely rejects duplicates'); Q.uid=prevUid;
+ entries.set('qelem-palettes-v1','{"version":2,"palettes":[]}'); state=Q.paletteSets(); ok(!!state.error && Q.readSavedPalette().join()==='#aabbcc,#ff0000' && !Q.writeSavedPalette(['#ffffff']) && entries.get('qelem-palettes-v1')==='{"version":2,"palettes":[]}','unrecognized palette data is read-only and never overwritten');
+ entries.set('qelem-palettes-v1','{bad'); ok(!!Q.paletteSets().error && !!Q.managePalette('create','default','X').error,'corrupt palette storage is protected');
+ for(const bad of [JSON.stringify({version:1,active:'missing',palettes:[{id:'default',name:'X',colors:[]}]}),JSON.stringify({version:1,active:'default',palettes:[{id:'default',name:'X',colors:['#ff0000','#ff0000']}]}),JSON.stringify({version:1,active:'default',palettes:[{id:'default',name:'X',colors:['#FF0000']}]}),JSON.stringify({version:1,active:'default',palettes:[{id:'default',name:'X',colors:[]},{id:'default',name:'Y',colors:[]}]} )]) { entries.set('qelem-palettes-v1',bad); ok(!!Q.paletteSets().error && !Q.writeSavedPalette([]) && entries.get('qelem-palettes-v1')===bad,'invalid palette schema remains unchanged'); }
+ entries.delete('qelem-palettes-v1'); storage.setItem=()=>{throw Error('quota');}; ok(!!Q.managePalette('create','default','New').error && !entries.has('qelem-palettes-v1') && entries.get('qelem-palette')===raw,'failed first migration retains legacy palette'); storage.setItem=set;
+ entries.set('qelem-palettes-v1',JSON.stringify({version:1,active:'default',palettes:[{id:'default',name:'Only',colors:[]}]})); ok(!!Q.managePalette('delete','default').error && Q.paletteSets().palettes.length===1,'last palette cannot be deleted');
+
+ ok(Q.parsePaletteHex('abc, #00ff00; Ff0000 #abc').colors.join()==='#aabbcc,#00ff00,#ff0000' && !!Q.parsePaletteHex('#ff0000 nope').error && !!Q.parsePaletteHex('').error && !!Q.parsePaletteHex('x'.repeat(2049)).error,'HEX list parser validates, normalizes and deduplicates');
+ delete globalThis.localStorage;
+}
+
 console.log('compositing + export');
 const flat = doc.flatten(0);
 ok(flat.width === 128 && flat.height === 128, 'flatten matches document size');
