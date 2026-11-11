@@ -786,7 +786,7 @@
     card.appendChild(Q.crel('h2', null, 'Qelem'));
     card.appendChild(Q.crel('p', 'sub', 'A paint, sketch and frame-by-frame animation studio for Android. Artwork is stored on this device only — nothing is uploaded.'));
     card.appendChild(Q.crel('p', 'sub', 'Developed by Qmer.'));
-    card.appendChild(Q.crel('p', 'sub', 'Version 1.0'));
+    card.appendChild(Q.crel('p', 'sub', 'Version 1.1'));
     const actions = Q.crel('div', 'modal-actions');
     const close = Q.crel('button', 'btn primary', 'Close');
     close.addEventListener('click', function () { UI.closeModal(); });

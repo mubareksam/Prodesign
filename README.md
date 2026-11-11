@@ -1,16 +1,23 @@
-# Qelem 1.0
+# Qelem 1.1
 
-Qelem is an independent, offline Android painting and frame-animation app, developed by **Qmer** and inspired by Procreate. This is a retrospective release of its first version.
+Qelem is an independent, offline Android painting and frame-animation app, developed by **Qmer** and inspired by Procreate. This is a retrospective release of version 1.1.
+
+## What's new in 1.1
+
+- The New canvas dialog now appears over the gallery instead of inside a hidden screen.
+- A prominent gallery action makes starting a canvas easier to find.
+- A launch screen displays the app icon while the studio starts.
+
+The fix is covered by automated UI tests; this rebuilt version has not been tested on a physical Android device. It retains brushes, layers, a colour picker, an animation timeline with onion skin, autosave and PNG/GIF export. Three-finger tap undoes; four-finger tap redoes.
 
 ## Download
 
-- [Qelem 1.0 APK](artifacts/releases/Qelem-1.0.apk) · Android 8.0 or later
-- [Matching historical source archive](artifacts/releases/Qelem-1.0-source.zip)
-- [Release notes](https://github.com/mubareksam/Qelem/releases/tag/v1.0)
+- [Qelem 1.1 APK](artifacts/releases/Qelem-1.1.apk) · Android 8.0 or later
+- [Qelem 1.1 source archive](artifacts/releases/Qelem-1.1-source.zip)
+- [Release notes](https://github.com/mubareksam/Qelem/releases/tag/v1.1)
+- [Previous release: Qelem 1.0](https://github.com/mubareksam/Qelem/releases/tag/v1.0)
 
-**Known issue:** New canvas has failed on a phone in this original version. It is not recommended for everyday artwork. Back up artwork before changing versions; Android normally won't install this older version over a newer version. Removing an app to downgrade can erase its data. Physical-device performance and compatibility have not been verified.
-
-This build has brushes, layers, a colour picker, an animation timeline with onion skin, autosave and PNG/GIF export. Three-finger tap undoes; four-finger tap redoes. It uses the original 1.0 feature set with Qelem display branding, Qmer's About credit, Qelem export names and the updated gesture mapping. Its Android package and storage identifiers remain unchanged.
+The APK uses the same package identifier and signing certificate as Qelem 1.0 and should install as an update. Back up artwork before changing versions. Installing an older version over a newer one is normally blocked by Android, and uninstalling an app can erase its data.
 
 ## Build and test
 
@@ -23,7 +30,7 @@ bash tools/fetch-toolchain.sh
 bash tools/build.sh
 ```
 
-The build writes `artifacts/Qelem-1.0.apk`. Automated tests don't replace Android device testing. The historical app was imported from the public `arena/38db308d-guzo` branch of `mubareksam/guzo` at commit `525d0de`.
+The build writes `artifacts/Qelem-1.1.apk`. Automated tests don't replace Android device testing. The historical app was imported from the public `arena/38db308d-guzo` branch of `mubareksam/guzo` at commit `525d0de`.
 
 **Signing:** The included APK and default build use a publicly available test key in `tools/apksign/key.pem`. Anyone can use it; it is not appropriate for trusted production distribution. A private production key would not be accepted as an update to builds signed with this key.
 

@@ -42,6 +42,11 @@ svg { width: 22px; height: 22px; fill: none; stroke: currentColor; stroke-width:
 .screen { position: absolute; inset: 0; }
 .hidden { display: none !important; }
 
+/* The launcher icon remains visible while the WebView starts. */
+.splash { position: fixed; inset: 0; z-index: 60; background: #101014; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 18px; }
+.splash img { width: 108px; height: 108px; border-radius: 24px; }
+.splash span { color: #f0b46a; font-size: 20px; font-weight: 650; letter-spacing: .08em; }
+
 /* ───────────────────────── gallery ───────────────────────── */
 
 #gallery {
@@ -54,6 +59,14 @@ svg { width: 22px; height: 22px; fill: none; stroke: currentColor; stroke-width:
     var(--bg);
   overflow: auto;
 }
+
+.gallery-content { width: 100%; max-width: 1100px; margin: 0 auto; }
+.gal-create { min-height: 150px; margin: 0 0 24px; padding: 24px; border: 1px solid #353039; border-radius: 22px; background: linear-gradient(125deg, #231e20, #19191e 70%); display: flex; align-items: center; justify-content: space-between; gap: 18px; }
+.gal-create h2 { margin: 6px 0; font-size: 22px; }
+.gal-create p { margin: 0; color: var(--txt-2); font-size: 13px; line-height: 1.5; }
+.gal-eyebrow { color: var(--accent); font-size: 10px; letter-spacing: .12em; font-weight: 700; }
+.gal-create .btn { flex: none; justify-content: center; }
+@media (max-width: 520px) { .gal-create { flex-direction: column; align-items: stretch; } .gal-create .btn { width: 100%; } }
 
 .gal-head { display: flex; align-items: center; justify-content: space-between; gap: 12px; margin-bottom: 22px; }
 .brand { display: flex; align-items: center; gap: 12px; }
@@ -284,7 +297,7 @@ select, .select {
 .menu-item svg { width: 20px; height: 20px; color: var(--accent); }
 .menu-item:active { background: #232329; }
 
-.modal { position: absolute; inset: 0; background: #000000a8; display: grid; place-items: center; padding: 20px; z-index: 40; }
+.modal { position: fixed; inset: 0; background: #000000a8; display: grid; place-items: center; padding: 20px; z-index: 40; }
 .modal-card {
   width: 100%; max-width: 420px; max-height: 86vh; overflow: auto;
   background: #17171d; border: 1px solid #2c2c36; border-radius: 20px; padding: 18px;
@@ -334,7 +347,7 @@ select, .select {
   max-width: 88vw; overflow: hidden; text-overflow: ellipsis;
 }
 .hint { top: calc(64px + env(safe-area-inset-top)); }
-.toast { bottom: 110px; }
+.toast { position: fixed; z-index: 45; bottom: 110px; }
 .hint.show, .toast.show { opacity: 1; }
 
 #fatal {
