@@ -58,6 +58,17 @@ const dom = new JSDOM(html, {
 });
 const win = dom.window;
 const doc = win.document;
+// Include production CSS: checking only the modal's own class missed a hidden ancestor.
+const style = doc.createElement('style');
+style.textContent = readFileSync(path.join(APP, 'css', 'app.css'), 'utf8');
+doc.head.appendChild(style);
+function visible(el) {
+  for (let node = el; node && node.nodeType === 1; node = node.parentElement) {
+    const css = win.getComputedStyle(node);
+    if (node.classList.contains('hidden') || css.display === 'none' || css.visibility === 'hidden') return false;
+  }
+  return true;
+}
 
 // ctx stub for every canvas
 win.HTMLCanvasElement.prototype.getContext = function (type) {
@@ -125,6 +136,10 @@ const tick = () => new Promise((r) => setTimeout(r, 0));
 
 async function run() {
   await tick(); await tick();
+  ok(visible(doc.querySelector('#splash')) && doc.querySelector('#splash img').getAttribute('src') === 'img/icon.png', 'launch screen displays app icon');
+  ok(doc.querySelector('#splash').getAttribute('aria-label') === 'Qelem is loading' && doc.querySelector('#splash span').textContent === 'Qelem', 'launch screen uses Qelem branding');
+  await wait(450);
+  ok(!visible(doc.querySelector('#splash')), 'launch screen clears');
 
   // jsdom leaves a canvas at its default 300x150 box; give the viewport a
   // phone-sized box so screen coordinates map onto the document the way they
@@ -139,9 +154,14 @@ async function run() {
   ok(doc.querySelector('#gallery') && !doc.querySelector('#gallery').classList.contains('hidden'), 'gallery visible on launch');
   ok(Q.Store.mode() === 'local', 'storage fell back to localStorage: ' + Q.Store.mode());
 
+  Q.UI.aboutSheet();
+  ok(doc.querySelector('#modalBody').textContent.includes('Version 1.1') && doc.querySelector('#modalBody').textContent.includes('Developed by Qmer'), 'About shows Qelem 1.1 and Qmer credit');
+  click('#modalBody .btn.primary');
+
   console.log('new canvas');
+  ok(!!doc.querySelector('main #btnNew'), 'new canvas action is in the main gallery');
   click('#btnNew');
-  ok(!doc.querySelector('#modal').classList.contains('hidden'), 'new-canvas dialog opens');
+  ok(visible(doc.querySelector('#modal')), 'new-canvas dialog is actually visible over the gallery');
   const presets = doc.querySelectorAll('#modalBody .preset');
   ok(presets.length >= 4, 'presets rendered (' + presets.length + ')');
   presets[4].dispatchEvent(new win.Event('click', { bubbles: true }));   // animation 1280x1280
@@ -244,6 +264,10 @@ async function run() {
   ok(!doc.querySelector('#gallery').classList.contains('hidden'), 'back to gallery');
   const cardsG = doc.querySelectorAll('#galGrid .g-card');
   ok(cardsG.length === 1, 'gallery lists the artwork');
+  click('#galGrid .g-del');
+  ok(visible(doc.querySelector('#modal')), 'gallery delete confirmation is visible');
+  click('#modalBody .btn.ghost');
+  ok(!visible(doc.querySelector('#modal')), 'gallery confirmation closes');
   cardsG[0].dispatchEvent(new win.Event('click', { bubbles: true }));
   await wait(60);
   ok(!!App.doc && App.doc.id === savedId, 'artwork reopened');

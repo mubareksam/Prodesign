@@ -9,6 +9,10 @@
 <link rel="stylesheet" href="css/app.css">
 </head>
 <body>
+<div id="splash" class="splash" role="status" aria-label="Qelem is loading">
+  <img src="img/icon.png" alt="">
+  <span>Qelem</span>
+</div>
 
 <!-- ───────────────────────── gallery ───────────────────────── -->
 <section id="gallery" class="screen">
@@ -20,19 +24,24 @@
         <span>draw · paint · animate</span>
       </div>
     </div>
-    <button id="btnNew" class="btn primary">
-      <svg viewBox="0 0 24 24"><path d="M12 5v14M5 12h14"/></svg>
-      New canvas
-    </button>
   </header>
 
-  <div id="galGrid" class="gal-grid"></div>
+  <main class="gallery-content">
+    <div class="gal-create">
+      <div><span class="gal-eyebrow">YOUR CREATIVE SPACE</span><h2>Ready to create?</h2><p>Start with a fresh canvas, or pick up where you left off.</p></div>
+      <button id="btnNew" class="btn primary">
+        <svg viewBox="0 0 24 24"><path d="M12 5v14M5 12h14"/></svg>
+        New canvas
+      </button>
+    </div>
+    <div id="galGrid" class="gal-grid"></div>
 
   <div id="galEmpty" class="gal-empty">
     <div class="gal-empty-art">ቀ</div>
     <h2>Your studio is empty</h2>
     <p>Make a canvas and start painting. Artwork, layers and animation frames stay on this device.</p>
   </div>
+  </main>
 </section>
 
 <!-- ───────────────────────── studio ───────────────────────── -->
@@ -91,9 +100,11 @@
   <div id="tray" class="tray hidden"><div id="trayBody" class="tray-body"></div></div>
   <div id="timeline" class="timeline hidden"></div>
   <div id="hint" class="hint"></div>
-  <div id="toast" class="toast"></div>
-  <div id="modal" class="modal hidden"><div class="modal-card" id="modalBody"></div></div>
 </section>
+
+<div id="toast" class="toast"></div>
+<!-- Shared by gallery and studio: it must not be a child of the hidden studio. -->
+<div id="modal" class="modal hidden" role="dialog" aria-modal="true"><div class="modal-card" id="modalBody"></div></div>
 
 <script src="js/core.js"></script>
 <script src="js/doc.js"></script>
