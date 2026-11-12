@@ -109,6 +109,7 @@
 
   View.prototype._loop = function () {
     if (this.dirty) {
+      if (this.stroke) this.stroke._flush();
       this.dirty = false;
       try { this.render(); } catch (e) { Q.fatal(e); }
     }
@@ -139,9 +140,12 @@
 
     // paper
     c.save();
-    c.shadowColor = 'rgba(0,0,0,0.55)';
-    c.shadowBlur = 26 / this.scale;
-    c.shadowOffsetY = 8 / this.scale;
+    // Avoid re-rasterizing a large blurred shadow on every pen movement.
+    if (!this.stroke) {
+      c.shadowColor = 'rgba(0,0,0,0.55)';
+      c.shadowBlur = 26 / this.scale;
+      c.shadowOffsetY = 8 / this.scale;
+    }
     c.fillStyle = doc.bg;
     c.fillRect(0, 0, doc.width, doc.height);
     c.restore();
@@ -156,10 +160,36 @@
     // artwork
     doc.composite(c, doc.activeFrame);
 
+    this._drawGuide(c, doc);
+
     // selection-free border
     c.lineWidth = 1 / this.scale;
     c.strokeStyle = 'rgba(255,255,255,0.12)';
     c.strokeRect(0, 0, doc.width, doc.height);
+  };
+
+  View.prototype._drawGuide = function (c, doc) {
+    const guide = doc.guide;
+    if (!guide || guide.type === 'off') return;
+    const w = doc.width, h = doc.height, spacing = Q.clamp(Number(guide.spacing) || 100, 32, 500);
+    c.save(); c.beginPath(); c.rect(0,0,w,h); c.clip(); c.lineWidth = 1 / this.scale;
+    c.strokeStyle = 'rgba(35,110,210,0.5)'; c.beginPath();
+    if (guide.type === 'grid') {
+      for (let x = spacing; x < w; x += spacing) { c.moveTo(x,0); c.lineTo(x,h); }
+      for (let y = spacing; y < h; y += spacing) { c.moveTo(0,y); c.lineTo(w,y); }
+    } else if (guide.type === 'isometric') {
+      for (let y = spacing; y < h; y += spacing) { c.moveTo(0,y); c.lineTo(w,y); }
+      const slope = 0.57735;
+      for (let x = -h/slope; x < w+h/slope; x += spacing*2) {
+        c.moveTo(x,0); c.lineTo(x+h/slope,h);
+        c.moveTo(x,0); c.lineTo(x-h/slope,h);
+      }
+    } else if (guide.type === 'symmetry') {
+      if (guide.symmetry === 'vertical' || guide.symmetry === 'quadrant' || guide.symmetry === 'radial') { c.moveTo(w/2,0); c.lineTo(w/2,h); }
+      if (guide.symmetry === 'horizontal' || guide.symmetry === 'quadrant' || guide.symmetry === 'radial') { c.moveTo(0,h/2); c.lineTo(w,h/2); }
+      if (guide.symmetry === 'radial') { const reach = Math.max(w,h); c.moveTo(w/2-reach,h/2-reach); c.lineTo(w/2+reach,h/2+reach); c.moveTo(w/2-reach,h/2+reach); c.lineTo(w/2+reach,h/2-reach); }
+    }
+    c.stroke(); c.restore();
   };
 
   View.prototype._drawOnion = function (c, frameIdx, tint, alpha) {
@@ -294,13 +324,14 @@
     if (this.g) { this._moveGesture(); return; }
 
     if (this.stroke && rec.id === this.strokePointerId) {
-      const evs = (e.getCoalescedEvents && e.getCoalescedEvents().length) ? e.getCoalescedEvents() : [e];
+      const samples = e.getCoalescedEvents ? e.getCoalescedEvents() : null;
+      const evs = samples && samples.length ? samples : [e];
       for (let i = 0; i < evs.length; i++) {
         const ev = evs[i];
         const p = this._pos(ev);
         const pt = this.toDoc(p.x, p.y);
         pt.pressure = this._pressure(ev);
-        pt.t = Q.now();
+        pt.t = ev.timeStamp || Q.now();
         this.stroke.add(pt);
       }
       this._lastStampTime = Q.now();
@@ -357,6 +388,7 @@
     const brushOpacity = this.opacity * (this.brush.opacity == null ? 1 : this.brush.opacity);
     this.stroke = new Q.Stroke(doc, this.brush, this.color, this.size, brushOpacity);
     this.stroke.begin({ x: p.x, y: p.y, pressure: this._pressure(e), t: Q.now() });
+    this._lastStampTime = Q.now();
     this.strokeStartScreen = { x: pos.x, y: pos.y };
     if (this.onDrawStart) this.onDrawStart();
     this.strokeStartDoc = p;

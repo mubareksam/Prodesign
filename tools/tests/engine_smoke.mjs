@@ -172,4 +172,29 @@ d4.history.beginPixels(d4.activeCel(true));
 d4.history.endPixels({ x: -4, y: -3, w: 10, h: 9 });
 ok(d4.history.undoStack[0].rect.x === 0 && d4.history.undoStack[0].rect.w === 6, 'pixel history clips dirty rectangles');
 
+console.log('smoothing and symmetry');
+const smoothing = new Q.Stroke(new Q.Doc({width:128,height:128}), Q.brushById('studio'), [0,0,0], 10, 1);
+smoothing.begin({x:0,y:0,pressure:1,t:1});
+const samples = [];
+const originalLine = smoothing._lineTo;
+smoothing._lineTo = (x,y) => samples.push({x,y});
+smoothing.curveAnchor = {x:0,y:0};
+smoothing._curveTo({x:10,y:0},{x:10,y:10});
+ok(samples.length > 2 && samples.some(p => p.x < 10 && p.y > 0), 'quadratic interpolation rounds corners');
+smoothing._lineTo = originalLine;
+const p = Q.symmetryPoints('quadrant', 10, 20, 100, 80);
+ok(p.length === 4 && p[3].x === 90 && p[3].y === 60, 'quadrant symmetry mirrors both axes');
+ok(Q.symmetryPoints('radial', 10, 20, 100, 80).length === 8, 'radial symmetry produces eight copies');
+const symDoc = new Q.Doc({width:100,height:80});
+symDoc.guide.symmetry = 'quadrant'; symDoc.layer().assisted = true;
+const beforeSym = calls.fill;
+const symStroke = new Q.Stroke(symDoc, Q.brushById('monoline'), [0,0,0], 10, 1);
+symStroke.begin({x:10,y:20,pressure:1,t:1}); symStroke.end();
+ok(calls.fill - beforeSym >= 4 && symDoc.history.undoStack.length === 1, 'mirrored stamps share one undo step');
+
+smoothing.dirty = null; smoothing.pending = null;
+smoothing._grow(5,5,2); smoothing._grow(30,5,2);
+smoothing.pending = null; smoothing._grow(70,5,2);
+ok(smoothing.pending.x > 60 && smoothing.dirty.x < 5, 'wet flush bounds stay independent from overall stroke bounds');
+
 console.log(`\nall ${checks} engine checks passed`);
