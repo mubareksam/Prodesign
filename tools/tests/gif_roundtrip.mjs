@@ -96,4 +96,17 @@ try {
   else throw e;
 }
 
+// Real encoder's per-frame hold and one-shot semantics, checked by the independent decoder.
+Q.canvas = (w, h) => ({width:w, height:h, getContext: () => ({
+  fillRect() {}, drawImage(src) { this.src = src; }, getImageData() { return { data: this.src.data }; }
+})});
+const input = images.map(data => ({width:W, height:H, data}));
+const once = await Q.encodeGif(input, { loop:-1, delaysCs:[3, 9, 15] });
+const oncePath = path.join(root, 'build', 'gif-once.gif');
+writeFileSync(oncePath, once.bytes);
+const onceInfo = JSON.parse(execFileSync('python3', [path.join(here, 'gif_decode.py'), oncePath, '--json'], {encoding:'utf8'}));
+if (onceInfo.delays.join(',') !== '3,9,15') throw new Error('GIF per-frame delay mismatch');
+if (Buffer.from(once.bytes).includes(Buffer.from('NETSCAPE2.0'))) throw new Error('one-shot GIF should not repeat');
+console.log('GIF frame holds and one-shot loop verified');
+
 console.log('GIF encoder verified');
