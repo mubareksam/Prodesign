@@ -100,7 +100,7 @@ win.navigator.vibrate = () => true;
 
 /* ── load the app scripts in page order ─────────────────── */
 
-const files = ['core.js', 'doc.js', 'brushes.js', 'gif.js', 'view.js', 'storage.js', 'ui.js', 'app.js'];
+const files = ['core.js', 'doc.js', 'brushes.js', 'gif.js', 'effects.js', 'view.js', 'storage.js', 'ui.js', 'app.js'];
 for (const f of files) {
   const code = readFileSync(path.join(APP, 'js', f), 'utf8');
   win.eval(code);
@@ -155,7 +155,7 @@ async function run() {
   ok(Q.Store.mode() === 'local', 'storage fell back to localStorage: ' + Q.Store.mode());
 
   Q.UI.aboutSheet();
-  ok(doc.querySelector('#modalBody').textContent.includes('Version 1.2') && doc.querySelector('#modalBody').textContent.includes('Developed by Qmer'), 'About shows Qelem 1.2 and Qmer credit');
+  ok(doc.querySelector('#modalBody').textContent.includes('Version 1.3') && doc.querySelector('#modalBody').textContent.includes('Developed by Qmer'), 'About shows Qelem 1.3 and Qmer credit');
   click('#modalBody .btn.primary');
 
   console.log('new canvas');
@@ -260,6 +260,11 @@ async function run() {
   const opacity = doc.querySelector('#modalBody input[aria-label="Onion opacity"]');
   opacity.value = '40'; opacity.dispatchEvent(new win.Event('input', {bubbles:true}));
   ok(App.doc.playMode === 'pingpong' && App.doc.onionAlpha === 0.4, 'animation settings control mode and onion opacity');
+  const onionCount = doc.querySelector('#modalBody input[aria-label="Onion frames"]');
+  onionCount.value = '3'; onionCount.dispatchEvent(new win.Event('input', {bubbles:true}));
+  const prevColor = doc.querySelector('#modalBody input[aria-label="Previous colour"]');
+  prevColor.value = '#bb4488'; prevColor.dispatchEvent(new win.Event('input', {bubbles:true}));
+  ok(App.doc.onionFrames === 3 && App.doc.onionPrevColor === '#bb4488', 'onion count and tint are configurable');
   click('#modalBody .btn.primary');
 
   await tick();
@@ -269,8 +274,20 @@ async function run() {
   await wait(120);
   App.togglePlay();
   ok(App.playing === false, 'playback stopped');
+  App.doc.playMode = 'once'; App.doc.fps = 30; App.selectFrame(0);
+  App.togglePlay(); await wait(100);
+  ok(!App.playing && App.doc.activeFrame === 1, 'one-shot playback stops at the last frame');
+  App.doc.playMode = 'pingpong'; App.doc.fps = 12;
+
   App.selectFrame(0);
   ok(App.doc.activeFrame === 0, 'frame selection works');
+
+  Q.UI.frameSheet(0);
+  const hold = doc.querySelector('#modalBody input[aria-label="Frame hold"]');
+  hold.value = '3'; hold.dispatchEvent(new win.Event('change', {bubbles:true}));
+  ok(App.doc.frames[0].duration === 3 && Math.round(Q.frameDelayMs(App.doc,0)) === 250, 'frame hold changes playback timing');
+  Q.UI.closeModal();
+  ok(Q.animationOrder(4, 'pingpong').join(',') === '0,1,2,3,2,1', 'ping-pong export order excludes duplicate endpoints');
 
   console.log('menu + save');
   click('#btnMenu');
@@ -297,8 +314,10 @@ async function run() {
   ok(!!App.doc && App.doc.id === savedId, 'artwork reopened');
   ok(!doc.querySelector('#studio').classList.contains('hidden'), 'studio re-entered after opening');
   ok(App.doc.frames.length === 2, 'frames survived the round trip');
+  ok(App.doc.frames[0].duration === 3, 'frame hold survives the round trip');
   ok(App.doc.layers.length === 2, 'layers survived the round trip');
   ok(App.doc.guide.symmetry === 'quadrant' && App.doc.layer().assisted && App.doc.playMode === 'pingpong' && App.doc.onionAlpha === 0.4, 'guide, assist and animation settings survive the round trip');
+  ok(App.doc.onionFrames === 3 && App.doc.onionPrevColor === '#bb4488', 'onion frame count and colours survive the round trip');
 
   console.log('gestures');
   App.view.fit();
@@ -362,11 +381,25 @@ async function run() {
   ok(win.qalamBack() === 0, 'back from studio is handled in-app');
   ok(win.qalamBack() === 1, 'back from gallery exits to the launcher');
 
+  console.log('effects');
+  Q.UI.effectsDialog();
+  ok(!!doc.querySelector('#modalBody select[aria-label="Effect"]'), 'effects dialog opens');
+  const effectHistory = App.doc.history.undoStack.length;
+  App.doc.activeCel(true);
+  click('#modalBody .btn.primary'); await wait(70);
+  ok(App.doc.history.undoStack.length === effectHistory + 1, 'effect creates one undoable edit');
+  App.undo();
+
   console.log('export paths');
   let saved = null;
   Q.saveBytes = (dataUrl, mime, name) => { saved = { mime, name }; return true; };
   App.exportPng();
   ok(saved && saved.mime === 'image/png', 'PNG export routed to the native bridge');
+  const sequence = [];
+  Q.saveBytes = (dataUrl, mime, name) => { sequence.push({mime,name}); return true; };
+  App.exportPngSequence(); await wait(100);
+  ok(sequence.length === App.doc.frames.length && sequence[0].name.includes('frame-001'), 'PNG sequence exports numbered frames');
+  Q.saveBytes = (dataUrl, mime, name) => { saved = { mime, name }; return true; };
   // Simulate both unsupported devices and a recorder that produces MP4 data.
   delete win.MediaRecorder;
   App.exportMp4();
@@ -380,7 +413,7 @@ async function run() {
     stop() { this.state = 'inactive'; this.ondataavailable({data:new win.Blob(['fake'])}); this.onstop(); }
   };
   win.FileReader = class { readAsDataURL() { this.result='data:video/mp4;base64,AAAA'; this.onload(); } };
-  saved = null; App.doc.fps = 30; App.exportMp4(); await wait(120);
+  saved = null; App.doc.fps = 30; App.exportMp4(); await wait(250);
   ok(saved && saved.mime === 'video/mp4' && saved.name.endsWith('.mp4') && stopped, 'supported MP4 recorder exports and releases stream');
 
 

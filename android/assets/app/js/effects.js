@@ -1,0 +1,82 @@
+/* Destructive, undoable pixel effects. All operations preserve the canvas size. */
+(function () {
+  'use strict';
+  const Q = window.Q;
+
+  function boxBlur(data, width, height, radius) {
+    // Two sliding-window passes are O(width * height), regardless of radius.
+    const temp = new Uint8ClampedArray(data.length);
+    // Blur premultiplied channels to avoid dark fringes around transparency.
+    for (let i = 0; i < data.length; i += 4) {
+      const a = data[i + 3] / 255;
+      data[i] *= a; data[i + 1] *= a; data[i + 2] *= a;
+    }
+    for (let y = 0; y < height; y++) {
+      for (let ch = 0; ch < 4; ch++) {
+        let sum = 0;
+        for (let x = 0; x <= Math.min(width - 1, radius); x++) sum += data[(y * width + x) * 4 + ch];
+        for (let x = 0; x < width; x++) {
+          const left = Math.max(0, x - radius), right = Math.min(width - 1, x + radius);
+          temp[(y * width + x) * 4 + ch] = sum / (right - left + 1);
+          if (x - radius >= 0) sum -= data[(y * width + x - radius) * 4 + ch];
+          if (x + radius + 1 < width) sum += data[(y * width + x + radius + 1) * 4 + ch];
+        }
+      }
+    }
+    for (let x = 0; x < width; x++) {
+      for (let ch = 0; ch < 4; ch++) {
+        let sum = 0;
+        for (let y = 0; y <= Math.min(height - 1, radius); y++) sum += temp[(y * width + x) * 4 + ch];
+        for (let y = 0; y < height; y++) {
+          const top = Math.max(0, y - radius), bottom = Math.min(height - 1, y + radius);
+          data[(y * width + x) * 4 + ch] = sum / (bottom - top + 1);
+          if (y - radius >= 0) sum -= temp[((y - radius) * width + x) * 4 + ch];
+          if (y + radius + 1 < height) sum += temp[((y + radius + 1) * width + x) * 4 + ch];
+        }
+      }
+    }
+    for (let i = 0; i < data.length; i += 4) {
+      const alpha = data[i + 3];
+      if (alpha) { data[i] = data[i] * 255 / alpha; data[i + 1] = data[i + 1] * 255 / alpha; data[i + 2] = data[i + 2] * 255 / alpha; }
+    }
+  }
+
+  Q.applyPixelEffect = function (image, type, amount) {
+    const data = image.data, w = image.width, h = image.height;
+    const strength = Q.clamp(Number(amount) || 0, 0, 1);
+    if (!strength) return image;
+    if (type === 'blur') {
+      boxBlur(data, w, h, Math.max(1, Math.round(strength * 16)));
+      return image;
+    }
+    const supported = ['grayscale', 'invert', 'sepia', 'brightness', 'saturation', 'contrast', 'hue', 'noise', 'threshold', 'halftone', 'chromatic'];
+    const original = type === 'chromatic' ? new Uint8ClampedArray(data) : null;
+    if (supported.indexOf(type) < 0) throw new Error('Unknown effect');
+    for (let i = 0; i < data.length; i += 4) {
+      const r = data[i], g = data[i + 1], b = data[i + 2];
+      const gray = 0.2126 * r + 0.7152 * g + 0.0722 * b;
+      let nr = r, ng = g, nb = b;
+      if (type === 'grayscale') { nr = ng = nb = gray; }
+      else if (type === 'invert') { nr = 255-r; ng = 255-g; nb = 255-b; }
+      else if (type === 'sepia') { nr = .393*r+.769*g+.189*b; ng = .349*r+.686*g+.168*b; nb = .272*r+.534*g+.131*b; }
+      else if (type === 'brightness') { nr = r + 100; ng = g + 100; nb = b + 100; }
+      else if (type === 'saturation') { nr = gray + (r-gray)*2; ng = gray + (g-gray)*2; nb = gray + (b-gray)*2; }
+      else if (type === 'contrast') { nr=(r-128)*2+128; ng=(g-128)*2+128; nb=(b-128)*2+128; }
+      else if (type === 'hue') { const hsv=Q.rgbToHsv(r,g,b); const rgb=Q.hsvToRgb(hsv[0]+180*strength,hsv[1],hsv[2]); data[i]=rgb[0]; data[i+1]=rgb[1]; data[i+2]=rgb[2]; continue; }
+      else if (type === 'chromatic') {
+        const pixel=i/4, x=pixel%w, y=Math.floor(pixel/w), shift=Math.max(1,Math.round(strength*12));
+        nr=original[(y*w+Math.max(0,x-shift))*4]; nb=original[(y*w+Math.min(w-1,x+shift))*4+2];
+      }
+      else if (type === 'halftone') {
+        const pixel=i/4, x=pixel%w, y=Math.floor(pixel/w), matrix=[0,8,2,10,12,4,14,6,3,11,1,9,15,7,13,5];
+        nr = ng = nb = gray >= (matrix[(y%4)*4+(x%4)]+0.5)*16 ? 255 : 0;
+      }
+      else if (type === 'threshold') { nr = ng = nb = gray >= 128 ? 255 : 0; }
+      else if (type === 'noise') { const n = (Math.random() - .5) * 160; nr = r+n; ng = g+n; nb = b+n; }
+      data[i] = r + (nr-r)*strength;
+      data[i+1] = g + (ng-g)*strength;
+      data[i+2] = b + (nb-b)*strength;
+    }
+    return image;
+  };
+})();
