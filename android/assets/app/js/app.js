@@ -38,6 +38,7 @@
     // Do not let a slow storage provider keep the launch screen on top forever.
     setTimeout(function () { Q.el('#splash').classList.add('hidden'); }, 400);
 
+    Q.restoreBrushSettings(Q.Store.meta('brushSettings'));
     const savedBrush = Q.Store.meta('brush');
     const savedRecent = Q.Store.meta('recent');
     if (savedRecent && savedRecent.length) App.recent = savedRecent;
@@ -286,11 +287,14 @@
     if (d.frames.length < 2) { Q.toast('Add a frame first'); return; }
     App.playing = true;
     App.view.locked = true;
-    const start = d.activeFrame;
-    let frame = start;
+    let frame = d.activeFrame, direction = 1;
     const step = function () {
       if (!App.playing) return;
-      frame = (frame + 1) % d.frames.length;
+      if (d.playMode === 'once' && frame >= d.frames.length - 1) { App.stopPlay(); return; }
+      if (d.playMode === 'pingpong') {
+        if (frame + direction >= d.frames.length || frame + direction < 0) direction *= -1;
+        frame += direction;
+      } else frame = (frame + 1) % d.frames.length;
       d.activeFrame = frame;
       App.view.dirty = true;
       App.playTimer = setTimeout(step, Math.max(33, 1000 / d.fps));
@@ -361,8 +365,56 @@
     const d = App.doc;
     if (!d) return;
     const cv = d.flatten(d.activeFrame);
-    Q.saveBytes(cv.toDataURL('image/png'), 'image/png', 'Qelem-' + Q.stamp() + '.png');
-    Q.toast('PNG saved to Pictures/Qelem');
+    const ok = Q.saveBytes(cv.toDataURL('image/png'), 'image/png', 'Qelem-' + Q.stamp() + '.png');
+    Q.toast(ok ? 'PNG saved' : 'Could not save PNG');
+  };
+
+  // MediaRecorder MP4 is optional on Android WebView. Never label WebM as MP4.
+  App.exportMp4 = function () {
+    const d = App.doc;
+    if (!d || d.frames.length < 2) { Q.toast('Add at least two frames first'); return; }
+    if (!window.MediaRecorder || !MediaRecorder.isTypeSupported) { Q.toast('MP4 encoding is not supported on this device', 4000); return; }
+    const mime = ['video/mp4;codecs=avc1.42E01E', 'video/mp4'].find(function (v) { return MediaRecorder.isTypeSupported(v); });
+    if (!mime) { Q.toast('MP4 encoding is not supported on this device', 4000); return; }
+    const scale = Math.min(1, 1280 / Math.max(d.width, d.height));
+    const w = Math.max(2, Math.floor(d.width * scale / 2) * 2), h = Math.max(2, Math.floor(d.height * scale / 2) * 2);
+    const canvas = Q.canvas(w, h), ctx = canvas.getContext('2d');
+    if (!canvas.captureStream) { Q.toast('Video capture is not supported on this device', 4000); return; }
+    let stream, recorder, timer, finished = false;
+    const chunks = [], fps = Q.clamp(d.fps, 1, 30);
+    function cleanup() { clearTimeout(timer); if (stream) stream.getTracks().forEach(function (track) { track.stop(); }); Q.UI.endProgress(); }
+    function fail(message) { if (finished) return; finished = true; try { if (recorder && recorder.state !== 'inactive') recorder.stop(); } catch (e) {} cleanup(); Q.toast(message, 4000); }
+    function paint(index) {
+      ctx.fillStyle = d.bg; ctx.fillRect(0, 0, w, h);
+      ctx.save(); ctx.scale(w / d.width, h / d.height); d.composite(ctx, index); ctx.restore();
+    }
+    try {
+      paint(0); stream = canvas.captureStream(fps);
+      recorder = new MediaRecorder(stream, { mimeType: mime, videoBitsPerSecond: 4000000 });
+      recorder.ondataavailable = function (event) { if (event.data && event.data.size) chunks.push(event.data); };
+      recorder.onerror = function () { fail('MP4 encoding failed on this device'); };
+      recorder.onstop = function () {
+        if (finished) return;
+        finished = true; cleanup();
+        if (!chunks.length) { Q.toast('MP4 encoder returned no video', 4000); return; }
+        const reader = new FileReader();
+        reader.onerror = function () { Q.toast('Could not prepare MP4', 4000); };
+        reader.onload = function () {
+          const ok = Q.saveBytes(reader.result, 'video/mp4', 'Qelem-' + Q.stamp() + '.mp4');
+          Q.toast(ok ? 'MP4 saved (Movies/Qelem on Android 10+)' : 'Could not save MP4', 4000);
+        };
+        reader.readAsDataURL(new Blob(chunks, { type: 'video/mp4' }));
+      };
+      Q.UI.progress('Exporting MP4', 'Recording one animation loop…', 0);
+      recorder.start();
+      let frame = 0;
+      function next() {
+        frame++;
+        if (frame >= d.frames.length) { try { recorder.stop(); } catch (err) { fail('MP4 encoder stopped unexpectedly'); } return; }
+        paint(frame); timer = setTimeout(next, 1000 / fps);
+      }
+      timer = setTimeout(next, 1000 / fps);
+    } catch (err) { fail('Could not start MP4 export on this device'); }
   };
 
   App.exportGif = function (opts) {

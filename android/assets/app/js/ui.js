@@ -38,7 +38,7 @@
     pause: '<path d="M8 5v14M16 5v14"/>',
     photo: '<rect x="3" y="4" width="18" height="16" rx="2"/><path d="M3 15l5-4 4 3 3-3 6 5"/>',
     film: '<rect x="3" y="4" width="18" height="16" rx="2"/><path d="M7 4v16M17 4v16"/>',
-    wrench: '<path d="M14.7 6.3a3.5 3.5 0 104.9 4.9L21 21l-9.8-1.4a3.5 3.5 0 01-4.9-4.9L4 5l9.8 1.4"/>',
+    wrench: '<path d="M14.5 6a4.5 4.5 0 00-5.7 5.7L3 17.5 6.5 21l5.8-5.8A4.5 4.5 0 0018 9l-3 2-2-2z"/>',
     layers: '<path d="M12 3l9 5-9 5-9-5z"/><path d="M3 13l9 5 9-5"/>',
     flip: '<path d="M12 3v18"/><path d="M8 7L3 12l5 5z"/><path d="M16 7l5 5-5 5z"/>',
     reset: '<path d="M4 12a8 8 0 1015-4"/><path d="M19 4v5h-5"/>',
@@ -266,14 +266,22 @@
   /* ── brushes ────────────────────────────────────────────── */
 
   function buildBrushes(root) {
-    root.appendChild(trayHead('Brushes', []));
+    root.appendChild(trayHead('Brush library', [chip('Brush studio', false, function () { UI.brushStudio(); }, ICON.wrench)]));
     const grid = Q.crel('div', 'brush-grid');
     Q.BRUSHES.forEach(function (b) {
       const card = Q.crel('button', 'brush-card' + (b.id === app().view.brush.id ? ' on' : ''));
       const cv = Q.crel('canvas');
       cv.width = 132; cv.height = 40;
+      const badge = Q.crel('span', 'brush-kind');
+      const category = b.eraser ? 'ERASER' : b.engine === 'grain' ? 'PENCIL' : b.engine === 'soft' ? 'PAINT' : 'INK';
+      const tip = b.eraser ? '<path d="M4 15l8-9a2 2 0 013 0l5 5-8 9H8zM9 20h11"/>' :
+        b.engine === 'grain' ? '<path d="M5 19l3-7L16 4l4 4-8 8zM5 19l7-3M14 6l4 4"/>' :
+        b.engine === 'soft' ? '<path d="M16 3c1 5 5 7 5 11a6 6 0 01-12 0c0-4 4-6 7-11zM6 16c0 3-1 4-3 5"/>' :
+        '<path d="M12 3l7 7-8 8-6 1 1-6zM12 3l-2 8 3 3 6-4M5 19l-2 2"/>';
+      badge.innerHTML = icon(tip) + '<span>' + category + '</span>';
+      card.appendChild(badge);
       card.appendChild(cv);
-      card.appendChild(Q.crel('span', null, b.name));
+      card.appendChild(Q.crel('span', 'brush-name', b.name));
       grid.appendChild(card);
       requestAnimationFrame(function () {
         Q.brushPreview(b, cv, [240, 236, 232]);
@@ -297,12 +305,50 @@
     const v1 = Q.crel('div', 'val', String(r1.value));
     r1.addEventListener('input', function () {
       app().view.brush.pressureSize = parseInt(r1.value, 10) / 100;
+      const settings = Q.Store.meta('brushSettings') || {};
+      settings[app().view.brush.id] = Object.assign({}, settings[app().view.brush.id], { pressureSize: app().view.brush.pressureSize });
+      Q.Store.meta('brushSettings', settings);
       v1.textContent = r1.value;
     });
     row.appendChild(r1); row.appendChild(v1);
     root.appendChild(row);
     void fitCanvasToBox;
   }
+
+  // A focused, local brush editor: adjustments are saved per preset on this device.
+  UI.brushStudio = function () {
+    const brush = app().view.brush;
+    const card = Q.crel('div');
+    card.appendChild(Q.crel('h2', null, 'Brush studio · ' + brush.name));
+    card.appendChild(Q.crel('p', 'sub', 'Tune this brush. Changes are saved on this device.'));
+    const fields = [ ['Spacing','spacing',2,100], ['Flow','flow',0,100], ['Opacity','opacity',0,100],
+      ['Edge hardness','hardness',0,100], ['Pressure size','pressureSize',0,100],
+      ['Pressure opacity','pressureAlpha',0,100], ['Stabilization','streamline',0,90] ];
+    const settings = Q.Store.meta('brushSettings') || {};
+    fields.forEach(function (field) {
+      const row = Q.crel('div', 'field studio-field');
+      row.appendChild(Q.crel('label', null, field[0]));
+      const slider = Q.crel('input'); slider.type = 'range'; slider.min = field[2]; slider.max = field[3];
+      slider.value = Math.round((brush[field[1]] == null ? 0 : brush[field[1]]) * 100);
+      slider.setAttribute('aria-label', field[0]);
+      const value = Q.crel('div', 'val', slider.value + '%');
+      slider.addEventListener('input', function () {
+        brush[field[1]] = Number(slider.value) / 100;
+        settings[brush.id] = Object.assign({}, settings[brush.id], { [field[1]]: brush[field[1]] });
+        Q.Store.meta('brushSettings', settings); value.textContent = slider.value + '%';
+      });
+      row.appendChild(slider); row.appendChild(value); card.appendChild(row);
+    });
+    const actions = Q.crel('div', 'modal-actions');
+    const reset = Q.crel('button', 'btn ghost', 'Reset');
+    reset.addEventListener('click', function () {
+      const original = Q.BRUSH_DEFAULTS.find(function (b) { return b.id === brush.id; });
+      Object.assign(brush, original); delete settings[brush.id]; Q.Store.meta('brushSettings', settings); UI.brushStudio();
+    });
+    const done = Q.crel('button', 'btn primary', 'Done');
+    done.addEventListener('click', function () { UI.closeModal(); UI.openTray('brushes'); });
+    actions.appendChild(reset); actions.appendChild(done); card.appendChild(actions); UI.openModal(card);
+  };
 
   /* ── layers ─────────────────────────────────────────────── */
 
@@ -644,7 +690,9 @@
 
     grid.appendChild(item('Export PNG', ICON.photo, function () { app().exportPng(); }));
     grid.appendChild(item('Export GIF', ICON.film, function () { UI.exportDialog(); }));
+    grid.appendChild(item('Export MP4', ICON.film, function () { UI.closeTray(); app().exportMp4(); }));
     grid.appendChild(item('New canvas', ICON.plus, function () { UI.newCanvasDialog(); }));
+    grid.appendChild(item('Drawing guides', ICON.sparkle, function () { UI.guideDialog(); }));
     grid.appendChild(item('Add frame', ICON.film, function () { app().addFrame(true); }));
     grid.appendChild(item('Onion skin', ICON.sparkle, function () {
       if (!d) return;
@@ -673,6 +721,47 @@
     root.appendChild(info);
   }
 
+  UI.guideDialog = function () {
+    const d = app().doc, card = Q.crel('div');
+    if (!d) return;
+    card.appendChild(Q.crel('h2', null, 'Drawing guides'));
+    card.appendChild(Q.crel('p', 'sub', 'Guides appear on the canvas only. Symmetry assist mirrors strokes on the selected layer.'));
+    function selectField(label, values, current, onChange) {
+      const row = Q.crel('div', 'field studio-field'); row.appendChild(Q.crel('label', null, label));
+      const select = Q.crel('select'); select.setAttribute('aria-label', label);
+      values.forEach(function (v) { const option = Q.crel('option'); option.value = v[0]; option.textContent = v[1]; select.appendChild(option); });
+      select.value = current; select.addEventListener('change', function () { onChange(select.value); app().view.dirty = true; app().markDirty(); });
+      row.appendChild(select); card.appendChild(row);
+    }
+    selectField('Guide', [['off','Off'],['grid','2D grid'],['isometric','Isometric'],['symmetry','Symmetry']], d.guide.type, function (value) { d.guide.type = value; });
+    selectField('Symmetry', [['off','Off'],['vertical','Vertical'],['horizontal','Horizontal'],['quadrant','Quadrant'],['radial','Radial (8-fold)']], d.guide.symmetry, function (value) { d.guide.symmetry = value; if (value !== 'off') { d.guide.type = 'symmetry'; card.querySelector('select[aria-label="Guide"]').value = 'symmetry'; } });
+    selectField('Layer assist', [['off','Off'],['on','On — selected layer']], d.layer().assisted ? 'on' : 'off', function (value) { d.setLayerProp(d.activeLayer,'assisted',value === 'on'); });
+    const row = Q.crel('div', 'field studio-field'); row.appendChild(Q.crel('label', null, 'Grid spacing'));
+    const range = Q.crel('input'); range.type='range'; range.min='32'; range.max='500'; range.value=d.guide.spacing; range.setAttribute('aria-label','Grid spacing');
+    const val = Q.crel('div','val',String(range.value)); range.addEventListener('input', function () { d.guide.spacing=Number(range.value); val.textContent=range.value; app().view.dirty=true; app().markDirty(); });
+    row.appendChild(range); row.appendChild(val); card.appendChild(row);
+    const actions=Q.crel('div','modal-actions'), done=Q.crel('button','btn primary','Done');
+    done.addEventListener('click',function () { UI.closeModal(); UI.closeTray(); }); actions.appendChild(done); card.appendChild(actions); UI.openModal(card);
+  };
+
+  UI.animationSettings = function () {
+    const d = app().doc, card = Q.crel('div'); if (!d) return;
+    card.appendChild(Q.crel('h2', null, 'Animation settings'));
+    card.appendChild(Q.crel('p', 'sub', 'Playback and onion skin settings for this artwork.'));
+    function slider(label,key,min,max,mult) {
+      const row=Q.crel('div','field studio-field'); row.appendChild(Q.crel('label',null,label));
+      const input=Q.crel('input'); input.type='range'; input.min=min; input.max=max; input.value=Math.round(d[key]*mult); input.setAttribute('aria-label',label);
+      const value=Q.crel('div','val',String(input.value)); input.addEventListener('input',function () { d[key]=Number(input.value)/mult; value.textContent=input.value; app().view.dirty=true; app().markDirty(); });
+      row.appendChild(input); row.appendChild(value); card.appendChild(row);
+    }
+    slider('FPS','fps',1,30,1); slider('Onion opacity','onionAlpha',0,100,100);
+    const row=Q.crel('div','field studio-field'); row.appendChild(Q.crel('label',null,'Playback'));
+    const select=Q.crel('select'); select.setAttribute('aria-label','Playback');
+    [['loop','Loop'],['pingpong','Ping-pong'],['once','One-shot']].forEach(function (v) { const o=Q.crel('option'); o.value=v[0]; o.textContent=v[1]; select.appendChild(o); });
+    select.value=d.playMode; select.addEventListener('change',function () { d.playMode=select.value; app().markDirty(); }); row.appendChild(select); card.appendChild(row);
+    const actions=Q.crel('div','modal-actions'), done=Q.crel('button','btn primary','Done'); done.addEventListener('click',function () { UI.closeModal(); UI.refreshTimeline(); }); actions.appendChild(done); card.appendChild(actions); UI.openModal(card);
+  };
+
   /* ── animation timeline ─────────────────────────────────── */
 
   UI.toggleTimeline = function () {
@@ -698,6 +787,7 @@
       app().markDirty(true);
       buildTimeline();
     }, null));
+    head.appendChild(chip('Settings', false, function () { UI.animationSettings(); }, null));
     head.appendChild(chip('Onion', d.onion, function () {
       d.onion = !d.onion;
       app().view.dirty = true;
@@ -786,7 +876,7 @@
     card.appendChild(Q.crel('h2', null, 'Qelem'));
     card.appendChild(Q.crel('p', 'sub', 'A paint, sketch and frame-by-frame animation studio for Android. Artwork is stored on this device only — nothing is uploaded.'));
     card.appendChild(Q.crel('p', 'sub', 'Developed by Qmer.'));
-    card.appendChild(Q.crel('p', 'sub', 'Version 1.1'));
+    card.appendChild(Q.crel('p', 'sub', 'Version 1.2'));
     const actions = Q.crel('div', 'modal-actions');
     const close = Q.crel('button', 'btn primary', 'Close');
     close.addEventListener('click', function () { UI.closeModal(); });

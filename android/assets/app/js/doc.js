@@ -56,7 +56,8 @@
   class Doc {
     constructor(opts = {}) {
       this.id = opts.id || Q.uid(); this.name = opts.name || 'Untitled'; this.width = opts.width || 2048; this.height = opts.height || 2048;
-      this.fps = opts.fps || 12; this.bg = opts.bg || '#ffffff'; this.onion = !!opts.onion; this.onionAlpha = 0.32;
+      this.fps = opts.fps || 12; this.bg = opts.bg || '#ffffff'; this.onion = !!opts.onion; this.onionAlpha = opts.onionAlpha == null ? 0.32 : opts.onionAlpha;
+      this.playMode = opts.playMode || 'loop'; this.guide = Object.assign({type:'off', symmetry:'off', spacing:100}, opts.guide || {});
       this.layers = [makeLayer('Layer 1')]; this.frames = [{ cels:[null] }]; this.activeFrame = 0; this.activeLayer = 0;
       this.history = new History(this); this.dirty = true;
     }
