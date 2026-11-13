@@ -155,7 +155,7 @@ async function run() {
   ok(Q.Store.mode() === 'local', 'storage fell back to localStorage: ' + Q.Store.mode());
 
   Q.UI.aboutSheet();
-  ok(doc.querySelector('#modalBody').textContent.includes('Version 1.3') && doc.querySelector('#modalBody').textContent.includes('Developed by Qmer'), 'About shows Qelem 1.3 and Qmer credit');
+  ok(doc.querySelector('#modalBody').textContent.includes('Version 1.4') && doc.querySelector('#modalBody').textContent.includes('Developed by Qmer'), 'About shows Qelem 1.4 and Qmer credit');
   click('#modalBody .btn.primary');
 
   console.log('new canvas');
@@ -286,6 +286,12 @@ async function run() {
   const hold = doc.querySelector('#modalBody input[aria-label="Frame hold"]');
   hold.value = '3'; hold.dispatchEvent(new win.Event('change', {bubbles:true}));
   ok(App.doc.frames[0].duration === 3 && Math.round(Q.frameDelayMs(App.doc,0)) === 250, 'frame hold changes playback timing');
+  const groupInput = doc.querySelector('#modalBody input[aria-label="Group label"]');
+  groupInput.value = 'Scene A';
+  [...doc.querySelectorAll('#modalBody button')].find(b => b.textContent === 'Save group label').click();
+  ok(App.doc.frames[0].group === 'Scene A', 'frame group label is saved');
+  ok(doc.querySelector('#timeline .frame-group').textContent === 'Scene A', 'frame group label appears in timeline');
+
   Q.UI.closeModal();
   ok(Q.animationOrder(4, 'pingpong').join(',') === '0,1,2,3,2,1', 'ping-pong export order excludes duplicate endpoints');
 
@@ -315,6 +321,7 @@ async function run() {
   ok(!doc.querySelector('#studio').classList.contains('hidden'), 'studio re-entered after opening');
   ok(App.doc.frames.length === 2, 'frames survived the round trip');
   ok(App.doc.frames[0].duration === 3, 'frame hold survives the round trip');
+  ok(App.doc.frames[0].group === 'Scene A', 'frame group label survives the round trip');
   ok(App.doc.layers.length === 2, 'layers survived the round trip');
   ok(App.doc.guide.symmetry === 'quadrant' && App.doc.layer().assisted && App.doc.playMode === 'pingpong' && App.doc.onionAlpha === 0.4, 'guide, assist and animation settings survive the round trip');
   ok(App.doc.onionFrames === 3 && App.doc.onionPrevColor === '#bb4488', 'onion frame count and colours survive the round trip');
@@ -376,6 +383,11 @@ async function run() {
   await tick();
   ok(App.doc.history.undoStack.length === qsBefore + 1, 'quickshape committed exactly one stroke');
 
+  console.log('about');
+  Q.UI.aboutSheet();
+  ok(doc.querySelector('#modalBody').textContent.includes('Developed by Qmer'), 'About credits Qmer');
+  Q.UI.closeModal();
+
   console.log('hardware back');
   ok(App.qalamBackSafe === undefined, 'no stray globals');
   ok(win.qalamBack() === 0, 'back from studio is handled in-app');
@@ -384,6 +396,7 @@ async function run() {
   console.log('effects');
   Q.UI.effectsDialog();
   ok(!!doc.querySelector('#modalBody select[aria-label="Effect"]'), 'effects dialog opens');
+  ok(!!doc.querySelector('#modalBody option[value="motion"]') && !!doc.querySelector('#modalBody option[value="bloom"]'), 'advanced effects appear in the effects list');
   const effectHistory = App.doc.history.undoStack.length;
   App.doc.activeCel(true);
   click('#modalBody .btn.primary'); await wait(70);

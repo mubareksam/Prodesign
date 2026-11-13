@@ -41,6 +41,67 @@
     }
   }
 
+  function motionBlur(data, width, height, radius) {
+    const src = new Uint8ClampedArray(data);
+    // Premultiplied horizontal moving average, O(width * height).
+    for (let i = 0; i < src.length; i += 4) {
+      const a = src[i + 3] / 255; src[i] *= a; src[i + 1] *= a; src[i + 2] *= a;
+    }
+    for (let y = 0; y < height; y++) for (let channel = 0; channel < 4; channel++) {
+      let sum = 0;
+      for (let x = 0; x <= Math.min(width - 1, radius); x++) sum += src[(y * width + x) * 4 + channel];
+      for (let x = 0; x < width; x++) {
+        const left = Math.max(0, x - radius), right = Math.min(width - 1, x + radius);
+        data[(y * width + x) * 4 + channel] = sum / (right - left + 1);
+        if (x - radius >= 0) sum -= src[(y * width + x - radius) * 4 + channel];
+        if (x + radius + 1 < width) sum += src[(y * width + x + radius + 1) * 4 + channel];
+      }
+    }
+    for (let i = 0; i < data.length; i += 4) {
+      const alpha = data[i + 3];
+      if (alpha) { data[i] = data[i] * 255 / alpha; data[i + 1] = data[i + 1] * 255 / alpha; data[i + 2] = data[i + 2] * 255 / alpha; }
+    }
+  }
+
+  function sharpen(data, width, height, strength) {
+    const soft = new Uint8ClampedArray(data);
+    boxBlur(soft, width, height, 2);
+    for (let i = 0; i < data.length; i += 4) {
+      if (!data[i + 3]) continue;
+      for (let c = 0; c < 3; c++) data[i+c] += (data[i+c] - soft[i+c]) * strength * 1.5;
+    }
+  }
+
+  function bloom(data, width, height, strength) {
+    const glow = new Uint8ClampedArray(data);
+    for (let i = 0; i < glow.length; i += 4) {
+      const highlight = Q.clamp((Math.max(glow[i], glow[i+1], glow[i+2]) - 150) / 105, 0, 1);
+      glow[i+3] *= highlight;
+    }
+    boxBlur(glow, width, height, Math.max(1, Math.round(strength * 12)));
+    for (let i = 0; i < data.length; i += 4) {
+      const a = data[i+3] / 255, g = glow[i+3] / 255 * strength * 0.65;
+      const out = a + g * (1 - a);
+      if (!out) continue;
+      for (let c = 0; c < 3; c++) {
+        data[i+c] = (data[i+c] * a + glow[i+c] * g * (1-a)) / out + glow[i+c] * g * a * 0.35;
+      }
+      data[i+3] = out * 255;
+    }
+  }
+
+  function glitch(data, width, height, strength) {
+    const src = new Uint8ClampedArray(data), shift = Math.max(1, Math.round(strength * 30));
+    const band = Math.max(1, Math.round(height / 24));
+    for (let y = 0; y < height; y++) {
+      const offset = (Math.floor(y / band) % 3 - 1) * shift;
+      for (let x = 0; x < width; x++) {
+        const from = (y * width + Q.clamp(x + offset, 0, width - 1)) * 4, to = (y * width + x) * 4;
+        data[to] = src[from]; data[to+1] = src[from+1]; data[to+2] = src[from+2]; data[to+3] = src[from+3];
+      }
+    }
+  }
+
   Q.applyPixelEffect = function (image, type, amount) {
     const data = image.data, w = image.width, h = image.height;
     const strength = Q.clamp(Number(amount) || 0, 0, 1);
@@ -49,6 +110,10 @@
       boxBlur(data, w, h, Math.max(1, Math.round(strength * 16)));
       return image;
     }
+    if (type === 'motion') { motionBlur(data, w, h, Math.max(1, Math.round(strength * 32))); return image; }
+    if (type === 'sharpen') { sharpen(data, w, h, strength); return image; }
+    if (type === 'bloom') { bloom(data, w, h, strength); return image; }
+    if (type === 'glitch') { glitch(data, w, h, strength); return image; }
     const supported = ['grayscale', 'invert', 'sepia', 'brightness', 'saturation', 'contrast', 'hue', 'noise', 'threshold', 'halftone', 'chromatic'];
     const original = type === 'chromatic' ? new Uint8ClampedArray(data) : null;
     if (supported.indexOf(type) < 0) throw new Error('Unknown effect');

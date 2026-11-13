@@ -728,7 +728,7 @@
     card.appendChild(Q.crel('p', 'sub', 'Applies to the selected layer and current frame. The change can be undone.'));
     const row = Q.crel('div', 'field studio-field'); row.appendChild(Q.crel('label', null, 'Effect'));
     const select = Q.crel('select'); select.setAttribute('aria-label', 'Effect');
-    [['blur','Soft blur'],['grayscale','Grayscale'],['invert','Invert'],['sepia','Sepia'],['brightness','Brightness'],['saturation','Saturation'],['contrast','Contrast'],['hue','Hue shift'],['noise','Noise'],['chromatic','Chromatic shift'],['halftone','Halftone dither'],['threshold','Threshold']].forEach(function (option) {
+    [['blur','Soft blur'],['motion','Motion blur (horizontal)'],['sharpen','Sharpen'],['bloom','Bloom'],['glitch','Glitch'],['grayscale','Grayscale'],['invert','Invert'],['sepia','Sepia'],['brightness','Brightness'],['saturation','Saturation'],['contrast','Contrast'],['hue','Hue shift'],['noise','Noise'],['chromatic','Chromatic shift'],['halftone','Halftone dither'],['threshold','Threshold']].forEach(function (option) {
       const el = Q.crel('option'); el.value=option[0]; el.textContent=option[1]; select.appendChild(el);
     }); row.appendChild(select); card.appendChild(row);
     const amountRow=Q.crel('div','field studio-field'); amountRow.appendChild(Q.crel('label',null,'Strength'));
@@ -832,6 +832,8 @@
       small.getContext('2d').drawImage(cv, 0, 0, small.width, small.height);
       b.appendChild(small);
       b.appendChild(Q.crel('span', 'n', String(i + 1) + ((fr.duration || 1) > 1 ? ' · ' + fr.duration + '×' : '')));
+      if (fr.group) { const tag = Q.crel('span', 'frame-group'); tag.textContent = fr.group; b.appendChild(tag); }
+      b.setAttribute('aria-label', 'Frame ' + (i + 1) + (fr.group ? ', group ' + fr.group : ''));
       b.addEventListener('click', function () { app().selectFrame(i); });
       b.addEventListener('dblclick', function () { UI.frameSheet(i); });
       b.addEventListener('contextmenu', function (e) { e.preventDefault(); UI.frameSheet(i); });
@@ -856,6 +858,12 @@
     duration.addEventListener('input', function () { val.textContent=duration.value + '×'; });
     duration.addEventListener('change', function () { app().doc.setFrameDuration(i,Number(duration.value)); app().markDirty(); UI.refreshTimeline(); });
     row.appendChild(duration); row.appendChild(val); card.appendChild(row);
+    const groupRow = Q.crel('div', 'field studio-field'); groupRow.appendChild(Q.crel('label', null, 'Group label'));
+    const group = Q.crel('input'); group.className = 'select'; group.type = 'text'; group.maxLength = 32; group.value = app().doc.frames[i].group || ''; group.placeholder = 'Optional scene name'; group.setAttribute('aria-label', 'Group label');
+    groupRow.appendChild(group); card.appendChild(groupRow);
+    const saveGroup = Q.crel('button', 'btn', 'Save group label');
+    saveGroup.addEventListener('click', function () { app().doc.setFrameGroup(i, group.value); app().markDirty(); UI.refreshTimeline(); Q.toast('Frame label saved'); });
+    card.appendChild(saveGroup);
     const grid = Q.crel('div', 'menu-grid');
     const mk = function (label, ico, fn) {
       const b = Q.crel('button', 'menu-item');
@@ -910,7 +918,7 @@
     card.appendChild(Q.crel('h2', null, 'Qelem'));
     card.appendChild(Q.crel('p', 'sub', 'A paint, sketch and frame-by-frame animation studio for Android. Artwork is stored on this device only — nothing is uploaded.'));
     card.appendChild(Q.crel('p', 'sub', 'Developed by Qmer.'));
-    card.appendChild(Q.crel('p', 'sub', 'Version 1.3'));
+    card.appendChild(Q.crel('p', 'sub', 'Version 1.4'));
     const actions = Q.crel('div', 'modal-actions');
     const close = Q.crel('button', 'btn primary', 'Close');
     close.addEventListener('click', function () { UI.closeModal(); });
