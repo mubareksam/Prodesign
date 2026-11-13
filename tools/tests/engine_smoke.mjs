@@ -216,5 +216,25 @@ ok(blur.data[0] === 128 && blur.data[4] === 85 && blur.data[8] === 128, 'blur av
 const alphaBlur = {width:2,height:1,data:new Uint8ClampedArray([255,0,0,255, 0,0,0,0])};
 Q.applyPixelEffect(alphaBlur,'blur',0.01);
 ok(alphaBlur.data[0] >= 250 && alphaBlur.data[4] >= 250 && alphaBlur.data[3] > 0, 'blur preserves colours across transparent edges');
+const line = {width:3,height:1,data:new Uint8ClampedArray([0,0,0,255, 255,255,255,255, 0,0,0,255])};
+Q.applyPixelEffect(line, 'motion', 0.01);
+ok(line.data[0] === 128 && line.data[4] === 85, 'horizontal motion blur averages nearby pixels');
+const sharp = {width:3,height:1,data:new Uint8ClampedArray([100,100,100,255, 150,150,150,255, 100,100,100,255])};
+Q.applyPixelEffect(sharp, 'sharpen', 1);
+ok(sharp.data[4] > 150 && sharp.data[3] === 255, 'sharpen increases local contrast without changing alpha');
+const glow = {width:3,height:1,data:new Uint8ClampedArray([255,255,255,255, 0,0,0,0, 0,0,0,0])};
+Q.applyPixelEffect(glow, 'bloom', 0.2);
+ok(glow.data[7] > 0 && glow.data[4] > 0, 'bloom extends highlights into transparent neighbours');
+const glitch = {width:3,height:1,data:new Uint8ClampedArray([10,0,0,255, 20,0,0,255, 30,0,0,255])};
+Q.applyPixelEffect(glitch, 'glitch', 0.04);
+ok(glitch.data[4] === 10, 'glitch displaces pixels in bands');
+const scene = new Q.Doc({width:4,height:4});
+scene.setFrameGroup(0, 'Scene A'); scene.addFrame(true);
+ok(scene.frames[1].group === 'Scene A', 'duplicating frame keeps group label');
+scene.history.undo(); scene.history.undo();
+ok(scene.frames[0].group === '', 'frame group assignment is undoable');
+scene.history.redo();
+ok(scene.frames[0].group === 'Scene A', 'frame group assignment can be redone');
+
 
 console.log(`\nall ${checks} engine checks passed`);
