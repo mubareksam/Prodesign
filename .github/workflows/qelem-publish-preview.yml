@@ -1,15 +1,12 @@
-name: Publish built Qelem native preview to branch
+name: Publish built Qelem native previews to branch
 
-# Copies the explicitly selected successful build to this branch for a direct APK link.
 on:
   push:
     branches: [arena/412bd2e9-prodesign]
     paths: ['.github/workflows/qelem-publish-preview.yml']
-
 permissions:
   actions: read
   contents: write
-
 jobs:
   publish:
     runs-on: ubuntu-24.04
@@ -20,37 +17,52 @@ jobs:
       - uses: actions/download-artifact@v4
         with:
           name: Qelem-native-preview-arm64
-          path: /tmp/qelem-native-apk
-          run-id: 43634488444
+          path: /tmp/qelem-native
+          run-id: 43636281271
           github-token: ${{ github.token }}
-      - name: Verify and place development APK
+      - uses: actions/download-artifact@v4
+        with:
+          name: Qelem-Windows-preview
+          path: /tmp/qelem-windows
+          run-id: 43636281216
+          github-token: ${{ github.token }}
+      - name: Verify and package previews
         run: |
           set -euo pipefail
-          cd /tmp/qelem-native-apk
-          sha256sum -c SHA256SUMS.txt
+          (cd /tmp/qelem-native && sha256sum -c SHA256SUMS.txt)
           TOOLS="$ANDROID_HOME/build-tools/$(ls "$ANDROID_HOME/build-tools" | sort -V | tail -1)"
-          "$TOOLS/apksigner" verify --verbose --print-certs Qelem-native-preview-arm64.apk > verification.txt
-          "$TOOLS/aapt" dump badging Qelem-native-preview-arm64.apk > badging.txt
-          grep "package: name='com.qalam.studio.nativepreview.debug'" badging.txt
-          unzip -l Qelem-native-preview-arm64.apk | grep 'lib/arm64-v8a/libprocraft_core.so'
+          "$TOOLS/apksigner" verify --verbose --print-certs /tmp/qelem-native/Qelem-native-preview-arm64.apk > /tmp/signature.txt
+          "$TOOLS/aapt" dump badging /tmp/qelem-native/Qelem-native-preview-arm64.apk > /tmp/badging.txt
+          grep "package: name='com.qalam.studio.nativepreview.debug'" /tmp/badging.txt
+          unzip -l /tmp/qelem-native/Qelem-native-preview-arm64.apk | grep 'lib/arm64-v8a/libprocraft_core.so'
+          python3 - <<'PY'
+          import struct
+          for name in ('Qelem-Windows-preview.exe', 'Qelem-Tablet-Server.exe'):
+              data = open('/tmp/qelem-windows/' + name, 'rb').read()
+              assert data[:2] == b'MZ'
+              pe = struct.unpack_from('<I', data, 0x3c)[0]
+              assert data[pe:pe+4] == b'PE\0\0'
+              assert struct.unpack_from('<H', data, pe+4)[0] == 0x8664
+              assert struct.unpack_from('<H', data, pe+0x5c)[0] == 2
+          PY
+          cp /tmp/qelem-native/Qelem-native-preview-arm64.apk artifacts/Qelem-Android-timeline-navigation-preview-arm64.apk
+          (cd /tmp/qelem-windows && zip -q -9 "$GITHUB_WORKSPACE/artifacts/Qelem-Windows-timeline-preview-x64.zip" Qelem-Windows-preview.exe Qelem-Tablet-Server.exe README.txt LICENSE-MIT LICENSE-APACHE NOTICE ATTRIBUTION.md QRCODE-LICENSE.txt)
           {
-            echo 'Qelem native preview arm64 development APK'
-            echo 'Source commit: b89fdb081ff8f178ea0750b00e22105ee2480910'
-            echo 'GitHub Actions build: https://github.com/mubareksam/Qelem/actions/runs/43634488444'
-            echo 'Debug signed, separate package. Not an upgrade to Qelem.'
-            echo
-            cat SHA256SUMS.txt
-            echo
-            cat verification.txt
-            echo
-            grep -E "^(package:|sdkVersion:|targetSdkVersion:|application-label:|native-code:)" badging.txt
-          } > "$GITHUB_WORKSPACE/artifacts/Qelem-animation-clean-timeline-preview-arm64.txt"
-          cp Qelem-native-preview-arm64.apk "$GITHUB_WORKSPACE/artifacts/Qelem-animation-clean-timeline-preview-arm64.apk"
-      - name: Commit download to the current branch
+            echo 'Qelem Windows and Android animation timeline development previews'
+            echo 'Source commit: 0ab12e3c329bd86f4fef417d86429b4cf4f4e526'
+            echo 'Android build: https://github.com/mubareksam/Qelem/actions/runs/43636281271'
+            echo 'Windows build: https://github.com/mubareksam/Qelem/actions/runs/43636281216'
+            echo 'Windows binaries unsigned. Android APK debug signed and separately packaged; not an upgrade.'
+            echo 'Physical device testing is still required. Back up artwork before using previews.'
+            (cd artifacts && sha256sum Qelem-Android-timeline-navigation-preview-arm64.apk Qelem-Windows-timeline-preview-x64.zip)
+            cat /tmp/signature.txt
+            grep -E "^(package:|sdkVersion:|targetSdkVersion:|application-label:|native-code:)" /tmp/badging.txt
+          } > artifacts/Qelem-timeline-Windows-Android-preview.txt
+      - name: Commit previews to current branch
         run: |
           set -euo pipefail
           git config user.name 'github-actions[bot]'
           git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
-          git add artifacts/Qelem-animation-clean-timeline-preview-arm64.apk artifacts/Qelem-animation-clean-timeline-preview-arm64.txt
-          git commit -m 'Add Qelem clean timeline preview APK'
+          git add artifacts/Qelem-Android-timeline-navigation-preview-arm64.apk artifacts/Qelem-Windows-timeline-preview-x64.zip artifacts/Qelem-timeline-Windows-Android-preview.txt
+          git commit -m 'Add Windows and Android timeline previews'
           git push origin HEAD:arena/412bd2e9-prodesign
