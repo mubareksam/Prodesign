@@ -15,7 +15,11 @@ The native APK is a debug-signed preview, built on GitHub but **not tested on a 
 
 ## Windows + phone tablet preview
 
-A native Windows build and separate Android blank-pad controller are being developed. The phone sends strokes and basic adjustments to an open Qelem canvas over trusted local Wi-Fi. It is not a system-wide tablet driver. See [setup and limitations](native/QELEM-PHONE-TABLET.md).
+- [Download Qelem for Windows x64](artifacts/Qelem-Windows-preview.zip) (portable, unsigned preview).
+- [Download Qelem Tablet for Android 9+](artifacts/Qelem-Tablet-preview.apk) (separate debug-signed controller).
+- [Setup, security and limitations](native/QELEM-PHONE-TABLET.md) · [build and signature details](artifacts/Qelem-Windows-and-Tablet-preview.txt).
+
+The phone sends strokes and basic adjustments to an open Qelem canvas over trusted local Wi-Fi. It is not a system-wide tablet driver. These builds have passed compilation and connection protocol tests, but **have not been tested together on real devices**.
 
 ## Artwork safety
 

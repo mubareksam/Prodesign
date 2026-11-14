@@ -2,6 +2,14 @@
 
 Qelem's desktop build is a native Windows x64 app using the same Rust/wgpu engine. The Android **Qelem Tablet** companion is a separate controller: its screen is a blank touch pad with undo, redo, brush size and opacity. It sends input to an open Qelem artwork on the PC; the picture appears on the PC, not on the phone. This is **not** a system-wide Wacom driver and does not control other Windows apps.
 
+## Downloads and verification
+
+- [Windows x64 portable ZIP](../artifacts/Qelem-Windows-preview.zip) — extract it and run `Qelem-Windows-preview.exe`. The executable is unsigned; Windows may warn about it, and the Microsoft Visual C++ Redistributable may be needed.
+- [Qelem Tablet Android APK](../artifacts/Qelem-Tablet-preview.apk) — Android 9 or later, separate from Qelem. Debug-signed, not for production.
+- [Checksums and build details](../artifacts/Qelem-Windows-and-Tablet-preview.txt).
+
+The Windows and Android apps compiled on GitHub Actions; the Rust loopback protocol tests and Android JVM link tests passed. The APK signature and Windows executable architecture were checked. No physical Windows/Android pairing or drawing test was performed.
+
 ## Pairing over local Wi-Fi
 
 1. Connect the PC and phone to the same **trusted private network**. Client isolation on guest Wi-Fi can prevent them connecting.

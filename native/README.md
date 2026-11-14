@@ -21,7 +21,7 @@ These additions have focused JVM tests, and the arm64 APK compiles; graphics, to
 
 ## Windows and phone tablet
 
-An experimental Windows build can pair with a separate Android blank-pad controller over a trusted LAN. [Setup, security and limitations](QELEM-PHONE-TABLET.md). This is not a system-wide Wacom driver.
+Download the [Windows x64 preview](../artifacts/Qelem-Windows-preview.zip) and the separate [Android tablet controller](../artifacts/Qelem-Tablet-preview.apk). The phone is a blank pad sending input over a trusted LAN, not a system-wide Wacom driver. [Setup, security and limitations](QELEM-PHONE-TABLET.md). Built and protocol-tested, but not tested together on real devices.
 
 ## Keep your artwork safe
 
