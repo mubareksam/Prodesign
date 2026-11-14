@@ -1,6 +1,6 @@
 # Qelem native fusion — work in progress
 
-This is a **source-only, incomplete development base**, not an APK and not a replacement for Qelem 7.23. Based on ProCraft commit `c330afd009eae7c739af1a4d61293b1e4b4d3dca`; the upstream MIT/Apache licenses, NOTICE and asset attributions are retained. This folder is a fork, not a claim of ownership of ProCraft. No change to the existing Qelem 7.23 source or APK is required.
+This is an **incomplete development preview**, not a replacement for Qelem 7.23. An arm64 debug APK is available [here](../artifacts/Qelem-native-preview-arm64.apk); it has not been tested on a device. Based on ProCraft commit `c330afd009eae7c739af1a4d61293b1e4b4d3dca`; the upstream MIT/Apache licenses, NOTICE and asset attributions are retained. This folder is a fork, not a claim of ownership of ProCraft. No change to the existing Qelem 7.23 source or APK is required.
 
 ## Native work in progress
 
@@ -18,11 +18,11 @@ This is a **source-only, incomplete development base**, not an APK and not a rep
 2. Port Qelem's animation timeline, ranges, skipped frames, frame labels, motion/camera keys, audio, animation effects, and exports where they are not already equivalent; decide how they map to ProCraft's frame/group model. Reverse **export** is not implemented here.
 3. Audit and port Qelem's other unique brushes, selections, shape and pattern tools, transparency edits, palettes and project backup. None of those are claimed to be ported by this base. Both apps have overlapping features with differing behaviour; check rather than assume parity.
 4. Review all native accent placements and contrast, including plugin overrides, light theme, transform and text tools, and phones/tablets. The upstream interface is principally tablet-oriented; no phone adaptation is claimed.
-5. Build the complete Android project with the required Gradle, SDK/NDK, Rust and cargo-ndk toolchain (see [native build instructions](README.md)), and test on actual Android devices: stylus/touch, GPU speed and stability, save/reopen, lifecycle, imports, exports, memory, and accessibility. Reconcile package, app signing, version codes and storage migration before any genuine update is attempted. A different signing certificate cannot update an installed app.
+5. Test the arm64 debug build on actual Android devices: stylus/touch, GPU speed and stability, save/reopen, lifecycle, imports, exports, memory, and accessibility. Reconcile package, app signing, version codes and storage migration before any genuine update is attempted. A different signing certificate cannot update an installed app.
 
 ## Verification performed for this source step
 
-Standalone Kotlin/JVM tests exercise preview range, speed, timing and held-slot mapping. The real sheet and palette writer functions are tested with a JVM fake Android graphics API: generated PNG pixels, alpha, labels, limits, cancellation and incomplete-file cleanup. Static checks confirm the isolated app ID, Qelem label/logo, retained upstream notices and original Qelem source archive. These tests do **not** compile the Android app or exercise the actual native renderer, Android graphics/share system or device. Native Android/Gradle dependencies are not available in this workspace, so no native APK has been built or device tested here. Do not treat the source as a finished application.
+Standalone Kotlin/JVM tests exercise preview range, speed, timing and held-slot mapping. The real sheet and palette writer functions are tested with a JVM fake Android graphics API: generated PNG pixels, alpha, labels, limits, cancellation and incomplete-file cleanup. Static checks confirm the isolated app ID, Qelem label/logo, retained upstream notices and original Qelem source archive. These tests do **not** compile the Android app or exercise the actual native renderer, Android graphics/share system or device. An arm64 debug APK was built on GitHub Actions with SDK 36 and Compose BOM 2026.03.00 ([build](https://github.com/mubareksam/Qelem/actions/runs/43586658906)); its v2 signature and package metadata were verified. It has not been installed or device tested. Do not treat the preview as a finished application.
 
 Example test (Kotlin/JVM compiler 2.3.21 and JDK required):
 

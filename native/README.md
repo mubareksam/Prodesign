@@ -6,7 +6,9 @@ Qelem's experimental native painting and animation app, based on [ProCraft](http
 
 ## Download
 
-**There is no Qelem native APK yet.** This source has not been built or tested on an Android device. The existing [Qelem 7.23 development APK](../artifacts/Qelem-7.23-dev.apk) is the older WebView-based app, not this native edition.
+[Download the Qelem native preview APK (arm64)](../artifacts/Qelem-native-preview-arm64.apk) · Android 9 or later · [build and signature details](../artifacts/Qelem-native-preview-arm64.txt)
+
+This debug-signed development APK was built on GitHub, but **has not been tested on an Android device**. It is a separate app and not an update to existing Qelem. The existing [Qelem 7.23 development APK](../artifacts/Qelem-7.23-dev.apk) is the older WebView-based app, not this native edition.
 
 ## What's being built
 
@@ -15,7 +17,7 @@ Qelem's experimental native painting and animation app, based on [ProCraft](http
 - Temporary animation preview reverse, frame range, and 50%/100%/200% speed. These affect preview only, not saved animation or exports.
 - Storyboard PNG, transparent sprite-sheet PNG, and palette chart PNG sharing. The sheets render visible top-level frames once, not repeated holds; see [details and limits](QELEM-FUSION.md).
 
-These additions have focused JVM tests, but the complete Android app, graphics, touch, device performance and export sharing have **not** been verified. Many Qelem features still need porting. The existing Qelem project format is not compatible and no migration/importer exists.
+These additions have focused JVM tests, and the arm64 APK compiles; graphics, touch, device performance and export sharing have **not** been verified on a device. Many Qelem features still need porting. The existing Qelem project format is not compatible and no migration/importer exists.
 
 ## Keep your artwork safe
 

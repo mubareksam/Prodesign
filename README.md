@@ -6,11 +6,12 @@ Qelem is an independent Android painting and frame-animation app. This repositor
 
 ## Download Qelem
 
+- [Qelem native preview APK — arm64](artifacts/Qelem-native-preview-arm64.apk) — experimental native edition, Android 9 or later; [build and signature details](artifacts/Qelem-native-preview-arm64.txt).
 - [Qelem 7.23 development APK](artifacts/Qelem-7.23-dev.apk) — existing WebView-based Qelem, **not the native edition**.
 - [Qelem 7.23 source archive](artifacts/Qelem-7.23-dev-source.zip).
 - [Earlier Qelem 1.4 release](artifacts/releases/Qelem-1.4.apk) and [release notes](https://github.com/mubareksam/Qelem/releases/tag/v1.4).
 
-**The native edition does not yet have a built APK.** Its source, feature status and build instructions are in [native/README.md](native/README.md). Do not download an upstream ProCraft APK expecting it to contain Qelem's changes.
+The native APK is a debug-signed preview, built on GitHub but **not tested on a physical device**. Its source, feature status and build instructions are in [native/README.md](native/README.md). Do not download an upstream ProCraft APK expecting it to contain Qelem's changes.
 
 ## Artwork safety
 
