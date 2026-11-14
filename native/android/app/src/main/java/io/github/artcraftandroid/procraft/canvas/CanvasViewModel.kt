@@ -7767,6 +7767,17 @@ class CanvasViewModel(app: Application) : AndroidViewModel(app) {
         holdVersion++
     }
 
+    /** Nudge exposure by a frame, using the same saved/undoable operation as the slider. */
+    fun adjustFrameHold(delta: Int) {
+        if (currentFrame == null || animation == null) return
+        stopPlaying()
+        val old = frameHold()
+        val next = (old.toLong() + delta.toLong()).coerceIn(0L, MAX_HOLD.toLong()).toInt()
+        if (next == old) return
+        changeFrameHold(next)
+        endFrameHold()
+    }
+
     /** The hold's slider let go: the whole drag is one undo step. */
     fun endFrameHold() {
         val id = currentFrame?.let { animationFrames.getOrNull(it) } ?: return

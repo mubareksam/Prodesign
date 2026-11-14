@@ -237,6 +237,8 @@ private fun BoxScope.StudioTimelineBar(vm: CanvasViewModel, compact: () -> Unit)
                 StudioControl("›", "Next timeline slot") { vm.stepTimeline(1) }
                 StudioControl("+ Frame", "Add a frame") { vm.addFrame() }
                 StudioControl("Duplicate", "Duplicate frame or split at held slot") { vm.stopPlaying(); vm.duplicateFrame() }
+                StudioControl("− Hold", "Shorten current frame exposure") { vm.adjustFrameHold(-1) }
+                StudioControl("+ Hold", "Lengthen current frame exposure") { vm.adjustFrameHold(1) }
                 StudioControl("Frame", "Frame options") { vm.stopPlaying(); vm.frameOptionsOpen = !vm.frameOptionsOpen; vm.animationSettingsOpen = false }
                 StudioControl("Settings", "Playback and onion skin settings") { vm.stopPlaying(); vm.animationSettingsOpen = !vm.animationSettingsOpen; vm.frameOptionsOpen = false }
                 StudioControl(if (zoomed) "− Zoom" else "+ Zoom", "Change timeline zoom") { zoomed = !zoomed }
