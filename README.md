@@ -13,6 +13,10 @@ Qelem is an independent Android painting and frame-animation app. This repositor
 
 The native APK is a debug-signed preview, built on GitHub but **not tested on a physical device**. Its source, feature status and build instructions are in [native/README.md](native/README.md). Do not download an upstream ProCraft APK expecting it to contain Qelem's changes.
 
+## Windows + phone tablet preview
+
+A native Windows build and separate Android blank-pad controller are being developed. The phone sends strokes and basic adjustments to an open Qelem canvas over trusted local Wi-Fi. It is not a system-wide tablet driver. See [setup and limitations](native/QELEM-PHONE-TABLET.md).
+
 ## Artwork safety
 
 Back up projects from the existing app and verify the backups. Do not uninstall Qelem: uninstalling can erase private artwork. The native preview uses a separate package and has no Qelem project importer, so it cannot automatically access or migrate your existing gallery. Installing an older APK over a newer one is normally blocked by Android.

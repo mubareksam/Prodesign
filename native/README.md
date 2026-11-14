@@ -19,6 +19,10 @@ This debug-signed development APK was built on GitHub, but **has not been tested
 
 These additions have focused JVM tests, and the arm64 APK compiles; graphics, touch, device performance and export sharing have **not** been verified on a device. Many Qelem features still need porting. The existing Qelem project format is not compatible and no migration/importer exists.
 
+## Windows and phone tablet
+
+An experimental Windows build can pair with a separate Android blank-pad controller over a trusted LAN. [Setup, security and limitations](QELEM-PHONE-TABLET.md). This is not a system-wide Wacom driver.
+
 ## Keep your artwork safe
 
 Back up projects in the existing Qelem app and verify the backups. **Do not uninstall Qelem.** The native preview has a separate application ID, so it will not see existing private artwork or update the existing app. No lossless conversion is available yet.

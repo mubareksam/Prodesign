@@ -8,7 +8,12 @@ import java.util.concurrent.ArrayBlockingQueue
 import java.util.concurrent.TimeUnit
 
 /** One explicit pairing. All socket I/O stays off the Android UI thread. */
-internal class Link(private val host: String, private val token: String) {
+internal class Link(
+    private val host: String,
+    private val token: String,
+    private val port: Int = 48652,
+    private val allowLoopbackForTest: Boolean = false,
+) {
     @Volatile var onState: (Boolean, String?) -> Unit = { _, _ -> }
     @Volatile private var closed = false
     @Volatile private var ready = false
@@ -31,13 +36,13 @@ internal class Link(private val host: String, private val token: String) {
         var message = "Disconnected from PC."
         try {
             val address = InetAddress.getByName(host)
-            require(address is Inet4Address && (address.isSiteLocalAddress || address.isLinkLocalAddress)) {
+            require(address is Inet4Address && (address.isSiteLocalAddress || address.isLinkLocalAddress || (allowLoopbackForTest && address.isLoopbackAddress))) {
                 "Enter a private local-network IPv4 address."
             }
             val s = Socket()
             socket = s
             if (closed) return
-            s.connect(InetSocketAddress(address, 48652), 5000)
+            s.connect(InetSocketAddress(address, port), 5000)
             s.tcpNoDelay = true
             s.soTimeout = 5000
             val input = s.getInputStream()

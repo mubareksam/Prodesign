@@ -102,6 +102,9 @@ fn serve(listener: TcpListener, token: &str, stop: &AtomicBool, connected: &Atom
             Err(e) if e.kind() == io::ErrorKind::WouldBlock => { std::thread::sleep(Duration::from_millis(50)); continue; }
             Err(_) => break,
         };
+        // On Windows an accepted socket can inherit the listener's nonblocking mode. Restore
+        // blocking mode before setting timeouts; otherwise a momentary WouldBlock ends the session.
+        if stream.set_nonblocking(false).is_err() { continue; }
         let _ = stream.set_read_timeout(Some(Duration::from_secs(1)));
         let _ = stream.set_write_timeout(Some(Duration::from_secs(2)));
         let _ = stream.set_nodelay(true);

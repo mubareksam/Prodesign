@@ -58,6 +58,7 @@ jobs:
           New-Item -ItemType Directory -Force package | Out-Null
           Copy-Item native/target/release/procraft.exe package/Qelem-Windows-preview.exe
           Copy-Item native/QELEM-PHONE-TABLET.md package/README.txt
+          Copy-Item native/LICENSE-MIT,native/LICENSE-APACHE,native/NOTICE,native/ATTRIBUTION.md package/
           Get-FileHash package/Qelem-Windows-preview.exe -Algorithm SHA256 | Format-List | Out-File package/SHA256.txt
       - uses: actions/upload-artifact@v4
         with:
@@ -78,7 +79,7 @@ jobs:
         working-directory: native/android
         run: |
           set +e
-          ./gradlew --no-daemon --max-workers=2 :tablet:assembleDebug > /tmp/tablet-gradle.log 2>&1
+          ./gradlew --no-daemon --max-workers=2 :tablet:assembleDebug :tablet:testDebugUnitTest > /tmp/tablet-gradle.log 2>&1
           result=$?
           tail -n 100 /tmp/tablet-gradle.log
           if [ "$result" -ne 0 ]; then
