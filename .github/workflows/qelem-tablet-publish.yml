@@ -1,0 +1,71 @@
+name: Publish Qelem Windows and tablet previews
+on:
+  push:
+    branches: [arena/412bd2e9-prodesign]
+    paths: ['.github/workflows/qelem-tablet-publish.yml']
+permissions:
+  actions: read
+  contents: write
+jobs:
+  publish:
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: arena/412bd2e9-prodesign
+      - uses: actions/download-artifact@v4
+        with:
+          name: Qelem-Windows-preview
+          path: /tmp/qelem-windows
+          run-id: 43594699668
+          github-token: ${{ github.token }}
+      - uses: actions/download-artifact@v4
+        with:
+          name: Qelem-Tablet-preview
+          path: /tmp/qelem-tablet
+          run-id: 43594699668
+          github-token: ${{ github.token }}
+      - name: Verify and package preview downloads
+        run: |
+          set -euo pipefail
+          (cd /tmp/qelem-tablet && sha256sum -c SHA256.txt)
+          python3 - <<'PY'
+          import struct
+          p = '/tmp/qelem-windows/Qelem-Windows-preview.exe'
+          data = open(p, 'rb').read()
+          assert data[:2] == b'MZ', 'not a PE executable'
+          pe = struct.unpack_from('<I', data, 0x3c)[0]
+          assert data[pe:pe+4] == b'PE\0\0'
+          assert struct.unpack_from('<H', data, pe+4)[0] == 0x8664, 'not Windows x64'
+          assert struct.unpack_from('<H', data, pe+0x5c)[0] == 2, 'not a Windows GUI application'
+          open('/tmp/qelem-windows/runtime.txt', 'w').write('May require the Microsoft Visual C++ Redistributable.\n' if b'VCRUNTIME140.dll' in data else 'VCRUNTIME140.dll not found in executable imports (not a full dependency check).\n')
+          PY
+          TOOLS="$ANDROID_HOME/build-tools/$(ls "$ANDROID_HOME/build-tools" | sort -V | tail -1)"
+          "$TOOLS/apksigner" verify --verbose --print-certs /tmp/qelem-tablet/Qelem-Tablet-preview.apk > /tmp/qelem-apk-verification.txt
+          "$TOOLS/aapt" dump badging /tmp/qelem-tablet/Qelem-Tablet-preview.apk > /tmp/qelem-apk-badging.txt
+          grep "package: name='com.qelem.tablet.preview'" /tmp/qelem-apk-badging.txt
+          cp /tmp/qelem-tablet/Qelem-Tablet-preview.apk artifacts/Qelem-Tablet-preview.apk
+          (cd /tmp/qelem-windows && zip -q -9 "$GITHUB_WORKSPACE/artifacts/Qelem-Windows-preview.zip" Qelem-Windows-preview.exe README.txt runtime.txt LICENSE-MIT LICENSE-APACHE NOTICE ATTRIBUTION.md)
+          {
+            echo 'Qelem Windows + Android phone tablet experimental preview'
+            echo 'Built from source commit: c9f20e0b37769885c87bae6f14ccec4448bdf89b'
+            echo 'Build and tests: https://github.com/mubareksam/Qelem/actions/runs/43594699668'
+            echo 'Windows x64 GUI executable, unsigned. Android APK debug-signed.'
+            echo 'Not tested together on real devices. Back up artwork first.'
+            echo
+            (cd artifacts && sha256sum Qelem-Windows-preview.zip Qelem-Tablet-preview.apk)
+            echo
+            cat /tmp/qelem-windows/runtime.txt
+            echo
+            cat /tmp/qelem-apk-verification.txt
+            echo
+            grep -E "^(package:|sdkVersion:|targetSdkVersion:|application-label:|native-code:)" /tmp/qelem-apk-badging.txt
+          } > artifacts/Qelem-Windows-and-Tablet-preview.txt
+      - name: Commit downloads to current branch
+        run: |
+          set -euo pipefail
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git add artifacts/Qelem-Windows-preview.zip artifacts/Qelem-Tablet-preview.apk artifacts/Qelem-Windows-and-Tablet-preview.txt
+          git commit -m 'Add Qelem Windows and phone tablet preview downloads'
+          git push origin HEAD:arena/412bd2e9-prodesign
