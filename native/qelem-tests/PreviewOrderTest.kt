@@ -31,5 +31,8 @@ fun main() {
     check(qelemTimelineTime(13, 12) == "0:01:01")
     check(qelemTimelineTime(720, 12) == "1:00:00")
     check(qelemTimelineTime(-10, 12) == "0:00:00")
+    val ruler = listOf(QelemRulerItem(2, -20, 60), QelemRulerItem(3, 40, 60))
+    check(qelemRulerSlot(39f, 5, ruler) == 2 && qelemRulerSlot(40f, 5, ruler) == 3)
+    check(qelemRulerSlot(Float.NaN, 5, ruler) == null)
     println("Qelem preview: reversal, held slots, ID-based range, speed and cycle timing passed")
 }

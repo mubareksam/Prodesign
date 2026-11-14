@@ -45,3 +45,23 @@ internal fun qelemTimelineTime(slot: Int, fps: Int): String {
     val frame = safe % rate
     return "%d:%02d:%02d".format(java.util.Locale.ROOT, seconds / 60, seconds % 60, frame)
 }
+
+/** A measured lazy-row item, in the same pixel coordinates as the timeline ruler. */
+internal data class QelemRulerItem(val index: Int, val startPx: Int, val sizePx: Int)
+
+/** Select the visible slot under a ruler touch, clamped to its measured visible edges. */
+internal fun qelemRulerSlot(x: Float, total: Int, visible: List<QelemRulerItem>): Int? {
+    if (!x.isFinite() || total <= 0 || visible.isEmpty()) return null
+    val valid = visible.filter { it.index in 0 until total && it.sizePx > 0 }
+    if (valid.isEmpty()) return null
+    val first = valid.minBy { it.startPx }
+    val last = valid.maxBy { it.startPx }
+    if (x < first.startPx) return first.index
+    var previous = first
+    for (item in valid.sortedBy { it.startPx }) {
+        if (x < item.startPx) return previous.index
+        if (x < item.startPx.toLong() + item.sizePx.toLong()) return item.index
+        previous = item
+    }
+    return last.index
+}

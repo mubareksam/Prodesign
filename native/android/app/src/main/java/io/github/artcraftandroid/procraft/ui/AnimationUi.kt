@@ -11,9 +11,11 @@ import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.lazy.LazyRow
+import androidx.compose.foundation.lazy.LazyListState
 import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.foundation.gestures.Orientation
 import androidx.compose.foundation.gestures.detectHorizontalDragGestures
+import androidx.compose.foundation.gestures.detectDragGestures
 import androidx.compose.foundation.gestures.detectTapGestures
 import androidx.compose.foundation.gestures.draggable
 import androidx.compose.foundation.gestures.rememberDraggableState
@@ -73,6 +75,8 @@ import androidx.compose.ui.unit.sp
 import io.github.artcraftandroid.procraft.canvas.CanvasViewModel
 import io.github.artcraftandroid.procraft.canvas.qelemCycleSlots
 import io.github.artcraftandroid.procraft.canvas.qelemTimelineTime
+import io.github.artcraftandroid.procraft.canvas.QelemRulerItem
+import io.github.artcraftandroid.procraft.canvas.qelemRulerSlot
 import io.github.artcraftandroid.procraft.core.AnimationPlayback
 import kotlin.math.floor
 import kotlin.math.roundToInt
@@ -206,9 +210,11 @@ private fun BoxScope.StudioTimelineBar(vm: CanvasViewModel, compact: () -> Unit)
     val window = windowWidth()
     val width = (window - 16.dp).coerceAtLeast(1.dp)
     val slots = vm.frameSlots
-    val focus = (vm.playingSlot ?: vm.currentSlot ?: 0).coerceIn(0, (slots.size - 1).coerceAtLeast(0))
+    var scrubSlot by remember { mutableStateOf<Int?>(null) }
+    val focus = (scrubSlot ?: vm.playingSlot ?: vm.currentSlot ?: 0).coerceIn(0, (slots.size - 1).coerceAtLeast(0))
     val fps = vm.animation?.fps?.toInt() ?: 1
     var zoomed by rememberSaveable { mutableStateOf(false) }
+    var tallTrack by rememberSaveable { mutableStateOf(false) }
     var colorsPage by remember { mutableStateOf(false) }
     if (!vm.animationSettingsOpen) colorsPage = false
     val list = rememberLazyListState()
@@ -230,11 +236,17 @@ private fun BoxScope.StudioTimelineBar(vm: CanvasViewModel, compact: () -> Unit)
             Modifier.padding(bottom = BarGap).fillMaxWidth().clip(RoundedCornerShape(22.dp))
                 .background(BarFill).pointerInput(Unit) { detectTapGestures { } }.padding(8.dp),
         ) {
-            Row(Modifier.fillMaxWidth().horizontalScroll(rememberScrollState()), verticalAlignment = Alignment.CenterVertically) {
+            Row(Modifier.fillMaxWidth().padding(start = 6.dp, end = 2.dp), verticalAlignment = Alignment.CenterVertically) {
+                Text("Qelem Timeline", color = BarInk, fontSize = 15.sp, fontWeight = FontWeight.Bold, modifier = Modifier.weight(1f))
+                Text(qelemTimelineTime(focus, fps), color = Pc.Accent, fontSize = 15.sp, fontWeight = FontWeight.Bold)
                 StudioControl("Compact", "Use compact timeline") { vm.animationSettingsOpen = false; vm.frameOptionsOpen = false; compact() }
+            }
+            Row(Modifier.fillMaxWidth().horizontalScroll(rememberScrollState()), verticalAlignment = Alignment.CenterVertically) {
                 StudioControl(if (vm.playingFrame == null) "▶" else "Ⅱ", if (vm.playingFrame == null) "Play animation" else "Pause animation") { vm.togglePlaying() }
                 StudioControl("‹", "Previous timeline slot") { vm.stepTimeline(-1) }
                 StudioControl("›", "Next timeline slot") { vm.stepTimeline(1) }
+                StudioControl("↶", "Undo") { vm.stopPlaying(); vm.undo() }
+                StudioControl("↷", "Redo") { vm.stopPlaying(); vm.redo() }
                 StudioControl("+ Frame", "Add a frame") { vm.addFrame() }
                 StudioControl("Duplicate", "Duplicate frame or split at held slot") { vm.stopPlaying(); vm.duplicateFrame() }
                 StudioControl("− Hold", "Shorten current frame exposure") { vm.adjustFrameHold(-1) }
@@ -242,14 +254,16 @@ private fun BoxScope.StudioTimelineBar(vm: CanvasViewModel, compact: () -> Unit)
                 StudioControl("Frame", "Frame options") { vm.stopPlaying(); vm.frameOptionsOpen = !vm.frameOptionsOpen; vm.animationSettingsOpen = false }
                 StudioControl("Settings", "Playback and onion skin settings") { vm.stopPlaying(); vm.animationSettingsOpen = !vm.animationSettingsOpen; vm.frameOptionsOpen = false }
                 StudioControl(if (zoomed) "− Zoom" else "+ Zoom", "Change timeline zoom") { zoomed = !zoomed }
+                StudioControl(if (tallTrack) "Small track" else "Large track", "Change timeline track height") { tallTrack = !tallTrack }
             }
             Row(Modifier.fillMaxWidth().padding(horizontal = 6.dp, vertical = 2.dp), verticalAlignment = Alignment.CenterVertically) {
                 Text("DRAWING TRACK", color = BarInk, fontSize = 11.sp, fontWeight = FontWeight.Bold, modifier = Modifier.weight(1f))
-                Text("${qelemTimelineTime(focus, fps)}  ·  ${if (slots.isEmpty()) 0 else focus + 1}/${slots.size}  ·  $fps fps", color = BarInk, fontSize = 11.sp)
+                Text("${if (slots.isEmpty()) 0 else focus + 1}/${slots.size}  ·  $fps fps", color = BarInk, fontSize = 11.sp)
             }
+            StudioRuler(vm, list, slots, focus, fps) { scrubSlot = it }
             LazyRow(
                 state = list,
-                modifier = Modifier.fillMaxWidth().height(78.dp).clip(RoundedCornerShape(12.dp)).background(TrackFill),
+                modifier = Modifier.fillMaxWidth().height(if (tallTrack) 142.dp else 78.dp).clip(RoundedCornerShape(12.dp)).background(TrackFill),
             ) {
                 items(slots.size) { index ->
                     val frame = slots[index]
@@ -270,6 +284,57 @@ private fun BoxScope.StudioTimelineBar(vm: CanvasViewModel, compact: () -> Unit)
                         Text(if (held) "${index + 1} · HOLD" else "${index + 1} · F${frame + 1}", color = Color(0xFF252525), fontSize = 9.sp, maxLines = 1)
                     }
                 }
+            }
+        }
+    }
+}
+
+/** The measured ruler shares geometry with the lazy track, so scroll and zoom remain aligned. */
+@Composable
+private fun StudioRuler(vm: CanvasViewModel, list: LazyListState, slots: List<Int>, focus: Int, fps: Int, onScrub: (Int?) -> Unit) {
+    val density = LocalDensity.current
+    val marks = list.layoutInfo.visibleItemsInfo
+    val accent = Pc.Accent
+    val ink = BarInk
+    fun slotAt(x: Float): Int? = qelemRulerSlot(x, slots.size, list.layoutInfo.visibleItemsInfo.map { QelemRulerItem(it.index, it.offset, it.size) })
+    Box(
+        Modifier.fillMaxWidth().height(32.dp).clip(RoundedCornerShape(6.dp)).background(TrackFill)
+            .semantics { contentDescription = "Timeline ruler. Tap or drag to scrub frames." }
+            .drawBehind {
+                for (item in list.layoutInfo.visibleItemsInfo) {
+                    val x = (item.offset + item.size / 2f)
+                    val second = item.index % fps.coerceAtLeast(1) == 0
+                    drawLine(if (item.index == focus) accent else ink.copy(alpha = 0.65f), Offset(x, size.height), Offset(x, size.height - if (second) 12.dp.toPx() else 6.dp.toPx()), if (item.index == focus) 2.dp.toPx() else 1.dp.toPx())
+                    if (item.index == focus) drawLine(accent, Offset(x, 0f), Offset(x, size.height), 2.dp.toPx())
+                }
+            }
+            .pointerInput(slots, list) {
+                detectTapGestures { p -> slotAt(p.x)?.let { target -> vm.beginScrub(); vm.animationSettingsOpen = false; vm.endScrub(target) } }
+            }
+            .pointerInput(slots, list) {
+                var active = false
+                var target: Int? = null
+                fun move(x: Float) {
+                    val next = slotAt(x) ?: return
+                    if (next != target) { target = next; onScrub(next); slots.getOrNull(next)?.let(vm::scrubFrame) }
+                }
+                try {
+                    detectDragGestures(
+                        onDragStart = { p ->
+                            if (slotAt(p.x) != null) { vm.beginScrub(); vm.animationSettingsOpen = false; active = true; move(p.x) }
+                        },
+                        onDragEnd = { if (active) { vm.endScrub(target); onScrub(null); active = false; target = null } },
+                        onDragCancel = { if (active) { vm.endScrub(null); onScrub(null); active = false; target = null } },
+                    ) { change, _ -> if (active) { move(change.position.x); change.consume() } }
+                } finally {
+                    if (active) { vm.endScrub(null); onScrub(null) }
+                }
+            },
+    ) {
+        for (item in marks) {
+            if (item.index % fps.coerceAtLeast(1) == 0) {
+                val x = with(density) { (item.offset + item.size / 2f).toDp() }
+                Text("${item.index / fps.coerceAtLeast(1)}s", color = ink, fontSize = 10.sp, maxLines = 1, modifier = Modifier.offset(x = x + 3.dp, y = 1.dp))
             }
         }
     }

@@ -29,6 +29,18 @@ class QelemPreviewTest {
         assertEquals("1:00:00", qelemTimelineTime(720, 12))
         assertEquals("0:00:00", qelemTimelineTime(0, 0))
     }
+    @Test fun rulerMappingUsesVisibleScrolledGeometryAndClamps() {
+        val visible = listOf(QelemRulerItem(5, -20, 60), QelemRulerItem(6, 40, 60), QelemRulerItem(7, 100, 60))
+        assertEquals(5, qelemRulerSlot(0f, 10, visible))
+        assertEquals(5, qelemRulerSlot(39.99f, 10, visible))
+        assertEquals(6, qelemRulerSlot(40f, 10, visible))
+        assertEquals(7, qelemRulerSlot(500f, 10, visible))
+        assertEquals(5, qelemRulerSlot(-400f, 10, visible))
+        assertNull(qelemRulerSlot(Float.NaN, 10, visible))
+        assertNull(qelemRulerSlot(0f, 0, visible))
+        assertNull(qelemRulerSlot(0f, 10, emptyList()))
+        assertEquals(6, qelemRulerSlot(42f, 7, visible))
+    }
     @Test fun timingRespectsPreviewSpeedAndBounce() {
         assertEquals(200L, qelemPreviewDelayMs(10, 50))
         assertEquals(100L, qelemPreviewDelayMs(10, 100))
