@@ -9,7 +9,7 @@ repo = root.parent
 src = root / 'android/app/src/main'
 settings = (root / 'android/app/build.gradle.kts').read_text()
 assert 'applicationId = "com.qalam.studio.nativepreview"' in settings
-assert 'versionName = "0.2-native-preview"' in settings
+assert 'versionName = "1.5-preview"' in settings
 assert ET.parse(src / 'res/values/strings.xml').getroot().find("string[@name='app_name']").text == 'Qelem'
 theme = (src / 'java/io/github/artcraftandroid/procraft/ui/Theme.kt').read_text()
 assert 'Color(0xFFBB5800)' in theme and 'accentGiven ?: BrandAccent' in theme

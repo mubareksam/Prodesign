@@ -125,7 +125,7 @@ android {
         targetSdk = 36
         versionCode = appVersionCode
         // A development preview, not the upstream release version and not an update to Qelem 7.x.
-        versionName = "0.2-native-preview"
+        versionName = "1.5-preview"
         ndk { abiFilters.addAll(rustAbis) }
     }
 
