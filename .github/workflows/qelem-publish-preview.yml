@@ -21,7 +21,7 @@ jobs:
         with:
           name: Qelem-native-preview-arm64
           path: /tmp/qelem-native-apk
-          run-id: 43586658906
+          run-id: 43626870651
           github-token: ${{ github.token }}
       - name: Verify and place development APK
         run: |
@@ -35,8 +35,8 @@ jobs:
           unzip -l Qelem-native-preview-arm64.apk | grep 'lib/arm64-v8a/libprocraft_core.so'
           {
             echo 'Qelem native preview arm64 development APK'
-            echo 'Source commit: cf1b7ff09770ba47b0ddb685c6c631ff3593f60b'
-            echo 'GitHub Actions build: https://github.com/mubareksam/Qelem/actions/runs/43586658906'
+            echo 'Source commit: 8fc4d10a438ae4524fa0dad7a8d3e477abe318f5'
+            echo 'GitHub Actions build: https://github.com/mubareksam/Qelem/actions/runs/43626870651'
             echo 'Debug signed, separate package. Not an upgrade to Qelem.'
             echo
             cat SHA256SUMS.txt
@@ -44,13 +44,13 @@ jobs:
             cat verification.txt
             echo
             grep -E "^(package:|sdkVersion:|targetSdkVersion:|application-label:|native-code:)" badging.txt
-          } > "$GITHUB_WORKSPACE/artifacts/Qelem-native-preview-arm64.txt"
-          cp Qelem-native-preview-arm64.apk "$GITHUB_WORKSPACE/artifacts/Qelem-native-preview-arm64.apk"
+          } > "$GITHUB_WORKSPACE/artifacts/Qelem-animation-workspace-preview-arm64.txt"
+          cp Qelem-native-preview-arm64.apk "$GITHUB_WORKSPACE/artifacts/Qelem-animation-workspace-preview-arm64.apk"
       - name: Commit download to the current branch
         run: |
           set -euo pipefail
           git config user.name 'github-actions[bot]'
           git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
-          git add artifacts/Qelem-native-preview-arm64.apk artifacts/Qelem-native-preview-arm64.txt
-          git commit -m 'Add Qelem native preview arm64 development APK'
+          git add artifacts/Qelem-animation-workspace-preview-arm64.apk artifacts/Qelem-animation-workspace-preview-arm64.txt
+          git commit -m 'Add Qelem animation workspace preview APK'
           git push origin HEAD:arena/412bd2e9-prodesign
