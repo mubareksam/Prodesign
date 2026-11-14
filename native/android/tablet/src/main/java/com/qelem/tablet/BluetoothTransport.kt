@@ -15,10 +15,16 @@ internal class BluetoothTransport(private val adapter: BluetoothAdapter, private
     @Volatile private var closed = false
     @Volatile private var listener: BluetoothServerSocket? = null
     @Volatile private var socket: BluetoothSocket? = null
-    override fun open(): Pair<InputStream, OutputStream> {
+    @Synchronized fun prepare() {
+        if (closed) throw IOException("Closed")
+        if (listener != null) return
         val server = adapter.listenUsingRfcommWithServiceRecord("Qelem Tablet", UUID.fromString("00001101-0000-1000-8000-00805f9b34fb"))
-        listener = server
         if (closed) { server.close(); throw IOException("Closed") }
+        listener = server
+    }
+    override fun open(): Pair<InputStream, OutputStream> {
+        prepare()
+        val server = listener ?: throw IOException("Bluetooth listener closed")
         var connection: BluetoothSocket
         while (true) {
             connection = server.accept()
@@ -31,7 +37,7 @@ internal class BluetoothTransport(private val adapter: BluetoothAdapter, private
         if (closed) { connection.close(); throw IOException("Closed") }
         return connection.inputStream to connection.outputStream
     }
-    override fun close() {
+    @Synchronized override fun close() {
         closed = true
         try { listener?.close() } catch (_: Exception) { }
         try { socket?.close() } catch (_: Exception) { }

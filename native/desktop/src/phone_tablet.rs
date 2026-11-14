@@ -231,10 +231,13 @@ mod tests {
         let mut response = String::new();
         BufReader::new(good.try_clone().expect("clone")).read_line(&mut response).expect("reply");
         assert_eq!(response, "OK\n");
-        good.write_all(b"D 0 0 0.5 S\nM 0.5 0.5 0.8\nU 1 1 0\n").expect("points");
+        good.write_all(b"H 0.2 0.7\nD 0 0 0.5 S\nM 0.5 0.5 0.8\nU 1 1 0\nPAINT\nERASE\n").expect("points");
+        assert_eq!(rx.recv_timeout(Duration::from_secs(3)).expect("hover"), Command::Hover(0.2, 0.7));
         assert_eq!(rx.recv_timeout(Duration::from_secs(3)).expect("down"), Command::Down(0.0, 0.0, 0.5, true));
         assert_eq!(rx.recv_timeout(Duration::from_secs(3)).expect("move"), Command::Move(0.5, 0.5, 0.8));
         assert_eq!(rx.recv_timeout(Duration::from_secs(3)).expect("up"), Command::Up(1.0, 1.0, 0.0));
+        assert_eq!(rx.recv_timeout(Duration::from_secs(3)).expect("paint"), Command::Paint);
+        assert_eq!(rx.recv_timeout(Duration::from_secs(3)).expect("erase"), Command::Erase);
         drop(good);
         handle.join().expect("thread");
     }

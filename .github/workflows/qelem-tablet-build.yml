@@ -91,6 +91,17 @@ jobs:
           PYLOG
             exit "$result"
           fi
+      - name: Verify scanner manifest and runtime dependencies
+        run: |
+          set -euo pipefail
+          TOOLS="$ANDROID_HOME/build-tools/$(ls "$ANDROID_HOME/build-tools" | sort -V | tail -1)"
+          APK=native/android/tablet/build/outputs/apk/debug/tablet-debug.apk
+          "$TOOLS/aapt" dump permissions "$APK" | grep -F 'android.permission.CAMERA'
+          "$TOOLS/aapt" dump xmltree "$APK" AndroidManifest.xml | grep -F 'com.journeyapps.barcodescanner.CaptureActivity'
+          unzip -p "$APK" classes.dex > /tmp/tablet-classes.dex
+          "$TOOLS/dexdump" /tmp/tablet-classes.dex > /tmp/tablet-dex.txt
+          grep -F "Class descriptor  : 'Landroidx/core/content/ContextCompat;'" /tmp/tablet-dex.txt
+          grep -F "Class descriptor  : 'Lcom/journeyapps/barcodescanner/CaptureActivity;'" /tmp/tablet-dex.txt
       - name: Package phone controller
         run: |
           mkdir -p package

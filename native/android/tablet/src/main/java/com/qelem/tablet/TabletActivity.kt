@@ -37,6 +37,7 @@ class TabletActivity : Activity() {
     private val ui = Handler(Looper.getMainLooper())
     private var link: Link? = null
     private var returnToPairing = false
+    private var preparedBluetooth: BluetoothTransport? = null
     private var mode = "WIFI"
     private lateinit var root: LinearLayout
     private lateinit var ip: EditText
@@ -69,26 +70,27 @@ class TabletActivity : Activity() {
         page.addView(status, LinearLayout.LayoutParams(-1, -2)); gap(page)
         page.addView(label("On Windows, open Qelem and press F8. Choose a connection and start pairing.").apply { gravity = Gravity.CENTER }); gap(page)
         row(page,
-            "Wi-Fi" to { mode = "WIFI"; ip.isEnabled = true; status.text = "Private Wi-Fi or offline hotspot" },
-            "USB" to { mode = "USB"; ip.setText("127.0.0.1"); ip.isEnabled = false; status.text = "USB: connect cable and set up ADB reverse" },
+            "Wi-Fi" to { preparedBluetooth?.close(); preparedBluetooth = null; mode = "WIFI"; ip.isEnabled = true; status.text = "Private Wi-Fi or offline hotspot" },
+            "USB" to { preparedBluetooth?.close(); preparedBluetooth = null; mode = "USB"; ip.setText("127.0.0.1"); ip.isEnabled = false; status.text = "USB: connect cable and set up ADB reverse" },
             "Bluetooth" to { mode = "BT"; ip.isEnabled = false; status.text = "Bluetooth: use the paired phone's outgoing Windows COM port" })
         gap(page)
         ip = field("PC IPv4 · e.g. 192.168.1.2", InputType.TYPE_CLASS_PHONE)
         code = field("32-character pairing code", InputType.TYPE_CLASS_TEXT or InputType.TYPE_TEXT_FLAG_NO_SUGGESTIONS)
         page.addView(ip, LinearLayout.LayoutParams(-1, dp(48))); gap(page)
         page.addView(code, LinearLayout.LayoutParams(-1, dp(48))); gap(page)
+        page.addView(button("Prepare Bluetooth service") { prepareBluetooth() }, LinearLayout.LayoutParams(-1, dp(46))); gap(page)
         page.addView(button("Scan QR & connect") { scan() }, LinearLayout.LayoutParams(-1, dp(50))); gap(page)
         page.addView(button("Connect manually") {
             val token = code.text.toString().trim().lowercase(Locale.ROOT)
             if (mode == "BT") {
-                if (!token.matches(Regex("[0-9a-f]{32}"))) status.text = "Enter the 32-character Windows pairing code." else bluetooth()
+                if (!token.matches(Regex("[0-9a-f]{32}"))) status.text = "Enter the 32-character Windows pairing code." else connectBluetooth(token)
             } else {
                 val host = if (mode == "USB") "127.0.0.1" else ip.text.toString().trim()
                 val p = Pairing.parse("QELEMPAIR1|$mode|$host|48652|$token")
                 if (p == null) status.text = "Enter a private PC IPv4 and a 32-character code." else connect(Link(p.host, p.token, allowUsbLoopback = p.usb))
             }
         }, LinearLayout.LayoutParams(-1, dp(50))); gap(page)
-        page.addView(button("Cancel connection") { link?.close(); link = null; status.text = "Connection cancelled" }, LinearLayout.LayoutParams(-1, dp(46))); gap(page)
+        page.addView(button("Cancel connection") { link?.close(); link = null; preparedBluetooth?.close(); preparedBluetooth = null; status.text = "Connection cancelled" }, LinearLayout.LayoutParams(-1, dp(46))); gap(page)
         page.addView(label("USB requires ADB reverse. Bluetooth is experimental and needs a paired phone and Windows outgoing SPP COM port. Wi-Fi and QR codes are not encrypted.").apply { textSize = 13f; setTextColor(Color.LTGRAY); gravity = Gravity.CENTER })
         if (mode != "WIFI") ip.isEnabled = false
     }
@@ -107,7 +109,7 @@ class TabletActivity : Activity() {
     override fun onRequestPermissionsResult(requestCode: Int, permissions: Array<out String>, grantResults: IntArray) {
         super.onRequestPermissionsResult(requestCode, permissions, grantResults)
         if (requestCode == 20) { if (grantResults.firstOrNull() == PackageManager.PERMISSION_GRANTED) scan() else status.text = "Camera permission denied. Use manual pairing." }
-        if (requestCode == 22) { if (grantResults.isNotEmpty() && grantResults.all { it == PackageManager.PERMISSION_GRANTED }) bluetooth() else status.text = "Bluetooth permission denied." }
+        if (requestCode == 22) { if (grantResults.isNotEmpty() && grantResults.all { it == PackageManager.PERMISSION_GRANTED }) prepareBluetooth() else status.text = "Bluetooth permission denied." }
     }
     @Deprecated("CaptureActivity result")
     override fun onActivityResult(requestCode: Int, resultCode: Int, data: Intent?) {
@@ -119,7 +121,8 @@ class TabletActivity : Activity() {
         connect(Link(pair.host, pair.token, allowUsbLoopback = pair.usb))
     }
     @SuppressLint("MissingPermission")
-    private fun bluetooth() {
+    private fun prepareBluetooth() {
+        if (mode != "BT") { status.text = "Select Bluetooth first."; return }
         if (Build.VERSION.SDK_INT >= 31) {
             val missing = listOf(Manifest.permission.BLUETOOTH_CONNECT, Manifest.permission.BLUETOOTH_ADVERTISE).filter { checkSelfPermission(it) != PackageManager.PERMISSION_GRANTED }
             if (missing.isNotEmpty()) { requestPermissions(missing.toTypedArray(), 22); return }
@@ -130,9 +133,25 @@ class TabletActivity : Activity() {
         if (devices.isEmpty()) { status.text = "Pair the Windows PC in Android Bluetooth settings first."; return }
         AlertDialog.Builder(this).setTitle("Choose your paired Windows PC")
             .setItems(devices.map { "${it.name ?: "Device"}  (${it.address})" }.toTypedArray()) { _, index ->
-                val token = code.text.toString().trim().lowercase(Locale.ROOT)
-                connect(Link("", token, transport = BluetoothTransport(adapter, devices[index].address)))
+                preparedBluetooth?.close()
+                val transport = BluetoothTransport(adapter, devices[index].address)
+                preparedBluetooth = transport
+                status.text = "Preparing Bluetooth service…"
+                Thread {
+                    try {
+                        transport.prepare()
+                        ui.post { if (preparedBluetooth === transport) status.text = "Bluetooth service ready. Configure Windows outgoing COM, start pairing, then enter its code." }
+                    } catch (e: Exception) {
+                        transport.close(); ui.post { if (preparedBluetooth === transport) { preparedBluetooth = null; status.text = "Bluetooth unavailable: ${e.message ?: "unknown error"}" } }
+                    }
+                }.start()
             }.setNegativeButton("Cancel", null).show()
+    }
+    private fun connectBluetooth(token: String) {
+        val transport = preparedBluetooth
+        if (transport == null) { status.text = "Select Bluetooth, then prepare the service and select your PC first."; return }
+        preparedBluetooth = null
+        connect(Link("", token, transport = transport))
     }
     private fun connect(connection: Link) {
         status.text = if (mode == "BT") "Waiting for PC over Bluetooth…" else "Connecting…"
@@ -169,7 +188,7 @@ class TabletActivity : Activity() {
             slider("Size", "SIZE"); slider("Opacity", "OPACITY")
         }
     }
-    override fun onPause() { super.onPause(); if (link != null) { returnToPairing = true; link?.close(); link = null } }
+    override fun onPause() { super.onPause(); preparedBluetooth?.close(); preparedBluetooth = null; if (link != null) { returnToPairing = true; link?.close(); link = null } }
     override fun onResume() { super.onResume(); if (returnToPairing && ::root.isInitialized) { returnToPairing = false; pairing("Disconnected while away") } }
 
     private class Pad(activity: Activity, private val link: Link, private val penOnly: () -> Boolean, private val direct: () -> Boolean) : View(activity) {
@@ -193,6 +212,7 @@ class TabletActivity : Activity() {
                 MotionEvent.ACTION_DOWN -> {
                     stylus = event.getToolType(0) == MotionEvent.TOOL_TYPE_STYLUS || event.getToolType(0) == MotionEvent.TOOL_TYPE_ERASER
                     blocked = penOnly() && !stylus; pointer = if (blocked) -1 else event.getPointerId(0)
+                    if (blocked || stylus || direct()) gesture.cancel()
                     drawing = !blocked && (stylus || direct() || gesture.down(event.eventTime, event.x, event.y))
                     if (!blocked) point(if (drawing) "D" else "H", event.x, event.y, event.pressure, if (stylus) " S" else " F")
                 }

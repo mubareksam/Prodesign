@@ -84,5 +84,10 @@ pub fn shortcut(command: crate::phone_tablet::Command) -> Result<(), String> {
     if ctrl { events.push(input(VK_CONTROL, true)); }
     // SAFETY: fully initialized INPUT records, correct element size, valid for this call.
     let sent = unsafe { SendInput(&events, std::mem::size_of::<INPUT>() as i32) };
-    if sent == events.len() as u32 { Ok(()) } else { Err("Windows rejected a keyboard shortcut (check target permissions)".to_owned()) }
+    if sent == events.len() as u32 { Ok(()) } else {
+        // If Windows accepted only part of the batch, make a best effort to release keys.
+        let releases = [input(key, true), input(VK_CONTROL, true)];
+        unsafe { SendInput(&releases, std::mem::size_of::<INPUT>() as i32) };
+        Err("Windows rejected a keyboard shortcut (check target permissions)".to_owned())
+    }
 }
