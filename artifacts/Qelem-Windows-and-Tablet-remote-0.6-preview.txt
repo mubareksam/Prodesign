@@ -1,0 +1,36 @@
+Qelem Windows + Android phone tablet experimental preview
+Built from source commit: 8731ca043887208670307b469382e6dada6e178d
+Build and tests: https://github.com/mubareksam/Qelem/actions/runs/43623856918
+Windows x64 app and GUI server are unsigned. Android APK debug-signed.
+Not tested together on real devices. Back up artwork first.
+Scanner and Bluetooth paths need physical-device testing. USB requires ADB; Wi-Fi is plaintext.
+
+86fa6158bd1ddc14fa1f4e3d977ad0d51a2e95fe1df9ceb68701b25ea61793c5  Qelem-Windows-remote-0.6-preview.zip
+bf4425d846c9a84fc79c37ddea408e06a23889c262daadb9e12fa8291ec1cb33  Qelem-Tablet-remote-0.6-preview.apk
+064878ab60c6548b806209684760b17391251d45f46a558bcda6425068577017  Qelem-native-animation-navigation-preview-arm64.apk
+
+May require the Microsoft Visual C++ Redistributable.
+
+Verifies
+Verified using v1 scheme (JAR signing): false
+Verified using v2 scheme (APK Signature Scheme v2): true
+Verified using v3 scheme (APK Signature Scheme v3): false
+Verified using v3.1 scheme (APK Signature Scheme v3.1): false
+Verified using v3.2 scheme (APK Signature Scheme v3.2): false
+Verified using v4 scheme (APK Signature Scheme v4): false
+Verified for SourceStamp: false
+Number of signers: 1
+V2 Signer: certificate DN: C=US, O=Android, CN=Android Debug
+V2 Signer: certificate SHA-256 digest: 00f3d894489be3bc50081d5534eb6e4e0443d0612bfaa9a63fa991e7635d8ad4
+V2 Signer: certificate SHA-1 digest: 113e175d42e609d625942e2c82c887c4930ce699
+V2 Signer: certificate MD5 digest: f2b5e76b6a58ef105c24abf213058f03
+V2 Signer: key algorithm: RSA
+V2 Signer: key size (bits): 2048
+V2 Signer: public key SHA-256 digest: 38ca88a2239035f0f4b86e6bff73be56a3896fb11e46815b1211ae35fae3065f
+V2 Signer: public key SHA-1 digest: 2a68b60a1fcaf9fa1d751d6b36f8f431e5a2aa0c
+V2 Signer: public key MD5 digest: 7d202eb1c745c25a7fa21318d7e6dfe0
+
+package: name='com.qelem.tablet.preview' versionCode='6' versionName='0.6-preview' platformBuildVersionName='16' platformBuildVersionCode='36' compileSdkVersion='36' compileSdkVersionCodename='16'
+sdkVersion:'28'
+targetSdkVersion:'36'
+application-label:'Qelem Tablet'
