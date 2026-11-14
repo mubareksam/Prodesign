@@ -1,0 +1,31 @@
+Qelem native preview arm64 development APK
+Source commit: c327eea5247aaa08008a094700d9b8313b14e3eb
+GitHub Actions build: https://github.com/mubareksam/Qelem/actions/runs/43630503658
+Debug signed, separate package. Not an upgrade to Qelem.
+
+724a4f3fc5633459048e6278e104c546e34711a71e0db10765cd7f8dcbff1d4e  Qelem-native-preview-arm64.apk
+
+Verifies
+Verified using v1 scheme (JAR signing): false
+Verified using v2 scheme (APK Signature Scheme v2): true
+Verified using v3 scheme (APK Signature Scheme v3): false
+Verified using v3.1 scheme (APK Signature Scheme v3.1): false
+Verified using v3.2 scheme (APK Signature Scheme v3.2): false
+Verified using v4 scheme (APK Signature Scheme v4): false
+Verified for SourceStamp: false
+Number of signers: 1
+V2 Signer: certificate DN: C=US, O=Android, CN=Android Debug
+V2 Signer: certificate SHA-256 digest: 009210e25b4ad98ce821f2c3cb022b69ddf6dcf55ff5b787c93b475d5ec50d7d
+V2 Signer: certificate SHA-1 digest: 6a574f4aed092833b2636259e9d0785874449783
+V2 Signer: certificate MD5 digest: 4f919c2ee39f61e6adf37d35a156a04b
+V2 Signer: key algorithm: RSA
+V2 Signer: key size (bits): 2048
+V2 Signer: public key SHA-256 digest: e9d7c94459e0b74ac2167c31f64a4c5ef499e401b71907eb6738b99bddf519bc
+V2 Signer: public key SHA-1 digest: 0384c68ffda1d0f1786ff82957b803c7dbfd9bf8
+V2 Signer: public key MD5 digest: 0b8d630b97e472f5f3c26182d5a03f5f
+
+package: name='com.qalam.studio.nativepreview.debug' versionCode='6012' versionName='0.2-native-preview' platformBuildVersionName='16' platformBuildVersionCode='36' compileSdkVersion='36' compileSdkVersionCodename='16'
+sdkVersion:'28'
+targetSdkVersion:'36'
+application-label:'Qelem'
+native-code: 'arm64-v8a'
