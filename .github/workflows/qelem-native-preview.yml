@@ -55,12 +55,18 @@ jobs:
         working-directory: native/android
         run: |
           set +e
-          ./gradlew --no-daemon :app:assembleDebug -Pprocraft.abis=arm64-v8a > /tmp/qelem-gradle.log 2>&1
+          ./gradlew --no-daemon --max-workers=2 :app:assembleDebug -Pprocraft.abis=arm64-v8a > /tmp/qelem-gradle.log 2>&1
           result=$?
           tail -n 100 /tmp/qelem-gradle.log
           if [ "$result" -ne 0 ]; then
-            grep -Ei 'error:|^e:|failed|exception|could not|not found|requires|unresolved|^  >|^> ' /tmp/qelem-gradle.log | tail -n 30 > /tmp/qelem-gradle-errors.log || true
-            while IFS= read -r line; do echo "::error::$line"; done < /tmp/qelem-gradle-errors.log
+            echo "::error::Gradle exited with status $result"
+            python3 - <<'PYLOG'
+          import re
+          lines = open('/tmp/qelem-gradle.log', errors='replace').read().splitlines()
+          lines = [s for s in lines if not re.match(r'^\s*(Compiling |Downloading |Downloaded |> Task )', s)]
+          summary = '\n'.join(lines[-70:])[-12000:].replace('%', '%25').replace('\r', '%0D').replace('\n', '%0A')
+          print('::error::' + summary)
+          PYLOG
             exit "$result"
           fi
       - name: Save APK and checksum
