@@ -17,18 +17,25 @@ jobs:
         with:
           name: Qelem-Windows-preview
           path: /tmp/qelem-windows
-          run-id: 43612890805
+          run-id: 43623856918
           github-token: ${{ github.token }}
       - uses: actions/download-artifact@v4
         with:
           name: Qelem-Tablet-preview
           path: /tmp/qelem-tablet
-          run-id: 43612890805
+          run-id: 43623856918
+          github-token: ${{ github.token }}
+      - uses: actions/download-artifact@v4
+        with:
+          name: Qelem-native-preview-arm64
+          path: /tmp/qelem-native
+          run-id: 43623856802
           github-token: ${{ github.token }}
       - name: Verify and package preview downloads
         run: |
           set -euo pipefail
           (cd /tmp/qelem-tablet && sha256sum -c SHA256.txt)
+          (cd /tmp/qelem-native && sha256sum -c SHA256SUMS.txt)
           python3 - <<'PY'
           import struct
           p = '/tmp/qelem-windows/Qelem-Windows-preview.exe'
@@ -49,29 +56,32 @@ jobs:
           "$TOOLS/apksigner" verify --verbose --print-certs /tmp/qelem-tablet/Qelem-Tablet-preview.apk > /tmp/qelem-apk-verification.txt
           "$TOOLS/aapt" dump badging /tmp/qelem-tablet/Qelem-Tablet-preview.apk > /tmp/qelem-apk-badging.txt
           grep "package: name='com.qelem.tablet.preview'" /tmp/qelem-apk-badging.txt
-          cp /tmp/qelem-tablet/Qelem-Tablet-preview.apk artifacts/Qelem-Tablet-remote-0.5-preview.apk
-          (cd /tmp/qelem-windows && zip -q -9 "$GITHUB_WORKSPACE/artifacts/Qelem-Windows-remote-0.5-preview.zip" Qelem-Windows-preview.exe Qelem-Tablet-Server.exe README.txt runtime.txt LICENSE-MIT LICENSE-APACHE NOTICE ATTRIBUTION.md QRCODE-LICENSE.txt)
+          "$TOOLS/apksigner" verify /tmp/qelem-native/Qelem-native-preview-arm64.apk
+          "$TOOLS/aapt" dump badging /tmp/qelem-native/Qelem-native-preview-arm64.apk | grep "package: name='com.qalam.studio.nativepreview.debug'"
+          cp /tmp/qelem-native/Qelem-native-preview-arm64.apk artifacts/Qelem-native-animation-navigation-preview-arm64.apk
+          cp /tmp/qelem-tablet/Qelem-Tablet-preview.apk artifacts/Qelem-Tablet-remote-0.6-preview.apk
+          (cd /tmp/qelem-windows && zip -q -9 "$GITHUB_WORKSPACE/artifacts/Qelem-Windows-remote-0.6-preview.zip" Qelem-Windows-preview.exe Qelem-Tablet-Server.exe README.txt runtime.txt LICENSE-MIT LICENSE-APACHE NOTICE ATTRIBUTION.md QRCODE-LICENSE.txt)
           {
             echo 'Qelem Windows + Android phone tablet experimental preview'
-            echo 'Built from source commit: a87f60629780b1c219372502dce662e998637950'
-            echo 'Build and tests: https://github.com/mubareksam/Qelem/actions/runs/43612890805'
+            echo 'Built from source commit: 8731ca043887208670307b469382e6dada6e178d'
+            echo 'Build and tests: https://github.com/mubareksam/Qelem/actions/runs/43623856918'
             echo 'Windows x64 app and GUI server are unsigned. Android APK debug-signed.'
             echo 'Not tested together on real devices. Back up artwork first.'
             echo 'Scanner and Bluetooth paths need physical-device testing. USB requires ADB; Wi-Fi is plaintext.'
             echo
-            (cd artifacts && sha256sum Qelem-Windows-remote-0.5-preview.zip Qelem-Tablet-remote-0.5-preview.apk)
+            (cd artifacts && sha256sum Qelem-Windows-remote-0.6-preview.zip Qelem-Tablet-remote-0.6-preview.apk Qelem-native-animation-navigation-preview-arm64.apk)
             echo
             cat /tmp/qelem-windows/runtime.txt
             echo
             cat /tmp/qelem-apk-verification.txt
             echo
             grep -E "^(package:|sdkVersion:|targetSdkVersion:|application-label:|native-code:)" /tmp/qelem-apk-badging.txt
-          } > artifacts/Qelem-Windows-and-Tablet-remote-0.5-preview.txt
+          } > artifacts/Qelem-Windows-and-Tablet-remote-0.6-preview.txt
       - name: Commit downloads to current branch
         run: |
           set -euo pipefail
           git config user.name 'github-actions[bot]'
           git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
-          git add artifacts/Qelem-Windows-remote-0.5-preview.zip artifacts/Qelem-Tablet-remote-0.5-preview.apk artifacts/Qelem-Windows-and-Tablet-remote-0.5-preview.txt
-          git commit -m 'Add Qelem tablet remote 0.5 preview downloads'
+          git add artifacts/Qelem-native-animation-navigation-preview-arm64.apk artifacts/Qelem-Windows-remote-0.6-preview.zip artifacts/Qelem-Tablet-remote-0.6-preview.apk artifacts/Qelem-Windows-and-Tablet-remote-0.6-preview.txt
+          git commit -m 'Add Qelem tablet remote 0.6 preview downloads'
           git push origin HEAD:arena/412bd2e9-prodesign
