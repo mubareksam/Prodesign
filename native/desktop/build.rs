@@ -7,7 +7,7 @@ const PROPERTIES: &str = "../android/gradle.properties";
 
 fn main() {
     println!("cargo:rerun-if-changed={PROPERTIES}");
-    println!("cargo:rerun-if-changed=../assets/app-icon/procraft.ico");
+    println!("cargo:rerun-if-changed=../assets/app-icon/qelem.ico");
     let version = std::fs::read_to_string(PROPERTIES)
         .ok()
         .and_then(|text| text.lines().find_map(|l| l.trim().strip_prefix("procraft.version=").map(str::to_owned)))
@@ -26,9 +26,9 @@ fn main() {
             .fold(0u64, |packed, part| (packed << 16) | part.parse::<u64>().unwrap_or(0).min(0xFFFF));
         let mut resource = winresource::WindowsResource::new();
         resource
-            .set_icon("../assets/app-icon/procraft.ico")
-            .set("ProductName", "ProCraft")
-            .set("FileDescription", "ProCraft")
+            .set_icon("../assets/app-icon/qelem.ico")
+            .set("ProductName", "Qelem")
+            .set("FileDescription", "Qelem native preview")
             .set("ProductVersion", &version)
             .set("FileVersion", &version)
             .set_version_info(winresource::VersionInfo::PRODUCTVERSION, packed)

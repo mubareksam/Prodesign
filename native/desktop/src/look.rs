@@ -39,7 +39,8 @@ pub fn set_accent(rgb: Option<u32>) {
 /// `v` (0xAARRGGBB), or the accent a plugin gives where `v` is one of the interface's blues (its
 /// alpha kept).
 fn recoloured(v: u32) -> u32 {
-    recolour(v, ACCENT_GIVEN.load(Ordering::Relaxed))
+    let given = ACCENT_GIVEN.load(Ordering::Relaxed);
+    recolour(v, if given == 0 { 0xFFBB5800 } else { given })
 }
 
 /// `v` (0xAARRGGBB) with `given` (as [`ACCENT_GIVEN`] holds it) in place of the interface's blues.

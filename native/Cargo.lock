@@ -3066,6 +3066,7 @@ dependencies = [
  "egui-wgpu",
  "egui-winit",
  "env_logger",
+ "getrandom 0.3.4",
  "image",
  "log",
  "objc2 0.6.5",

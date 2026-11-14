@@ -22,4 +22,4 @@ dependencyResolutionManagement {
 }
 
 rootProject.name = "ProCraft"
-include(":app")
+include(":app", ":tablet")

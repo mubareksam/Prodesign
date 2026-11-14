@@ -1,0 +1,101 @@
+name: Qelem Windows and phone tablet preview
+on:
+  push:
+    branches: [arena/412bd2e9-prodesign]
+    paths:
+      - 'native/desktop/**'
+      - 'native/crates/**'
+      - 'native/Cargo.*'
+      - 'native/assets/app-icon/qelem*'
+      - 'native/android/tablet/**'
+      - 'native/android/settings.gradle.kts'
+      - '.github/workflows/qelem-tablet-build.yml'
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  windows:
+    runs-on: windows-2022
+    timeout-minutes: 90
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@master
+        with:
+          toolchain: '1.99.0'
+      - uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: native -> target
+          cache-on-failure: true
+      - name: Build Windows app
+        shell: pwsh
+        working-directory: native
+        run: |
+          $ErrorActionPreference = 'Continue'
+          cargo build --release --locked -p procraft-desktop *> buildlog.txt
+          $code = $LASTEXITCODE
+          Get-Content buildlog.txt -Tail 100
+          if ($code -ne 0) {
+            $text = (Get-Content buildlog.txt -Tail 100 | Out-String).Replace('%','%25').Replace("`r",'%0D').Replace("`n",'%0A')
+            Write-Output "::error::$text"
+            exit $code
+          }
+      - name: Protocol tests
+        shell: pwsh
+        working-directory: native
+        run: |
+          $ErrorActionPreference = 'Continue'
+          cargo test --release --locked -p procraft-desktop phone_tablet::tests *> testlog.txt
+          $code = $LASTEXITCODE
+          Get-Content testlog.txt -Tail 80
+          if ($code -ne 0) {
+            $text = (Get-Content testlog.txt -Tail 80 | Out-String).Replace('%','%25').Replace("`r",'%0D').Replace("`n",'%0A')
+            Write-Output "::error::$text"
+            exit $code
+          }
+      - name: Package Windows preview
+        shell: pwsh
+        run: |
+          New-Item -ItemType Directory -Force package | Out-Null
+          Copy-Item native/target/release/procraft.exe package/Qelem-Windows-preview.exe
+          Copy-Item native/QELEM-PHONE-TABLET.md package/README.txt
+          Get-FileHash package/Qelem-Windows-preview.exe -Algorithm SHA256 | Format-List | Out-File package/SHA256.txt
+      - uses: actions/upload-artifact@v4
+        with:
+          name: Qelem-Windows-preview
+          path: package/
+          if-no-files-found: error
+  phone:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 45
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '17'
+      - uses: gradle/actions/setup-gradle@v4
+      - name: Build phone controller APK
+        working-directory: native/android
+        run: |
+          set +e
+          ./gradlew --no-daemon --max-workers=2 :tablet:assembleDebug > /tmp/tablet-gradle.log 2>&1
+          result=$?
+          tail -n 100 /tmp/tablet-gradle.log
+          if [ "$result" -ne 0 ]; then
+            python3 - <<'PYLOG'
+          lines = open('/tmp/tablet-gradle.log', errors='replace').read().splitlines()
+          summary = '\n'.join(lines[-80:])[-12000:].replace('%', '%25').replace('\r', '%0D').replace('\n', '%0A')
+          print('::error::' + summary)
+          PYLOG
+            exit "$result"
+          fi
+      - name: Package phone controller
+        run: |
+          mkdir -p package
+          cp native/android/tablet/build/outputs/apk/debug/tablet-debug.apk package/Qelem-Tablet-preview.apk
+          (cd package && sha256sum Qelem-Tablet-preview.apk > SHA256.txt)
+      - uses: actions/upload-artifact@v4
+        with:
+          name: Qelem-Tablet-preview
+          path: package/
+          if-no-files-found: error

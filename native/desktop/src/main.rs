@@ -43,6 +43,7 @@ mod overlays;
 mod panel;
 mod pdf;
 mod pen;
+mod phone_tablet;
 mod prefs;
 mod projection;
 mod quick_menu;
@@ -267,6 +268,10 @@ fn main() {
         gallery: gallery::Gallery::new(),
         ui: Interface::default(),
         input: input::Input::default(),
+        phone_server: None,
+        phone_panel: false,
+        phone_stroke: false,
+        phone_error: None,
         title: String::new(),
         zoom: None,
         projection: None,
@@ -326,6 +331,10 @@ struct App {
     gallery: gallery::Gallery,
     ui: Interface,
     input: input::Input,
+    phone_server: Option<phone_tablet::Server>,
+    phone_panel: bool,
+    phone_stroke: bool,
+    phone_error: Option<String>,
     /// The window's title as last set.
     title: String,
     /// The gallery zooming into the artwork opening, or out of the one closing.
@@ -346,7 +355,7 @@ struct App {
 
 /// The app's icon, for the window's title bar and the task bar.
 fn window_icon() -> Option<winit::window::Icon> {
-    let picture = image::load_from_memory(include_bytes!("../../assets/app-icon/procraft-256.png")).ok()?;
+    let picture = image::load_from_memory(include_bytes!("../../assets/app-icon/qelem-256.png")).ok()?;
     let rgba = picture.into_rgba8();
     let (width, height) = rgba.dimensions();
     winit::window::Icon::from_rgba(rgba.into_raw(), width, height).ok()
@@ -363,7 +372,7 @@ impl ApplicationHandler for App {
             return;
         }
         let attributes = Window::default_attributes()
-            .with_title("ProCraft")
+            .with_title("Qelem")
             .with_window_icon(window_icon())
             .with_inner_size(LogicalSize::new(1440.0, 900.0))
             .with_min_inner_size(LogicalSize::new(640.0, 480.0))
@@ -409,7 +418,7 @@ impl ApplicationHandler for App {
             }
             Err(e) => {
                 log::error!("no GPU for the window:\n{e}");
-                files::tell("ProCraft can't draw", &startup::no_gpu_text(&e));
+                files::tell("Qelem can't draw", &startup::no_gpu_text(&e));
                 event_loop.exit();
                 return;
             }
@@ -432,6 +441,24 @@ impl ApplicationHandler for App {
         if self.projection.as_ref().is_some_and(|p| p.window.id() == id) {
             self.projection_event(event);
             return;
+        }
+        // F8 opens the opt-in phone pairing panel; no listener runs by default.
+        if let WindowEvent::KeyboardInput { event: key, .. } = &event
+            && key.state.is_pressed() && !key.repeat
+            && key.physical_key == winit::keyboard::PhysicalKey::Code(winit::keyboard::KeyCode::F8)
+            && self.session.is_some()
+        {
+            self.phone_panel = !self.phone_panel;
+            if let Some(screen) = &self.screen { screen.window.request_redraw(); }
+            return;
+        }
+        // Do not let a simultaneous local press merge into a remote stroke.
+        if self.phone_stroke && matches!(&event,
+            WindowEvent::KeyboardInput { event: winit::event::KeyEvent { state: winit::event::ElementState::Pressed, .. }, .. }
+            | WindowEvent::MouseInput { state: winit::event::ElementState::Pressed, .. }
+            | WindowEvent::Touch(winit::event::Touch { phase: winit::event::TouchPhase::Started, .. }))
+        {
+            self.stop_phone();
         }
         let Some(event) = self.tap_assist(event) else { return };
         let Some(screen) = self.screen.as_mut() else { return };
@@ -534,6 +561,7 @@ impl ApplicationHandler for App {
     fn user_event(&mut self, event_loop: &ActiveEventLoop, (): ()) {
         // (the start's watch asks too)
         startup::answered();
+        self.process_phone();
         let Some(window) = self.screen.as_ref().map(|s| (s.window.id(), s.window.scale_factor())) else { return };
         for event in pen::take_events(window.1) {
             self.window_event(event_loop, window.0, event);
@@ -622,8 +650,66 @@ impl ApplicationHandler for App {
 }
 
 impl App {
+    fn stop_phone(&mut self) {
+        if self.phone_stroke {
+            if let Some(session) = &self.session { session.stroke_cancel(); }
+            self.phone_stroke = false;
+        }
+        self.phone_server = None;
+    }
+
+    /// Process network messages on the window thread, never on the socket thread.
+    fn process_phone(&mut self) {
+        use phone_tablet::Command;
+        use std::sync::atomic::Ordering;
+        let Some(server) = &self.phone_server else { return };
+        let events: Vec<_> = server.incoming.try_iter().collect();
+        let ended = server.ended.load(Ordering::Acquire);
+        let Some(session) = self.session.clone() else { self.stop_phone(); return };
+        let blocked = self.phone_panel || self.ui.popover_open || self.ui.studio.open
+            || self.ui.export_card.busy() || files::exporting_since().is_some()
+            || session.pour_finishing() || self.opening.is_some() || session.model_info().is_some();
+        if blocked && self.phone_stroke { session.stroke_cancel(); self.phone_stroke = false; }
+        let sample = |x: f32, y: f32, pressure: f32| -> Option<procraft_core::PenSample> {
+            let info = session.info();
+            let m = session.view_matrix();
+            let [a, b, c, d, e, f] = m.as_slice() else { return None };
+            let (x, y) = (x * info.width as f32, y * info.height as f32);
+            let (x, y) = (a * x + c * y + e, b * x + d * y + f);
+            if !x.is_finite() || !y.is_finite() { return None; }
+            Some(procraft_core::PenSample { x, y, pressure, tilt: 0.0, orientation: 0.0, roll: 0.0, time_ms: self.started.elapsed().as_secs_f64() * 1000.0 })
+        };
+        for command in events {
+            match command {
+                Command::Down(x,y,p,stylus) if !blocked && !self.phone_stroke && self.input.idle() => {
+                    if let Some(point) = sample(x,y,p) {
+                        session.stroke_begin(if stylus { procraft_core::PointerKind::Stylus } else { procraft_core::PointerKind::Finger }, vec![point]);
+                        self.phone_stroke = true;
+                    }
+                }
+                Command::Move(x,y,p) if !blocked && self.phone_stroke => if let Some(point) = sample(x,y,p) { session.stroke_add(vec![point]); },
+                Command::Up(x,y,p) if self.phone_stroke => {
+                    if let Some(point) = sample(x,y,p) { session.stroke_end(vec![point]); } else { session.stroke_cancel(); }
+                    self.phone_stroke = false;
+                }
+                Command::Cancel if self.phone_stroke => { session.stroke_cancel(); self.phone_stroke = false; }
+                Command::Undo if !blocked && !self.phone_stroke && self.input.idle() => { session.undo(); }
+                Command::Redo if !blocked && !self.phone_stroke && self.input.idle() => { session.redo(); }
+                Command::Size(v) if !blocked && !self.phone_stroke && self.input.idle() => session.set_brush_size(v),
+                Command::Opacity(v) if !blocked && !self.phone_stroke && self.input.idle() => session.set_brush_opacity(v),
+                _ => {}
+            }
+        }
+        if ended {
+            self.stop_phone();
+            self.phone_error = Some("Phone disconnected. Start pairing for a new code.".to_owned());
+        }
+        if let Some(screen) = &self.screen { screen.window.request_redraw(); }
+    }
+
     /// Shows `session` in the window, in place of the artwork open.
     fn show(&mut self, session: Arc<CanvasSession>) {
+        self.stop_phone();
         let Some(screen) = self.screen.as_mut() else { return };
         let size = screen.window.inner_size();
         let scale = screen.window.scale_factor() as f32;
@@ -739,8 +825,23 @@ impl App {
         // the strokes heard while a plugin makes their sound
         self.stroke_sound.follow(Some(&session), self.ui.plugins().makes_stroke_sound());
         let raw = screen.egui.take_egui_input(&screen.window);
+        let mut phone_action = 0u8;
         let output = screen.egui.egui_ctx().clone().run_ui(raw, |ui| {
             self.ui.show(ui, &session, &mut self.input);
+            if self.phone_panel {
+                egui::Window::new("Qelem phone tablet (F8)").collapsible(false).show(ui.ctx(), |ui| {
+                    ui.label("Phone and PC must be on the same trusted Wi-Fi network.");
+                    ui.label("Unencrypted connection: do not use public or untrusted Wi-Fi.");
+                    if let Some(server) = &self.phone_server {
+                        ui.label(format!("PC IPv4: check Windows ipconfig · Port {}", phone_tablet::PORT));
+                        ui.monospace(format!("Pairing code: {}", server.token));
+                        ui.label(if server.connected.load(std::sync::atomic::Ordering::Acquire) { "Phone connected. Close this panel to draw." } else { "Waiting for phone…" });
+                        if ui.button("Stop and disconnect").clicked() { phone_action = 2; }
+                    } else if ui.button("Start pairing").clicked() { phone_action = 1; }
+                    if let Some(error) = &self.phone_error { ui.colored_label(egui::Color32::LIGHT_RED, error); }
+                    if ui.button("Close panel").clicked() { self.phone_panel = false; }
+                });
+            }
             // opening: the gallery over it, growing from the artwork's picture
             if let Some(zoom) = self.zoom.as_ref().filter(|z| z.opening) {
                 zoom.over_canvas(ui.ctx(), &mut self.gallery, &mut self.ui.look);
@@ -768,7 +869,7 @@ impl App {
         let edits = session.edits();
         let saved = edits == self.ui.saved_edits || session.edits_saved() == Some(edits);
         let unsaved = if saved { "" } else { " •" };
-        let title = format!("{}{unsaved} — ProCraft", session.name());
+        let title = format!("{}{unsaved} — Qelem", session.name());
         if title != self.title {
             screen.window.set_title(&title);
             self.title = title;
@@ -795,6 +896,16 @@ impl App {
         }
         for action in std::mem::take(&mut self.ui.actions) {
             self.act(action, &session);
+        }
+        if phone_action == 2 { self.stop_phone(); }
+        if phone_action == 1 && self.session.as_ref().is_some_and(|s| Arc::ptr_eq(s, &session)) {
+            self.stop_phone();
+            let wake = self.wake.clone();
+            match phone_tablet::Server::start(move || { let _ = wake.send_event(()); }) {
+                Ok(server) => { self.phone_server = Some(server); self.phone_error = None; }
+                Err(error) => self.phone_error = Some(error),
+            }
+            if let Some(screen) = &self.screen { screen.window.request_redraw(); }
         }
     }
 
@@ -853,9 +964,9 @@ impl App {
         if let Some(soon) = soon {
             self.again = Some(self.again.map_or(soon, |due| due.min(soon)));
         }
-        if self.title != "ProCraft" {
-            screen.window.set_title("ProCraft");
-            self.title = "ProCraft".into();
+        if self.title != "Qelem" {
+            screen.window.set_title("Qelem");
+            self.title = "Qelem".into();
         }
         self.zoom_on();
         // Project canvas is black while the gallery shows
@@ -1245,7 +1356,7 @@ impl App {
                 startup::stopped("the graphics device stopped, and it couldn't start itself again");
             }
         } else {
-            files::tell("The graphics device stopped", "ProCraft starts again, with the artwork as it was last saved.");
+            files::tell("The graphics device stopped", "Qelem starts again, with the artwork as it was last saved.");
             startup::start_again(None);
         }
         event_loop.exit();
@@ -1300,6 +1411,7 @@ impl App {
 
     /// The artwork open is put away and kept; false if it couldn't be.
     fn leave_artwork(&mut self) -> bool {
+        self.stop_phone();
         if let Some(session) = self.session.clone() {
             // its time counted up to now, saved with it
             session.set_tracking(false);
