@@ -297,7 +297,7 @@ impl AnimationBar {
         let width = (screen.width() - 16.0).min(740.0);
         let bar = Rect::from_min_size(pos2(screen.center().x - width / 2.0, screen.bottom() - BAR_GAP - 150.0), vec2(width, 150.0));
         let mut said = None;
-        let mut settings_at = 0.0;
+        let mut settings_at: f32 = 0.0;
         let focus = self.playing.as_ref().map(|p| p.at as usize)
             .or_else(|| current.and_then(|c| slot_of(slots, c, frames.get(c).copied(), self.held))).unwrap_or(0);
         egui::Area::new(Id::unique("studio timeline bar")).fixed_pos(bar.min).order(Order::Middle).show(ctx, |ui| {
