@@ -1,6 +1,6 @@
 # Qelem native fusion — work in progress
 
-This is a **source-only, incomplete development base**, not an APK and not a replacement for Qelem 7.23. Based on ProCraft commit `c330afd009eae7c739af1a4d61293b1e4b4d3dca`; the original upstream README, MIT/Apache licenses, NOTICE and asset attributions are retained. This folder is a fork, not a claim of ownership of ProCraft. No change to the existing Qelem 7.23 source or APK is required.
+This is a **source-only, incomplete development base**, not an APK and not a replacement for Qelem 7.23. Based on ProCraft commit `c330afd009eae7c739af1a4d61293b1e4b4d3dca`; the upstream MIT/Apache licenses, NOTICE and asset attributions are retained. This folder is a fork, not a claim of ownership of ProCraft. No change to the existing Qelem 7.23 source or APK is required.
 
 ## Native work in progress
 
@@ -18,7 +18,7 @@ This is a **source-only, incomplete development base**, not an APK and not a rep
 2. Port Qelem's animation timeline, ranges, skipped frames, frame labels, motion/camera keys, audio, animation effects, and exports where they are not already equivalent; decide how they map to ProCraft's frame/group model. Reverse **export** is not implemented here.
 3. Audit and port Qelem's other unique brushes, selections, shape and pattern tools, transparency edits, palettes and project backup. None of those are claimed to be ported by this base. Both apps have overlapping features with differing behaviour; check rather than assume parity.
 4. Review all native accent placements and contrast, including plugin overrides, light theme, transform and text tools, and phones/tablets. The upstream interface is principally tablet-oriented; no phone adaptation is claimed.
-5. Build the complete Android project with the required Gradle, SDK/NDK, Rust and cargo-ndk toolchain (see upstream README), and test on actual Android devices: stylus/touch, GPU speed and stability, save/reopen, lifecycle, imports, exports, memory, and accessibility. Reconcile package, app signing, version codes and storage migration before any genuine update is attempted. A different signing certificate cannot update an installed app.
+5. Build the complete Android project with the required Gradle, SDK/NDK, Rust and cargo-ndk toolchain (see [native build instructions](README.md)), and test on actual Android devices: stylus/touch, GPU speed and stability, save/reopen, lifecycle, imports, exports, memory, and accessibility. Reconcile package, app signing, version codes and storage migration before any genuine update is attempted. A different signing certificate cannot update an installed app.
 
 ## Verification performed for this source step
 

@@ -1,37 +1,23 @@
-# Qelem 1.4
+<p align="center"><img src="native/android/app/src/main/res/mipmap-xxxhdpi/ic_launcher.png" alt="Qelem logo" width="128"></p>
 
-Qelem is an independent, offline Android painting and frame-animation app developed by **Qmer** and inspired by Procreate. This retrospective release is based on historical commit `0973550d39e6237d46673f8b331a632a48fe7ea6`, published now rather than on its original development date.
+<h1 align="center">Qelem</h1>
 
-## What's new in 1.4
+Qelem is an independent Android painting and frame-animation app. This repository contains the existing Qelem app and an experimental native edition built on ProCraft's Kotlin/Compose interface and Rust/wgpu engine.
 
-- Optional frame group labels appear on the animation timeline, persist with the project, and are copied when a frame is duplicated. Labels are tags, not nested groups or batch operations.
-- Four basic effects: horizontal motion blur, sharpen, bloom and glitch. Effects edit pixels destructively on the current layer and frame, and can be undone; they are not live previews.
-- Retains 1.3's frame holds, onion controls, PNG sequences and other painting and animation features. See the [feature inventory](docs/FEATURES.md) for limitations.
+## Download Qelem
 
-This reconstructed version retains Qelem branding, Qmer credit, the 1.1 New canvas fix and loading icon. Unlike the original historical snapshot, it uses **three-finger tap to undo and four-finger tap to redo**, matching the rebranded 1.0–1.3 releases. This is not full Procreate parity.
+- [Qelem 7.23 development APK](artifacts/Qelem-7.23-dev.apk) — existing WebView-based Qelem, **not the native edition**.
+- [Qelem 7.23 source archive](artifacts/Qelem-7.23-dev-source.zip).
+- [Earlier Qelem 1.4 release](artifacts/releases/Qelem-1.4.apk) and [release notes](https://github.com/mubareksam/Qelem/releases/tag/v1.4).
 
-Automated tests cover the historical changes. **The rebuilt APK, Android gestures, MP4 encoding and MediaStore exports have not been tested on a physical Android device.** MP4 depends on the Android WebView and device.
+**The native edition does not yet have a built APK.** Its source, feature status and build instructions are in [native/README.md](native/README.md). Do not download an upstream ProCraft APK expecting it to contain Qelem's changes.
 
-## Download
+## Artwork safety
 
-- [Qelem 1.4 APK](artifacts/releases/Qelem-1.4.apk) · Android 8.0 or later
-- [Qelem 1.4 source archive](artifacts/releases/Qelem-1.4-source.zip)
-- [Release notes](https://github.com/mubareksam/Qelem/releases/tag/v1.4)
-- [Previous release: Qelem 1.3](https://github.com/mubareksam/Qelem/releases/tag/v1.3)
+Back up projects from the existing app and verify the backups. Do not uninstall Qelem: uninstalling can erase private artwork. The native preview uses a separate package and has no Qelem project importer, so it cannot automatically access or migrate your existing gallery. Installing an older APK over a newer one is normally blocked by Android.
 
-The APK has the same package and signing certificate as 1.0–1.3 and should install as an update. **Back up artwork before changing versions.** Installing 1.4 over a newer development build is normally blocked by Android; uninstalling can erase app data. Older builds may not preserve features from newer builds.
+The existing development APK uses a publicly available test signing key and has not been tested on a physical Android device. It is not production-signed.
 
-## Build and test
+## Credits
 
-```sh
-bash tools/fetch-toolchain.sh
-(cd tools/apksign && npm ci)
-(cd tools/tests && npm ci && npm test)
-bash tools/build.sh
-```
-
-The output is `artifacts/Qelem-1.4.apk`. The Android app uses a WebView and is packaged without Gradle. It was imported from `mubareksam/guzo` commit `525d0de`; it was not rebuilt from scratch.
-
-**Signing:** The included build uses the publicly available test key in `tools/apksign/key.pem`, which is unsuitable for trusted production distribution. A private production signing key will not be accepted as an update to this test-key build.
-
-Qelem is independent and not affiliated with Procreate or Savage Interactive.
+The native work is based on [ProCraft](https://github.com/artcraft-android/procraft); its licenses, notices and asset attributions are retained under `native/`. Qelem is not affiliated with ProCraft or Procreate.
