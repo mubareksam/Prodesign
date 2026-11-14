@@ -158,6 +158,8 @@ fn serve_client(mut stream: TcpStream, token: &str, stop: &AtomicBool, connected
     if stream.set_nonblocking(false).is_err() { return false; }
     let _ = stream.set_read_timeout(Some(Duration::from_secs(1)));
     let _ = stream.set_write_timeout(Some(Duration::from_secs(2)));
+    // Bluetooth does not support TCP_NODELAY; ignore that protocol-specific error.
+    let _ = stream.set_nodelay(true);
     let expected = format!("QELEM1 {token}");
     if !matches!(line(&mut stream, stop), Ok(Some(ref value)) if value == &expected) {
         let _ = stream.shutdown(Shutdown::Both);

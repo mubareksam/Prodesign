@@ -52,6 +52,20 @@ jobs:
             Write-Output "::error::$text"
             exit $code
           }
+      - name: Smoke test native server window
+        shell: pwsh
+        run: |
+          $p = Start-Process native/target/release/qelem-tablet-server.exe -PassThru
+          try {
+            if (-not $p.WaitForInputIdle(15000)) { throw 'Server did not become ready.' }
+            $p.Refresh()
+            if ($p.HasExited -or $p.MainWindowHandle -eq 0) { throw 'Server window was not created.' }
+            if (-not $p.CloseMainWindow()) { throw 'Could not close server window.' }
+            if (-not $p.WaitForExit(5000)) { throw 'Server did not close.' }
+            if ($p.ExitCode -ne 0) { throw "Server exit code: $($p.ExitCode)" }
+          } finally {
+            if (-not $p.HasExited) { $p.Kill() }
+          }
       - name: Package Windows preview
         shell: pwsh
         run: |
