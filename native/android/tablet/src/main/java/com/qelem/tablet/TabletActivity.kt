@@ -165,7 +165,7 @@ class TabletActivity : Activity() {
             }
             page.addView(line); gap(page, 3)
         }
-        tools(Triple("‹", "Back to remotes", { connection.send("C"); profiles(connection) }), Triple("↶", "Undo", { connection.send("UNDO") }), Triple("↷", "Redo", { connection.send("REDO") }), Triple("▣", "Tablet mode", { if (mouse) { connection.send("C"); drawing(connection, qelem, false) } }), Triple("↖", "Mouse mode", { if (!mouse) { connection.send("C"); drawing(connection, qelem, true) } }))
+        tools(Triple("‹", "Back to remotes", { connection.send("C"); profiles(connection) }), Triple("↶", "Undo", { connection.send("UNDO") }), Triple("↷", "Redo", { connection.send(if (qelem) "QELEM_REDO" else "REDO") }), Triple("▣", "Tablet mode", { if (mouse) { connection.send("C"); drawing(connection, qelem, false) } }), Triple("↖", "Mouse mode", { if (!mouse) { connection.send("C"); drawing(connection, qelem, true) } }))
         if (qelem) tools(Triple("✎", "Brush", { connection.send("PAINT") }), Triple("▱", "Eraser", { connection.send("ERASE") }), Triple("◉", "Smudge", { connection.send("SMUDGE") }), Triple("⌖", "Pick color", { connection.send("PICK") }))
         else tools(Triple("▣", "Save", { connection.send("SAVE") }), Triple("⎋", "Escape", { connection.send("ESCAPE") }), Triple("−", "Zoom out", { connection.send("ZOOMOUT") }), Triple("+", "Zoom in", { connection.send("ZOOMIN") }))
         if (mouse) {

@@ -711,7 +711,7 @@ impl App {
                         Command::Move(x,y,p) if !self.phone_panel && self.phone_stroke => pen.moved(x,y,p),
                         Command::Up(x,y,p) if self.phone_stroke => { let result = pen.up(x,y,p); self.phone_stroke = false; result }
                         Command::Cancel => { pen.cancel(); self.phone_stroke = false; Ok(()) }
-                        Command::Undo | Command::Redo | Command::Save | Command::Escape | Command::ZoomIn | Command::ZoomOut if !self.phone_panel && !self.phone_stroke => system_pen::shortcut(event),
+                        Command::Undo | Command::Redo | Command::QelemRedo | Command::Paint | Command::Erase | Command::Pick | Command::Save | Command::Escape | Command::ZoomIn | Command::ZoomOut if !self.phone_panel && !self.phone_stroke => system_pen::shortcut(event),
                         _ => Ok(()),
                     };
                     if let Err(error) = result { failure = Some(error); break; }
@@ -764,7 +764,7 @@ impl App {
                 }
                 Command::Cancel if self.phone_stroke => { session.stroke_cancel(); self.phone_stroke = false; }
                 Command::Undo if !blocked && !self.phone_stroke && self.input.idle() => { session.undo(); }
-                Command::Redo if !blocked && !self.phone_stroke && self.input.idle() => { session.redo(); }
+                Command::Redo | Command::QelemRedo if !blocked && !self.phone_stroke && self.input.idle() => { session.redo(); }
                 Command::Paint if !blocked && !self.phone_stroke && self.input.idle() => session.set_tool(procraft_core::ToolKind::Paint),
                 Command::Erase if !blocked && !self.phone_stroke && self.input.idle() => session.set_tool(procraft_core::ToolKind::Erase),
                 Command::Smudge if !blocked && !self.phone_stroke && self.input.idle() => session.set_tool(procraft_core::ToolKind::Smudge),

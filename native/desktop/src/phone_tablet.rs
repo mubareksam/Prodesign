@@ -12,7 +12,7 @@ const QUEUE: usize = 1024;
 #[derive(Debug, PartialEq, Clone, Copy)]
 pub enum Command {
     Hover(f32, f32), Relative(f32, f32), LeftClick, RightClick, Down(f32, f32, f32, bool), Move(f32, f32, f32), Up(f32, f32, f32), Cancel,
-    Undo, Redo, Save, Escape, ZoomIn, ZoomOut, Paint, Erase, Smudge, Pick, Size(f32), Opacity(f32), Ping,
+    Undo, Redo, QelemRedo, Save, Escape, ZoomIn, ZoomOut, Paint, Erase, Smudge, Pick, Size(f32), Opacity(f32), Ping,
 }
 
 fn unit(s: Option<&str>) -> Option<f32> {
@@ -46,6 +46,7 @@ pub fn parse(line: &str) -> Option<Command> {
         "PICK" => Command::Pick,
         "UNDO" => Command::Undo,
         "REDO" => Command::Redo,
+        "QELEM_REDO" => Command::QelemRedo,
         "SIZE" => Command::Size(unit(p.next())?),
         "OPACITY" => Command::Opacity(unit(p.next())?),
         "PING" => Command::Ping,
