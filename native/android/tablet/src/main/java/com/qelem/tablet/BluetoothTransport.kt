@@ -1,45 +1,28 @@
 package com.qelem.tablet
 
 import android.annotation.SuppressLint
-import android.bluetooth.BluetoothAdapter
-import android.bluetooth.BluetoothServerSocket
+import android.bluetooth.BluetoothDevice
 import android.bluetooth.BluetoothSocket
 import java.io.IOException
 import java.io.InputStream
 import java.io.OutputStream
 import java.util.UUID
 
-/** Secure Bluetooth Classic RFCOMM SPP. The PC connects using an outgoing COM port. */
-@SuppressLint("MissingPermission") // permission is requested by TabletActivity before constructing this
-internal class BluetoothTransport(private val adapter: BluetoothAdapter, private val trustedAddress: String) : Transport {
+/** Encrypted RFCOMM connection to the PC explicitly selected from the paired devices list. */
+@SuppressLint("MissingPermission") // TabletActivity checks BLUETOOTH_CONNECT first
+internal class BluetoothTransport(private val pc: BluetoothDevice) : Transport {
     @Volatile private var closed = false
-    @Volatile private var listener: BluetoothServerSocket? = null
     @Volatile private var socket: BluetoothSocket? = null
-    @Synchronized fun prepare() {
-        if (closed) throw IOException("Closed")
-        if (listener != null) return
-        val server = adapter.listenUsingRfcommWithServiceRecord("Qelem Tablet", UUID.fromString("00001101-0000-1000-8000-00805f9b34fb"))
-        if (closed) { server.close(); throw IOException("Closed") }
-        listener = server
-    }
     override fun open(): Pair<InputStream, OutputStream> {
-        prepare()
-        val server = listener ?: throw IOException("Bluetooth listener closed")
-        var connection: BluetoothSocket
-        while (true) {
-            connection = server.accept()
-            if (closed) { connection.close(); throw IOException("Closed") }
-            if (connection.remoteDevice.address == trustedAddress) break
-            connection.close()
-        }
+        val connection = pc.createRfcommSocketToServiceRecord(UUID.fromString("6db5d3d1-d2a8-4d56-b8c0-87ecb7ea843e"))
         socket = connection
-        server.close(); listener = null
+        if (closed) { connection.close(); throw IOException("Closed") }
+        connection.connect()
         if (closed) { connection.close(); throw IOException("Closed") }
         return connection.inputStream to connection.outputStream
     }
-    @Synchronized override fun close() {
+    override fun close() {
         closed = true
-        try { listener?.close() } catch (_: Exception) { }
         try { socket?.close() } catch (_: Exception) { }
     }
 }

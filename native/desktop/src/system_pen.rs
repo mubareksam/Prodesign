@@ -91,3 +91,29 @@ pub fn shortcut(command: crate::phone_tablet::Command) -> Result<(), String> {
         Err("Windows rejected a keyboard shortcut (check target permissions)".to_owned())
     }
 }
+
+/// Relative trackpad deltas, measured as fractions of the virtual desktop; no jump on contact.
+pub fn mouse_relative(dx: f32, dy: f32) -> Result<(), String> {
+    use windows::Win32::UI::WindowsAndMessaging::{GetCursorPos, SetCursorPos};
+    let mut p = POINT::default();
+    // SAFETY: p is a valid out-parameter; metric queries have no pointer arguments.
+    unsafe { GetCursorPos(&mut p) }.map_err(|e| e.to_string())?;
+    let (left, top, width, height) = unsafe { (GetSystemMetrics(SM_XVIRTUALSCREEN), GetSystemMetrics(SM_YVIRTUALSCREEN), GetSystemMetrics(SM_CXVIRTUALSCREEN), GetSystemMetrics(SM_CYVIRTUALSCREEN)) };
+    if width < 1 || height < 1 { return Err("Windows reported an empty desktop".to_owned()); }
+    let x = p.x.saturating_add((dx * width as f32).round() as i32).clamp(left, left.saturating_add(width - 1));
+    let y = p.y.saturating_add((dy * height as f32).round() as i32).clamp(top, top.saturating_add(height - 1));
+    unsafe { SetCursorPos(x, y) }.map_err(|e| e.to_string())
+}
+
+pub fn mouse_click(right: bool) -> Result<(), String> {
+    use windows::Win32::UI::Input::KeyboardAndMouse::{SendInput, INPUT, INPUT_0, INPUT_MOUSE, MOUSEINPUT, MOUSEEVENTF_LEFTDOWN, MOUSEEVENTF_LEFTUP, MOUSEEVENTF_RIGHTDOWN, MOUSEEVENTF_RIGHTUP};
+    let (down, up) = if right { (MOUSEEVENTF_RIGHTDOWN, MOUSEEVENTF_RIGHTUP) } else { (MOUSEEVENTF_LEFTDOWN, MOUSEEVENTF_LEFTUP) };
+    let input = |flags| INPUT { r#type: INPUT_MOUSE, Anonymous: INPUT_0 { mi: MOUSEINPUT { dwFlags: flags, ..Default::default() } } };
+    let events = [input(down), input(up)];
+    let size = std::mem::size_of::<INPUT>() as i32;
+    // SAFETY: records are initialized and valid for the duration of SendInput.
+    if unsafe { SendInput(&events, size) } == events.len() as u32 { Ok(()) } else {
+        unsafe { SendInput(&[input(up)], size) };
+        Err("Windows rejected a mouse click (check target permissions)".to_owned())
+    }
+}

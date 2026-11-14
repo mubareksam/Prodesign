@@ -7,8 +7,8 @@ android {
         applicationId = "com.qelem.tablet.preview"
         minSdk = 28
         targetSdk = 36
-        versionCode = 4
-        versionName = "0.4-preview"
+        versionCode = 5
+        versionName = "0.5-preview"
     }
 }
 

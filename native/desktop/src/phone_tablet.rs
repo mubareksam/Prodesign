@@ -11,7 +11,7 @@ const QUEUE: usize = 1024;
 
 #[derive(Debug, PartialEq, Clone, Copy)]
 pub enum Command {
-    Hover(f32, f32), Down(f32, f32, f32, bool), Move(f32, f32, f32), Up(f32, f32, f32), Cancel,
+    Hover(f32, f32), Relative(f32, f32), LeftClick, RightClick, Down(f32, f32, f32, bool), Move(f32, f32, f32), Up(f32, f32, f32), Cancel,
     Undo, Redo, Save, Escape, ZoomIn, ZoomOut, Paint, Erase, Smudge, Pick, Size(f32), Opacity(f32), Ping,
 }
 
@@ -20,9 +20,17 @@ fn unit(s: Option<&str>) -> Option<f32> {
     (v.is_finite() && (0.0..=1.0).contains(&v)).then_some(v)
 }
 
+fn signed(s: Option<&str>) -> Option<f32> {
+    let v = s?.parse::<f32>().ok()?;
+    (v.is_finite() && (-1.0..=1.0).contains(&v)).then_some(v)
+}
+
 pub fn parse(line: &str) -> Option<Command> {
     let mut p = line.split_ascii_whitespace();
     let out = match p.next()? {
+        "R" => Command::Relative(signed(p.next())?, signed(p.next())?),
+        "LEFT" => Command::LeftClick,
+        "RIGHT" => Command::RightClick,
         "H" => Command::Hover(unit(p.next())?, unit(p.next())?),
         "D" => Command::Down(unit(p.next())?, unit(p.next())?, unit(p.next())?, match p.next()? { "S" => true, "F" => false, _ => return None }),
         "M" => Command::Move(unit(p.next())?, unit(p.next())?, unit(p.next())?),
@@ -106,12 +114,10 @@ impl Server {
         }).map_err(|e| e.to_string())?;
         Ok(Self { token, incoming: rx, stop, connected, ended })
     }
-    /// Bluetooth Classic SPP through a manually configured outgoing Windows COM port.
+    /// Windows advertises an authenticated RFCOMM service; Android connects to its paired PC.
     #[cfg(windows)]
-    pub fn start_bluetooth(wake: impl Fn() + Send + 'static, port: &str) -> Result<Self, String> {
-        let upper = port.trim().to_ascii_uppercase();
-        let number = upper.strip_prefix("COM").and_then(|s| s.parse::<u16>().ok()).filter(|n| *n > 0)
-            .ok_or("Enter a Windows COM port, for example COM5")?;
+    pub fn start_bluetooth(wake: impl Fn() + Send + 'static) -> Result<Self, String> {
+        let listener = crate::phone_bluetooth::Listener::new()?;
         let mut secret = [0u8; 16];
         getrandom::fill(&mut secret).map_err(|e| e.to_string())?;
         let token: String = secret.iter().map(|v| format!("{v:02x}")).collect();
@@ -121,13 +127,11 @@ impl Server {
         let ended = Arc::new(AtomicBool::new(false));
         let (s,c,e,key) = (stop.clone(), connected.clone(), ended.clone(), token.clone());
         std::thread::Builder::new().name("qelem-bluetooth".into()).spawn(move || {
-            // Windows may attempt opening the port before the phone has started listening.
-            for _ in 0..60 {
-                if s.load(Ordering::Acquire) { break; }
-                match bluetooth_session(number, &key, &s, &c, &tx, &wake) {
-                    Ok(()) => break,
-                    Err(error) if error.kind() == io::ErrorKind::InvalidData || c.load(Ordering::Acquire) => { log::warn!("Bluetooth: {error}"); break; }
-                    Err(error) => { log::warn!("Bluetooth: {error}"); std::thread::sleep(Duration::from_secs(2)); }
+            while !s.load(Ordering::Acquire) {
+                match listener.accept() {
+                    Ok(Some(stream)) => { if serve_client(stream, &key, &s, &c, &tx, &wake) { break; } }
+                    Ok(None) => std::thread::sleep(Duration::from_millis(50)),
+                    Err(error) => { log::warn!("Bluetooth accept: {error}"); break; }
                 }
             }
             c.store(false, Ordering::Release); e.store(true, Ordering::Release); wake();
@@ -140,77 +144,36 @@ impl Drop for Server { fn drop(&mut self) { self.stop(); } }
 
 fn serve(listener: TcpListener, token: &str, stop: &AtomicBool, connected: &AtomicBool, tx: &SyncSender<Command>, wake: &impl Fn()) {
     while !stop.load(Ordering::Acquire) {
-        let mut stream = match listener.accept() {
+        let stream = match listener.accept() {
             Ok((s, _)) => s,
             Err(e) if e.kind() == io::ErrorKind::WouldBlock => { std::thread::sleep(Duration::from_millis(50)); continue; }
             Err(_) => break,
         };
-        // On Windows an accepted socket can inherit the listener's nonblocking mode. Restore
-        // blocking mode before setting timeouts; otherwise a momentary WouldBlock ends the session.
-        if stream.set_nonblocking(false).is_err() { continue; }
-        let _ = stream.set_read_timeout(Some(Duration::from_secs(1)));
-        let _ = stream.set_write_timeout(Some(Duration::from_secs(2)));
-        let _ = stream.set_nodelay(true);
-        let expected = format!("QELEM1 {token}");
-        if !matches!(line(&mut stream, stop), Ok(Some(ref value)) if value == &expected) {
-            let _ = stream.shutdown(Shutdown::Both);
-            // Slow repeated guesses and keep the accept loop from being a busy loop.
-            std::thread::sleep(Duration::from_millis(250));
-            continue;
-        }
-        if stream.write_all(b"OK\n").is_err() { continue; }
-        connected.store(true, Ordering::Release);
-        wake();
-        while !stop.load(Ordering::Acquire) {
-            let Ok(Some(raw)) = line(&mut stream, stop) else { break };
-            let Some(command) = parse(&raw) else { break };
-            if command == Command::Ping { continue; }
-            match tx.try_send(command) {
-                Ok(()) => wake(),
-                // Losing a down/up would corrupt stroke state: disconnect and cancel instead.
-                Err(TrySendError::Full(_) | TrySendError::Disconnected(_)) => break,
-            }
-        }
-        let _ = stream.shutdown(Shutdown::Both);
-        break; // A new connection requires a new code and explicit opt-in.
+        if serve_client(stream, token, stop, connected, tx, wake) { break; }
     }
 }
 
-// A Windows Bluetooth outgoing COM port wraps RFCOMM SPP. This requires the phone's
-// SPP service to be listening and a Windows outgoing COM port configured for the paired phone.
-#[cfg(windows)]
-#[allow(unsafe_code)]
-fn bluetooth_session(port: u16, token: &str, stop: &AtomicBool, connected: &AtomicBool, tx: &SyncSender<Command>, wake: &impl Fn()) -> io::Result<()> {
-    use std::os::windows::io::AsRawHandle;
-    use std::os::windows::fs::OpenOptionsExt;
-    use windows::Win32::Foundation::HANDLE;
-    use windows::Win32::Devices::Communication::{SetCommTimeouts, COMMTIMEOUTS};
-    let path = format!(r"\\.\COM{port}");
-    // Windows communications resources must be opened exclusively (share mode zero).
-    let file = std::fs::OpenOptions::new().read(true).write(true).share_mode(0).open(path)?;
-    let timeouts = COMMTIMEOUTS { ReadIntervalTimeout: u32::MAX, ReadTotalTimeoutMultiplier: u32::MAX,
-        ReadTotalTimeoutConstant: 1000, WriteTotalTimeoutMultiplier: 0, WriteTotalTimeoutConstant: 2000 };
-    // SAFETY: handle belongs to the open COM file and the timeout structure lives for the call.
-    unsafe { SetCommTimeouts(HANDLE(file.as_raw_handle()), &timeouts) }.map_err(io::Error::other)?;
-    struct Serial(std::fs::File);
-    impl Read for Serial {
-        fn read(&mut self, b: &mut [u8]) -> io::Result<usize> {
-            match self.0.read(b) { Ok(0) => Err(io::ErrorKind::TimedOut.into()), other => other }
-        }
-    }
-    let mut serial = Serial(file);
+/// Returns true after an authenticated session. Bad codes do not consume the session.
+fn serve_client(mut stream: TcpStream, token: &str, stop: &AtomicBool, connected: &AtomicBool, tx: &SyncSender<Command>, wake: &impl Fn()) -> bool {
+    if stream.set_nonblocking(false).is_err() { return false; }
+    let _ = stream.set_read_timeout(Some(Duration::from_secs(1)));
+    let _ = stream.set_write_timeout(Some(Duration::from_secs(2)));
     let expected = format!("QELEM1 {token}");
-    // The COM connection may establish before the user has finished typing the code.
-    if !matches!(line_with_idle_limit(&mut serial, stop, 120), Ok(Some(ref value)) if value == &expected) { return Err(io::Error::new(io::ErrorKind::InvalidData, "Bluetooth authentication failed or timed out")); }
-    serial.0.write_all(b"OK\n")?;
+    if !matches!(line(&mut stream, stop), Ok(Some(ref value)) if value == &expected) {
+        let _ = stream.shutdown(Shutdown::Both);
+        std::thread::sleep(Duration::from_millis(250));
+        return false;
+    }
+    if stream.write_all(b"OK\n").is_err() { return false; }
     connected.store(true, Ordering::Release); wake();
     while !stop.load(Ordering::Acquire) {
-        let Some(raw) = line(&mut serial, stop)? else { break };
+        let Ok(Some(raw)) = line(&mut stream, stop) else { break };
         let Some(command) = parse(&raw) else { break };
         if command == Command::Ping { continue; }
         match tx.try_send(command) { Ok(()) => wake(), Err(_) => break }
     }
-    Ok(())
+    let _ = stream.shutdown(Shutdown::Both);
+    true
 }
 
 #[cfg(test)]
@@ -250,6 +213,9 @@ mod tests {
     }
     #[test] fn bounded_valid_protocol() {
         assert_eq!(parse("D 0.1 1 0.4 S"), Some(Command::Down(0.1, 1.0, 0.4, true)));
+        assert_eq!(parse("R -0.2 0.7"), Some(Command::Relative(-0.2, 0.7)));
+        assert_eq!(parse("LEFT"), Some(Command::LeftClick));
+        assert_eq!(parse("R -1.1 0"), None);
         assert_eq!(parse("H 0.2 0.7"), Some(Command::Hover(0.2, 0.7)));
         assert_eq!(parse("M 0 1 1"), Some(Command::Move(0.0, 1.0, 1.0)));
         for v in ["D NaN 0 1 S", "M 0 2 1", "U -1 0 1", "UNDO extra", "SIZE inf", "D 0 0 0 X", "QUIT"] { assert_eq!(parse(v), None); }

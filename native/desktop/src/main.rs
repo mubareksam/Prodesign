@@ -49,6 +49,8 @@ mod phone_pairing;
 mod qrcodegen;
 #[cfg(windows)]
 mod system_pen;
+#[cfg(windows)]
+mod phone_bluetooth;
 mod prefs;
 mod projection;
 mod quick_menu;
@@ -280,7 +282,6 @@ fn main() {
         phone_ip: phone_pairing::default_ip(),
         phone_usb: false,
         phone_bluetooth: false,
-        phone_com: "COM5".to_owned(),
         phone_system_mode: false,
         #[cfg(windows)]
         phone_pen: None,
@@ -350,7 +351,6 @@ struct App {
     phone_ip: String,
     phone_usb: bool,
     phone_bluetooth: bool,
-    phone_com: String,
     phone_system_mode: bool,
     #[cfg(windows)]
     phone_pen: Option<system_pen::SystemPen>,
@@ -699,6 +699,9 @@ impl App {
             if let Some(pen) = self.phone_pen.as_mut() {
                 for event in events {
                     let result = match event {
+                        Command::Relative(x,y) if !self.phone_panel && !self.phone_stroke => system_pen::mouse_relative(x,y),
+                        Command::LeftClick if !self.phone_panel && !self.phone_stroke => system_pen::mouse_click(false),
+                        Command::RightClick if !self.phone_panel && !self.phone_stroke => system_pen::mouse_click(true),
                         Command::Hover(x,y) if !self.phone_panel && !self.phone_stroke => pen.hover(x,y),
                         Command::Down(x,y,p,_) if !self.phone_panel && !self.phone_stroke => {
                             let result = pen.down(x,y,p);
@@ -737,6 +740,12 @@ impl App {
         };
         for command in events {
             match command {
+                #[cfg(windows)]
+                Command::Relative(x,y) if !blocked && !self.phone_stroke && self.input.idle() => { let _ = system_pen::mouse_relative(x,y); }
+                #[cfg(windows)]
+                Command::LeftClick if !blocked && !self.phone_stroke && self.input.idle() => { let _ = system_pen::mouse_click(false); }
+                #[cfg(windows)]
+                Command::RightClick if !blocked && !self.phone_stroke && self.input.idle() => { let _ = system_pen::mouse_click(true); }
                 Command::Hover(x,y) if !blocked && !self.phone_stroke => {
                     if let (Some(point), Some(screen)) = (sample(x,y,0.0), self.screen.as_ref()) {
                         let _ = screen.window.set_cursor_position(winit::dpi::PhysicalPosition::new(point.x as f64, point.y as f64));
@@ -899,14 +908,14 @@ impl App {
                     if let Some(server) = &self.phone_server {
                         ui.label(if server.connected.load(std::sync::atomic::Ordering::Acquire) { "Phone connected. Close this panel to draw." } else { "Waiting for phone…" });
                         if !server.connected.load(std::sync::atomic::Ordering::Acquire) {
-                            ui.label(if self.phone_bluetooth { "Bluetooth SPP (outgoing COM)" } else if self.phone_usb { "USB (ADB), local PC only" } else { "Wi-Fi / hotspot" });
+                            ui.label(if self.phone_bluetooth { "Bluetooth (paired devices)" } else if self.phone_usb { "USB (ADB), local PC only" } else { "Wi-Fi / hotspot" });
                             if !self.phone_usb && !self.phone_bluetooth { ui.horizontal(|ui| { ui.label("PC IPv4:"); ui.text_edit_singleline(&mut self.phone_ip); }); }
                             if self.phone_usb { ui.label("Run: adb reverse tcp:48652 tcp:48652"); }
                             ui.monospace(format!("Code: {}", server.token));
                             let pairing = if self.phone_bluetooth { phone_pairing::bluetooth_payload(&server.token) } else { phone_pairing::payload(&self.phone_ip, self.phone_usb, &server.token) };
                             if let Some(text) = pairing {
                                 phone_pairing::qr(ui, &text);
-                                if self.phone_bluetooth { ui.label("Scan on Android. Bluetooth requires a paired PC and a configured outgoing COM port."); }
+                                if self.phone_bluetooth { ui.label("Scan on Android, then select this paired Windows PC."); }
                             } else { ui.label("Enter the PC's private IPv4 address to generate a QR code."); }
                         }
                         if ui.button("Stop and disconnect").clicked() { phone_action = 2; }
@@ -918,7 +927,7 @@ impl App {
                             if ui.selectable_label(self.phone_bluetooth, "Bluetooth (experimental)").clicked() { self.phone_bluetooth = true; self.phone_usb = false; }
                         });
                         #[cfg(windows)]
-                        if self.phone_bluetooth { ui.horizontal(|ui| { ui.label("Outgoing COM port:"); ui.text_edit_singleline(&mut self.phone_com); }); ui.label("Pair devices, configure an outgoing Bluetooth serial port for the phone, then start listening on Android."); }
+                        if self.phone_bluetooth { ui.label("Pair Windows and Android in system settings first; no COM port setup is needed."); }
                         #[cfg(windows)]
                         {
                             ui.horizontal(|ui| { ui.selectable_value(&mut self.phone_system_mode, false, "Qelem canvas"); ui.selectable_value(&mut self.phone_system_mode, true, "Windows tablet (experimental)"); });
@@ -998,7 +1007,7 @@ impl App {
             let wake = self.wake.clone();
             #[cfg(windows)]
             let result = if self.phone_bluetooth {
-                phone_tablet::Server::start_bluetooth(move || { let _ = wake.send_event(()); }, &self.phone_com)
+                phone_tablet::Server::start_bluetooth(move || { let _ = wake.send_event(()); })
             } else {
                 phone_tablet::Server::start(move || { let _ = wake.send_event(()); }, self.phone_usb)
             };

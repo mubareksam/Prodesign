@@ -37,8 +37,6 @@ class TabletActivity : Activity() {
     private val ui = Handler(Looper.getMainLooper())
     private var link: Link? = null
     private var returnToPairing = false
-    private var preparedBluetooth: BluetoothTransport? = null
-    private var scanning = false
     private var pendingBluetoothToken: String? = null
     private var mode = "WIFI"
     private lateinit var root: LinearLayout
@@ -72,35 +70,32 @@ class TabletActivity : Activity() {
         page.addView(status, LinearLayout.LayoutParams(-1, -2)); gap(page)
         page.addView(label("On Windows, open Qelem and press F8. Choose a connection and start pairing.").apply { gravity = Gravity.CENTER }); gap(page)
         row(page,
-            "Wi-Fi" to { pendingBluetoothToken = null; preparedBluetooth?.close(); preparedBluetooth = null; mode = "WIFI"; ip.isEnabled = true; status.text = "Private Wi-Fi or offline hotspot" },
-            "USB" to { pendingBluetoothToken = null; preparedBluetooth?.close(); preparedBluetooth = null; mode = "USB"; ip.setText("127.0.0.1"); ip.isEnabled = false; status.text = "USB: connect cable and set up ADB reverse" },
-            "Bluetooth" to { mode = "BT"; ip.isEnabled = false; status.text = "Bluetooth: use the paired phone's outgoing Windows COM port" })
+            "Wi-Fi" to { pendingBluetoothToken = null; mode = "WIFI"; ip.isEnabled = true; status.text = "Private Wi-Fi or offline hotspot" },
+            "USB" to { pendingBluetoothToken = null; mode = "USB"; ip.setText("127.0.0.1"); ip.isEnabled = false; status.text = "USB: connect cable and set up ADB reverse" },
+            "Bluetooth" to { mode = "BT"; ip.isEnabled = false; status.text = "Bluetooth: pair your PC first, then scan its QR" })
         gap(page)
         ip = field("PC IPv4 · e.g. 192.168.1.2", InputType.TYPE_CLASS_PHONE)
         code = field("32-character pairing code", InputType.TYPE_CLASS_TEXT or InputType.TYPE_TEXT_FLAG_NO_SUGGESTIONS)
         page.addView(ip, LinearLayout.LayoutParams(-1, dp(48))); gap(page)
         page.addView(code, LinearLayout.LayoutParams(-1, dp(48))); gap(page)
-        page.addView(button("Prepare Bluetooth service") { prepareBluetooth() }, LinearLayout.LayoutParams(-1, dp(46))); gap(page)
         page.addView(button("Scan QR & connect") { scan() }, LinearLayout.LayoutParams(-1, dp(50))); gap(page)
         page.addView(button("Connect manually") {
             val token = code.text.toString().trim().lowercase(Locale.ROOT)
             if (mode == "BT") {
-                if (!token.matches(Regex("[0-9a-f]{32}"))) status.text = "Enter the 32-character Windows pairing code." else connectBluetooth(token)
+                if (!token.matches(Regex("[0-9a-f]{32}"))) status.text = "Enter the 32-character Windows pairing code." else { pendingBluetoothToken = token; chooseBluetoothPc() }
             } else {
                 val host = if (mode == "USB") "127.0.0.1" else ip.text.toString().trim()
                 val p = Pairing.parse("QELEMPAIR1|$mode|$host|48652|$token")
                 if (p == null) status.text = "Enter a private PC IPv4 and a 32-character code." else connect(Link(p.host, p.token, allowUsbLoopback = p.usb))
             }
         }, LinearLayout.LayoutParams(-1, dp(50))); gap(page)
-        page.addView(button("Cancel connection") { pendingBluetoothToken = null; link?.close(); link = null; preparedBluetooth?.close(); preparedBluetooth = null; status.text = "Connection cancelled" }, LinearLayout.LayoutParams(-1, dp(46))); gap(page)
-        page.addView(label("USB requires ADB reverse. Bluetooth is experimental and needs a paired phone and Windows outgoing SPP COM port. Wi-Fi and QR codes are not encrypted.").apply { textSize = 13f; setTextColor(Color.LTGRAY); gravity = Gravity.CENTER })
+        page.addView(button("Cancel connection") { pendingBluetoothToken = null; link?.close(); link = null; status.text = "Connection cancelled" }, LinearLayout.LayoutParams(-1, dp(46))); gap(page)
+        page.addView(label("USB requires ADB reverse. Bluetooth is experimental; pair Android and Windows in system settings first. Wi-Fi and QR codes are not encrypted.").apply { textSize = 13f; setTextColor(Color.LTGRAY); gravity = Gravity.CENTER })
         if (mode != "WIFI") ip.isEnabled = false
     }
 
     private fun scan() {
         if (!packageManager.hasSystemFeature(PackageManager.FEATURE_CAMERA_ANY)) { status.text = "No camera available. Use manual pairing."; return }
-        // The Bluetooth listener must survive the scanner activity and camera permission prompt.
-        scanning = true
         if (checkSelfPermission(Manifest.permission.CAMERA) != PackageManager.PERMISSION_GRANTED) { requestPermissions(arrayOf(Manifest.permission.CAMERA), 20); return }
         try {
             // Explicit capture intent avoids the legacy IntentIntegrator's fragment dependency.
@@ -108,38 +103,33 @@ class TabletActivity : Activity() {
             intent.putExtra(Intents.Scan.FORMATS, "QR_CODE"); intent.putExtra(Intents.Scan.PROMPT_MESSAGE, "Scan Qelem's pairing QR")
             intent.putExtra(Intents.Scan.BEEP_ENABLED, false); intent.putExtra(Intents.Scan.ORIENTATION_LOCKED, false)
             startActivityForResult(intent, 21)
-        } catch (e: Exception) { scanning = false; status.text = "Scanner unavailable. Use manual pairing. ${e.message ?: ""}" }
+        } catch (e: Exception) { status.text = "Scanner unavailable. Use manual pairing. ${e.message ?: ""}" }
     }
     override fun onRequestPermissionsResult(requestCode: Int, permissions: Array<out String>, grantResults: IntArray) {
         super.onRequestPermissionsResult(requestCode, permissions, grantResults)
-        if (requestCode == 20) { if (grantResults.firstOrNull() == PackageManager.PERMISSION_GRANTED) scan() else { scanning = false; status.text = "Camera permission denied. Use manual pairing." } }
-        if (requestCode == 22) { if (grantResults.isNotEmpty() && grantResults.all { it == PackageManager.PERMISSION_GRANTED }) prepareBluetooth() else { pendingBluetoothToken = null; status.text = "Bluetooth permission denied." } }
+        if (requestCode == 20) { if (grantResults.firstOrNull() == PackageManager.PERMISSION_GRANTED) scan() else { status.text = "Camera permission denied. Use manual pairing." } }
+        if (requestCode == 22) { if (grantResults.isNotEmpty() && grantResults.all { it == PackageManager.PERMISSION_GRANTED }) chooseBluetoothPc() else { pendingBluetoothToken = null; status.text = "Bluetooth permission denied." } }
     }
     @Deprecated("CaptureActivity result")
     override fun onActivityResult(requestCode: Int, resultCode: Int, data: Intent?) {
         super.onActivityResult(requestCode, resultCode, data)
         if (requestCode != 21) return
-        scanning = false
         if (resultCode != RESULT_OK) { status.text = "Scan cancelled. You can scan again or connect manually."; return }
         val pair = Pairing.parse(data?.getStringExtra(Intents.Scan.RESULT) ?: "")
         if (pair == null) { status.text = "Invalid Qelem pairing QR."; return }
         code.setText(pair.token)
         if (pair.bluetooth) {
             mode = "BT"; ip.isEnabled = false
-            if (preparedBluetooth != null) connectBluetooth(pair.token)
-            else { pendingBluetoothToken = pair.token; prepareBluetooth() }
+            pendingBluetoothToken = pair.token; chooseBluetoothPc()
         } else {
-            preparedBluetooth?.close(); preparedBluetooth = null
             mode = if (pair.usb) "USB" else "WIFI"; ip.setText(pair.host); ip.isEnabled = !pair.usb
             connect(Link(pair.host, pair.token, allowUsbLoopback = pair.usb))
         }
     }
     @SuppressLint("MissingPermission")
-    private fun prepareBluetooth() {
-        if (mode != "BT") { status.text = "Select Bluetooth first."; return }
-        if (Build.VERSION.SDK_INT >= 31) {
-            val missing = listOf(Manifest.permission.BLUETOOTH_CONNECT, Manifest.permission.BLUETOOTH_ADVERTISE).filter { checkSelfPermission(it) != PackageManager.PERMISSION_GRANTED }
-            if (missing.isNotEmpty()) { requestPermissions(missing.toTypedArray(), 22); return }
+    private fun chooseBluetoothPc() {
+        if (Build.VERSION.SDK_INT >= 31 && checkSelfPermission(Manifest.permission.BLUETOOTH_CONNECT) != PackageManager.PERMISSION_GRANTED) {
+            requestPermissions(arrayOf(Manifest.permission.BLUETOOTH_CONNECT), 22); return
         }
         val adapter = getSystemService(BluetoothManager::class.java)?.adapter
         if (adapter == null || !adapter.isEnabled) { pendingBluetoothToken = null; status.text = "Enable Bluetooth on both devices and pair them in system settings first."; return }
@@ -147,39 +137,10 @@ class TabletActivity : Activity() {
         if (devices.isEmpty()) { pendingBluetoothToken = null; status.text = "Pair the Windows PC in Android Bluetooth settings first."; return }
         AlertDialog.Builder(this).setTitle("Choose your paired Windows PC")
             .setItems(devices.map { "${it.name ?: "Device"}  (${it.address})" }.toTypedArray()) { _, index ->
-                preparedBluetooth?.close()
-                val transport = BluetoothTransport(adapter, devices[index].address)
-                preparedBluetooth = transport
-                // A prepared but unused listener should not be left open indefinitely.
-                ui.postDelayed({
-                    if (preparedBluetooth === transport) {
-                        preparedBluetooth = null; pendingBluetoothToken = null; transport.close()
-                        if (::status.isInitialized) status.text = "Bluetooth preparation expired. Prepare it again."
-                    }
-                }, 300_000)
-                status.text = "Preparing Bluetooth service…"
-                Thread {
-                    try {
-                        transport.prepare()
-                        ui.post {
-                            if (preparedBluetooth === transport) {
-                                val token = pendingBluetoothToken
-                                pendingBluetoothToken = null
-                                if (token != null) connectBluetooth(token)
-                                else status.text = "Bluetooth ready. Configure Windows outgoing COM, start pairing, then scan its QR."
-                            }
-                        }
-                    } catch (e: Exception) {
-                        transport.close(); ui.post { if (preparedBluetooth === transport) { preparedBluetooth = null; pendingBluetoothToken = null; status.text = "Bluetooth unavailable: ${e.message ?: "unknown error"}" } }
-                    }
-                }.start()
+                val token = pendingBluetoothToken
+                pendingBluetoothToken = null
+                if (token != null) connect(Link("", token, transport = BluetoothTransport(devices[index])))
             }.setNegativeButton("Cancel") { _, _ -> pendingBluetoothToken = null }.setOnCancelListener { pendingBluetoothToken = null }.show()
-    }
-    private fun connectBluetooth(token: String) {
-        val transport = preparedBluetooth
-        if (transport == null) { status.text = "Select Bluetooth, then prepare the service and select your PC first."; return }
-        preparedBluetooth = null
-        connect(Link("", token, transport = transport))
     }
     private fun connect(connection: Link) {
         status.text = if (mode == "BT") "Waiting for PC over Bluetooth…" else "Connecting…"
@@ -193,12 +154,20 @@ class TabletActivity : Activity() {
         page.addView(label("Choose Qelem canvas or Windows tablet mode in the PC pairing panel to match your remote. App detection is not automatic.").apply { setTextColor(Color.LTGRAY) }); gap(page, 16)
         page.addView(button("Disconnect") { link = null; connection.close(); pairing("Disconnected") }, LinearLayout.LayoutParams(-1, dp(48)))
     }
-    private fun drawing(connection: Link, qelem: Boolean) {
+    private fun drawing(connection: Link, qelem: Boolean, mouse: Boolean = false) {
         val page = column()
         row(page, "‹ Remotes" to { connection.send("C"); profiles(connection) }, "Undo" to { connection.send("UNDO") }, "Redo" to { connection.send("REDO") })
         gap(page, 4)
         if (!qelem) { row(page, "Save" to { connection.send("SAVE") }, "Esc" to { connection.send("ESCAPE") }, "Zoom −" to { connection.send("ZOOMOUT") }, "Zoom +" to { connection.send("ZOOMIN") }); gap(page, 4) }
         if (qelem) { row(page, "Brush" to { connection.send("PAINT") }, "Erase" to { connection.send("ERASE") }, "Smudge" to { connection.send("SMUDGE") }, "Pick" to { connection.send("PICK") }); gap(page, 4) }
+        row(page, "Tablet" to { if (mouse) { connection.send("C"); drawing(connection, qelem, false) } }, "Mouse" to { if (!mouse) { connection.send("C"); drawing(connection, qelem, true) } })
+        gap(page, 4)
+        if (mouse) {
+            page.addView(label("Mouse: slide to move from the current cursor position; tap to click.").apply { textSize = 13f; setTextColor(Color.LTGRAY) })
+            page.addView(MousePad(this, connection), LinearLayout.LayoutParams(-1, 0, 1f))
+            row(page, "Left click" to { connection.send("LEFT") }, "Right click" to { connection.send("RIGHT") })
+            return
+        }
         var direct = false
         val hint = label("Move: slide to position · double-tap & hold to draw") .apply { textSize = 12f; setTextColor(Color.LTGRAY) }
         val drawToggle = Switch(this).apply { text = "Direct draw"; setTextColor(Color.WHITE); setOnCheckedChangeListener { _, checked -> direct = checked; connection.send("C"); hint.text = if (checked) "Draw: touch to paint · turn off to move" else "Move: slide to position · double-tap & hold to draw" } }
@@ -216,9 +185,32 @@ class TabletActivity : Activity() {
             slider("Size", "SIZE"); slider("Opacity", "OPACITY")
         }
     }
-    override fun onPause() { super.onPause(); if (!scanning) { preparedBluetooth?.close(); preparedBluetooth = null }; if (link != null) { returnToPairing = true; link?.close(); link = null } }
-    override fun onDestroy() { preparedBluetooth?.close(); preparedBluetooth = null; super.onDestroy() }
+    override fun onPause() { super.onPause(); if (link != null) { returnToPairing = true; link?.close(); link = null } }
+    override fun onDestroy() { super.onDestroy() }
     override fun onResume() { super.onResume(); if (returnToPairing && ::root.isInitialized) { returnToPairing = false; pairing("Disconnected while away") } }
+
+    private class MousePad(activity: Activity, private val link: Link) : View(activity) {
+        private val motion = RelativeMotion(10f * resources.displayMetrics.density)
+        private val paint = Paint(Paint.ANTI_ALIAS_FLAG)
+        private var pointer = -1; private var blocked = false
+        override fun performClick(): Boolean { super.performClick(); return true }
+        override fun onDraw(canvas: Canvas) { canvas.drawColor(Color.rgb(27, 27, 30)); paint.color = Color.rgb(240, 180, 106); paint.style = Paint.Style.STROKE; paint.strokeWidth = 2f; canvas.drawRect(1f, 1f, width - 1f, height - 1f, paint) }
+        override fun onTouchEvent(event: MotionEvent): Boolean {
+            when (event.actionMasked) {
+                MotionEvent.ACTION_DOWN -> { pointer = event.getPointerId(0); blocked = false; motion.down(event.x, event.y) }
+                MotionEvent.ACTION_POINTER_DOWN -> { blocked = true; pointer = -1 }
+                MotionEvent.ACTION_MOVE -> if (!blocked) {
+                    val i = event.findPointerIndex(pointer)
+                    if (i >= 0) motion.move(event.getX(i), event.getY(i), width, height)?.let { (dx,dy) ->
+                        if (dx != 0f || dy != 0f) link.send(String.format(Locale.ROOT, "R %.5f %.5f", dx, dy))
+                    }
+                }
+                MotionEvent.ACTION_UP -> { if (!blocked && pointer >= 0 && motion.isTap()) link.send("LEFT"); pointer = -1; blocked = false; performClick() }
+                MotionEvent.ACTION_CANCEL -> { pointer = -1; blocked = true }
+            }
+            return true
+        }
+    }
 
     private class Pad(activity: Activity, private val link: Link, private val penOnly: () -> Boolean, private val direct: () -> Boolean) : View(activity) {
         private val paint = Paint(Paint.ANTI_ALIAS_FLAG)
