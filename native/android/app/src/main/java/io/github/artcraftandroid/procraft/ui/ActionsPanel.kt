@@ -157,6 +157,8 @@ fun ActionsPanel(vm: CanvasViewModel, arrowX: Dp, modifier: Modifier = Modifier)
     var scalingMenu by remember { mutableStateOf(false) }
     // a PDF waiting on its quality
     var pdfAsking by remember { mutableStateOf<CanvasViewModel.Export?>(null) }
+    // true: storyboard, false: sprite sheet, null: no sheet dialog.
+    var qelemSheet by remember { mutableStateOf<Boolean?>(null) }
     // made outside the panel, which may be closed meanwhile; cancelled or failed (that is told),
     // nothing is shared
     fun share(kind: CanvasViewModel.Export, pdfQuality: Int = 100) {
@@ -271,6 +273,8 @@ fun ActionsPanel(vm: CanvasViewModel, arrowX: Dp, modifier: Modifier = Modifier)
                 Heading("Share Layers"),
                 Act("PDF") { pdfAsking = CanvasViewModel.Export.LAYERS_PDF },
                 Act("PNG Files") { share(CanvasViewModel.Export.LAYER_PNGS) },
+                Act("Storyboard PNG") { qelemSheet = true },
+                Act("Sprite sheet PNG") { qelemSheet = false },
                 Act("Animated GIF") { vm.animatedExport = CanvasViewModel.Animated.GIF },
                 Act("Animated PNG") { vm.animatedExport = CanvasViewModel.Animated.PNG },
                 Act("Animated MP4") { vm.animatedExport = CanvasViewModel.Animated.MP4 },
@@ -447,6 +451,17 @@ fun ActionsPanel(vm: CanvasViewModel, arrowX: Dp, modifier: Modifier = Modifier)
     PdfQualityAlert(pdfAsking != null, onCancel = { pdfAsking = null }) { quality ->
         pdfAsking?.let { share(it, quality.jpeg) }
         pdfAsking = null
+    }
+    qelemSheet?.let { storyboard ->
+        QelemSheetDialog(storyboard, vm.animationFrameCount(), onCancel = { qelemSheet = null }) { columns, tile ->
+            qelemSheet = null
+            vm.viewModelScope.launch {
+                vm.shareQelemSheet(storyboard, columns, tile)?.let { file ->
+                    runCatching { shareFile(context, file, "image/png") }
+                        .onFailure { vm.showNotice("No app could share this PNG.", warning = true) }
+                }
+            }
+        }
     }
     dialog?.let { (title, text) ->
         AlertDialog(

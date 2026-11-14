@@ -9,7 +9,7 @@ repo = root.parent
 src = root / 'android/app/src/main'
 settings = (root / 'android/app/build.gradle.kts').read_text()
 assert 'applicationId = "com.qalam.studio.nativepreview"' in settings
-assert 'versionName = "0.1-native-preview"' in settings
+assert 'versionName = "0.2-native-preview"' in settings
 assert ET.parse(src / 'res/values/strings.xml').getroot().find("string[@name='app_name']").text == 'Qelem'
 theme = (src / 'java/io/github/artcraftandroid/procraft/ui/Theme.kt').read_text()
 assert 'Color(0xFFBB5800)' in theme and 'accentGiven ?: BrandAccent' in theme
@@ -27,6 +27,9 @@ with zipfile.ZipFile(repo / 'artifacts/Qelem-7.23-dev-source.zip') as legacy:
 assert not (src / 'res/mipmap-anydpi/ic_launcher.xml').exists()
 ui = (src / 'java/io/github/artcraftandroid/procraft/ui/AnimationUi.kt').read_text()
 vm = (src / 'java/io/github/artcraftandroid/procraft/canvas/CanvasViewModel.kt').read_text()
-assert 'Reverse preview only' in ui and 'qelemPreviewOrder(original, reverse)' in vm and 'qelemTimelineSlot(at, order.size, reverse)' in vm
+assert 'Reverse preview only' in ui and 'qelemPreviewOrder(qelemRangeSlots(original, bounds), reverse)' in vm and 'playingSlot = slot' in vm
+assert 'Set preview start here' in ui and 'Set preview end here' in ui and 'Preview speed' in ui
+assert 'Storyboard PNG' in (src / 'java/io/github/artcraftandroid/procraft/ui/ActionsPanel.kt').read_text()
+assert 'Share palette chart PNG' in (src / 'java/io/github/artcraftandroid/procraft/ui/ColorPanel.kt').read_text()
 assert re.search(r'fun closeArtwork\(\)\s*\{\s*stopPlaying\(\)\s*reversePreview = false', vm)
 print('Static Qelem fusion safety and branding checks passed (not an Android build)')

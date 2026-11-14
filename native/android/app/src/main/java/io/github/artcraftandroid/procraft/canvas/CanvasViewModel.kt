@@ -146,7 +146,7 @@ internal fun brushFileName(name: String, single: Boolean): String {
 
 /** The gallery, the open artwork and the state of the controls around it; outlives configuration changes. */
 class CanvasViewModel(app: Application) : AndroidViewModel(app) {
-    var session: CanvasSession? = null
+    @Volatile var session: CanvasSession? = null
         private set
 
     /** Frosted panels open over the canvas, for the engine to blur what is behind them. */
@@ -2439,6 +2439,8 @@ class CanvasViewModel(app: Application) : AndroidViewModel(app) {
     fun closeArtwork() {
         stopPlaying()
         reversePreview = false
+        previewSpeedPercent = 100
+        clearPreviewRange()
         endFilling()
         endLayerOpacity()
         endTransform(true)
@@ -3768,7 +3770,7 @@ class CanvasViewModel(app: Application) : AndroidViewModel(app) {
             // full, then the check drawn in it before the card goes
             exportShown = ExportShown(1f, done = true)
             kotlinx.coroutines.delay(EXPORT_DONE_MS)
-            return made
+            return if (exportCancelled) null else made
         } finally {
             exportShown = null
             timeLapseExporting = false
@@ -5930,6 +5932,63 @@ class CanvasViewModel(app: Application) : AndroidViewModel(app) {
     /** One animation export at a time: they write the same file. */
     private val animationExports = Mutex()
 
+    @Volatile private var qelemSheetProgress = 0f
+
+    /** Share a bounded PNG of native-rendered source frames, without editing the artwork. */
+    suspend fun shareQelemSheet(storyboard: Boolean, columns: Int, tile: Int): File? {
+        val s = session ?: return null
+        val source = canvasSize()
+        if (source.first < 1 || source.second < 1 || source.first.toLong() * source.second > 4L * 1024 * 1024) {
+            showNotice("Sheet export needs a canvas of at most 4 megapixels.", warning = true)
+            return null
+        }
+        val frames = s.animationFrames()
+        val slots = s.animationSequence()
+        val plan = qelemSheetPlan(frames.size, columns, tile, storyboard)
+        if (plan == null) {
+            showNotice("Choose a smaller sheet (up to 60 frames and 8 megapixels).", warning = true)
+            return null
+        }
+        qelemSheetProgress = 0f
+        var temporary: File? = null
+        var delivered = false
+        try {
+            val result = withCard("The frame sheet couldn't be exported.", { qelemSheetProgress }) {
+                animationExports.withLock {
+                    withContext(Dispatchers.IO) {
+                        try {
+                            val dir = File(getApplication<Application>().cacheDir, "exports").apply { mkdirs() }
+                            val file = File.createTempFile(if (storyboard) "qelem-storyboard-" else "qelem-sprites-", ".png", dir)
+                            temporary = file
+                            val holds = frames.indices.map { i -> slots.count { it.toInt() == i }.coerceAtLeast(1) }
+                            val ok = qelemWriteSheet(plan, storyboard, holds, file,
+                                valid = { !exportCancelled && session === s && s.animationFrames() == frames && s.animationSequence() == slots },
+                                readFrame = { i -> s.animationFrame(i.toUInt(), !storyboard, tile.toUInt())?.let {
+                                    QelemSheetFrame(it.width.toInt(), it.height.toInt(), it.rgba)
+                                } },
+                                progress = { qelemSheetProgress = it },
+                            )
+                            if (!ok || exportCancelled) return@withContext null
+                            file
+                        } catch (cancelled: kotlinx.coroutines.CancellationException) {
+                            throw cancelled
+                        } catch (e: Exception) {
+                            Log.e(TAG, "exporting Qelem frame sheet", e)
+                            null
+                        } catch (e: OutOfMemoryError) {
+                            Log.e(TAG, "not enough memory for Qelem frame sheet", e)
+                            null
+                        }
+                    }
+                }
+            }
+            delivered = result != null
+            return result
+        } finally {
+            if (!delivered) temporary?.delete()
+        }
+    }
+
     /** The artwork's own frame rate, which an animated export starts at: Animation Assist's, else 15. */
     fun artworkFps(): Float = (session?.animationSettings()?.fps?.toInt() ?: ANIMATION_FPS).toFloat()
 
@@ -6092,6 +6151,43 @@ class CanvasViewModel(app: Application) : AndroidViewModel(app) {
                 val base = p.name.filter { it.isLetterOrDigit() || it in " _-" }.trim().ifEmpty { "Palette" }
                 File(File(getApplication<Application>().cacheDir, "exports").apply { mkdirs() }, "$base.swatches").also { it.writeBytes(bytes) }
             }.onFailure { Log.e(TAG, "sharing a palette", it) }.getOrNull()
+        }
+    }
+
+    /** Share a snapshot of a saved palette as a labelled, flat PNG chart. */
+    suspend fun shareQelemPaletteChart(i: Int): File? {
+        val palette = palettes.getOrNull(i) ?: return null
+        val colors = palette.colors.filterNotNull()
+        if (colors.isEmpty()) {
+            showNotice("Add a colour to this palette first.", warning = true)
+            return null
+        }
+        var temporary: File? = null
+        var delivered = false
+        try {
+            val result = withCard("The palette chart couldn't be exported.", { 0f }) {
+                withContext(Dispatchers.IO) {
+                    try {
+                        val dir = File(getApplication<Application>().cacheDir, "exports").apply { mkdirs() }
+                        val output = File.createTempFile("qelem-palette-", ".png", dir)
+                        temporary = output
+                        if (!qelemWritePaletteChart(palette.name, colors, output) { !exportCancelled }) return@withContext null
+                        output
+                    } catch (cancelled: kotlinx.coroutines.CancellationException) {
+                        throw cancelled
+                    } catch (e: Exception) {
+                        Log.e(TAG, "exporting Qelem palette chart", e)
+                        null
+                    } catch (e: OutOfMemoryError) {
+                        Log.e(TAG, "not enough memory for Qelem palette chart", e)
+                        null
+                    }
+                }
+            }
+            delivered = result != null
+            return result
+        } finally {
+            if (!delivered) temporary?.delete()
         }
     }
 
@@ -7467,6 +7563,44 @@ class CanvasViewModel(app: Application) : AndroidViewModel(app) {
         reversePreview = !reversePreview
     }
 
+    /** Preview speed is temporary and never changes the document FPS or exports. */
+    var previewSpeedPercent by mutableStateOf(100)
+        private set
+
+    fun setPreviewSpeed(percent: Int) {
+        if (percent !in listOf(50, 100, 200)) return
+        stopPlaying()
+        previewSpeedPercent = percent
+    }
+
+    /** Preview-only range bound to frame layer IDs; not written into the artwork or exports. */
+    var previewFirst by mutableStateOf<ULong?>(null)
+        private set
+    var previewLast by mutableStateOf<ULong?>(null)
+        private set
+
+    fun clearPreviewRange() {
+        stopPlaying()
+        previewFirst = null
+        previewLast = null
+    }
+
+    fun setPreviewRangeHere(start: Boolean) {
+        val at = currentFrame ?: return
+        if (at !in animationFrames.indices) return
+        stopPlaying()
+        val old = qelemPreviewBounds(animationFrames, previewFirst, previewLast)
+        val first = if (start) at else minOf(old?.first ?: 0, at)
+        val last = if (start) maxOf(old?.last ?: animationFrames.lastIndex, at) else at
+        previewFirst = animationFrames[first]
+        previewLast = animationFrames[last]
+        frameOptionsOpen = false
+    }
+
+    fun previewBounds(): IntRange? = qelemPreviewBounds(animationFrames, previewFirst, previewLast)
+
+    fun previewSlotCount(): Int = qelemRangeSlots(frameSlots, previewBounds()).size
+
     var animationSettingsOpen by mutableStateOf(false)
     var frameOptionsOpen by mutableStateOf(false)
 
@@ -7489,6 +7623,8 @@ class CanvasViewModel(app: Application) : AndroidViewModel(app) {
         animation = settings
         if (settings == null) {
             reversePreview = false
+            previewSpeedPercent = 100
+            clearPreviewRange()
             animationFrames = emptyList()
             frameSlots = emptyList()
             currentFrame = null
@@ -7497,6 +7633,7 @@ class CanvasViewModel(app: Application) : AndroidViewModel(app) {
             return
         }
         animationFrames = s.animationFrames()
+        if ((previewFirst != null || previewLast != null) && previewBounds() == null) clearPreviewRange()
         frameSlots = s.animationSequence().map { it.toInt() }
         currentFrame = s.currentFrame()?.toInt()
         refreshFrameThumbnails()
@@ -7635,7 +7772,8 @@ class CanvasViewModel(app: Application) : AndroidViewModel(app) {
         // the frames in playing order, each as often as it is held (the shared core's)
         val reverse = reversePreview
         val original = s.animationSequence().map { it.toInt() }
-        val order = qelemPreviewOrder(original, reverse)
+        val bounds = previewBounds()
+        val order = qelemPreviewOrder(qelemRangeSlots(original, bounds), reverse)
         if (order.isEmpty()) return
         animationSettingsOpen = false
         frameOptionsOpen = false
@@ -7644,12 +7782,13 @@ class CanvasViewModel(app: Application) : AndroidViewModel(app) {
             var at = 0
             var step = 1
             while (true) {
-                val frame = order[at]
+                val slot = order[at]
+                val frame = original[slot]
                 playingFrame = frame
-                // The displayed timeline is still in forward order.
-                playingSlot = qelemTimelineSlot(at, order.size, reverse)
+                // Keep the indicator aligned to the original full timeline.
+                playingSlot = slot
                 s.setPlayFrame(frame.toUInt())
-                kotlinx.coroutines.delay(1000L / (animation?.fps ?: a.fps).toInt().coerceAtLeast(1))
+                kotlinx.coroutines.delay(qelemPreviewDelayMs((animation?.fps ?: a.fps).toInt(), previewSpeedPercent))
                 // round again, turned back, or (a single pass) done
                 val next = io.github.artcraftandroid.procraft.core.animationNextStep(a.playback, order.size.toUInt(), at.toUInt(), step) ?: break
                 at = next.at.toInt()

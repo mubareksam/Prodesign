@@ -37,6 +37,7 @@ import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.Icon
 import androidx.compose.material3.Text
+import androidx.lifecycle.viewModelScope
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
@@ -1222,6 +1223,15 @@ private fun PaletteMenu(vm: CanvasViewModel, i: Int) {
             MenuItem(PcIcons.MenuShare, "Share") {
                 open = false
                 scope.launch { vm.paletteFile(i)?.let { shareFile(context, it, "application/octet-stream") } }
+            }
+            MenuItem(PcIcons.MenuShare, "Share palette chart PNG") {
+                open = false
+                vm.viewModelScope.launch {
+                    vm.shareQelemPaletteChart(i)?.let { file ->
+                        runCatching { shareFile(context, file, "image/png") }
+                            .onFailure { vm.showNotice("No app could share this PNG.", warning = true) }
+                    }
+                }
             }
             if (vm.palettes.size > 1) {
                 MenuDivider()

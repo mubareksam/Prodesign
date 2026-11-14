@@ -5,6 +5,8 @@ import androidx.compose.animation.core.calculateTargetValue
 import androidx.compose.animation.core.exponentialDecay
 import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
+import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.verticalScroll
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.gestures.Orientation
@@ -22,6 +24,7 @@ import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.offset
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.requiredSize
@@ -62,6 +65,7 @@ import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import io.github.artcraftandroid.procraft.canvas.CanvasViewModel
+import io.github.artcraftandroid.procraft.canvas.qelemCycleSlots
 import io.github.artcraftandroid.procraft.core.AnimationPlayback
 import kotlin.math.floor
 import kotlin.math.roundToInt
@@ -282,7 +286,8 @@ private fun DownPopover(width: Dp, arrowX: Dp, modifier: Modifier, content: @Com
             drawPath(outline, fill)
         }.pointerInput(Unit) { detectTapGestures { } },
     ) {
-        Column(Modifier.padding(start = 8.dp, end = 8.dp, top = 8.dp, bottom = Pc.ArrowHeight + 8.dp), content = content)
+        val maxHeight = (androidx.compose.ui.platform.LocalConfiguration.current.screenHeightDp - 135).coerceAtLeast(160).dp
+        Column(Modifier.heightIn(max = maxHeight).verticalScroll(rememberScrollState()).padding(start = 8.dp, end = 8.dp, top = 8.dp, bottom = Pc.ArrowHeight + 8.dp), content = content)
     }
 }
 
@@ -315,8 +320,30 @@ private fun ColumnScope.AnimationSettingsPage(vm: CanvasViewModel, onColors: () 
         ValueSlider("Onion skin opacity", "${(a.onionOpacity * 100).roundToInt()} %", a.onionOpacity) { v -> vm.changeAnimation { it.copy(onionOpacity = v) } }
     }
     Spacer(Modifier.height(9.dp))
+    val bounds = vm.previewBounds()
+    val slots = qelemCycleSlots(vm.previewSlotCount(), a.playback == AnimationPlayback.PING_PONG)
+    val seconds = slots.toDouble() * io.github.artcraftandroid.procraft.canvas.qelemPreviewDelayMs(a.fps.toInt(), vm.previewSpeedPercent) / 1000.0
+    Text(
+        "Preview: ${bounds?.let { "${it.first + 1}–${it.last + 1}" } ?: "all frames"} · $slots ticks · ${"%.2f".format(seconds)} s/cycle. Export is unchanged.",
+        color = Pc.PanelTitle, fontSize = 13.sp, modifier = Modifier.padding(horizontal = 14.dp, vertical = 6.dp),
+    )
     Group {
+        Row(Modifier.fillMaxWidth().height(44.5.dp).padding(start = 16.dp, end = 8.dp), verticalAlignment = Alignment.CenterVertically) {
+            Text("Preview speed", color = Pc.PanelTitle, fontSize = 15.sp, modifier = Modifier.weight(1f))
+            for (speed in listOf(50, 100, 200)) {
+                val on = vm.previewSpeedPercent == speed
+                Box(Modifier.clip(RoundedCornerShape(6.dp)).background(if (on) Pc.Accent else Color.Transparent)
+                    .clickable { vm.setPreviewSpeed(speed) }.padding(horizontal = 8.dp, vertical = 7.dp), contentAlignment = Alignment.Center) {
+                    Text("${speed}%", color = if (on) Color.White else Pc.PanelTitle, fontSize = 13.sp)
+                }
+            }
+        }
+        RowLine()
         ToggleRow("Reverse preview only", vm.reversePreview, 44.5.dp) { vm.toggleReversePreview() }
+        RowLine()
+        Row(Modifier.fillMaxWidth().height(44.5.dp).clickable { vm.clearPreviewRange() }.padding(start = 16.dp), verticalAlignment = Alignment.CenterVertically) {
+            Text("Preview all frames", color = Pc.PanelTitle, fontSize = 17.sp)
+        }
         RowLine()
         ToggleRow("Blend primary frame", a.blendPrimary, 44.5.dp) { vm.changeAnimation { it.copy(blendPrimary = !it.blendPrimary) } }
         RowLine()
@@ -407,6 +434,16 @@ private fun ColumnScope.FrameOptionsPage(vm: CanvasViewModel) {
         Spacer(Modifier.height(10.dp))
     }
     Group {
+        if (!a.pages) {
+            Row(Modifier.fillMaxWidth().height(44.dp).clickable { vm.setPreviewRangeHere(true) }.padding(start = 16.dp), verticalAlignment = Alignment.CenterVertically) {
+                Text("Set preview start here", color = Pc.PanelTitle, fontSize = 17.sp)
+            }
+            RowLine()
+            Row(Modifier.fillMaxWidth().height(44.dp).clickable { vm.setPreviewRangeHere(false) }.padding(start = 16.dp), verticalAlignment = Alignment.CenterVertically) {
+                Text("Set preview end here", color = Pc.PanelTitle, fontSize = 17.sp)
+            }
+            RowLine()
+        }
         Row(Modifier.fillMaxWidth().height(44.dp).clickable { vm.duplicateFrame() }.padding(start = 16.dp), verticalAlignment = Alignment.CenterVertically) {
             Text("Duplicate", color = Pc.PanelTitle, fontSize = 17.sp)
         }
