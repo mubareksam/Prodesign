@@ -82,6 +82,8 @@ pub struct AnimationBar {
     /// frame's layer current).
     pub frame_actions: Vec<procraft_core::PluginAction>,
     pub run_action: Option<String>,
+    /// Expanded workspace is a view of the same frame layers; Page Assist stays compact.
+    studio: bool,
     settings_open: bool,
     options_open: bool,
     /// The onion skins' colours page, editing the colour after the current frame (else before).
@@ -91,17 +93,48 @@ pub struct AnimationBar {
     /// The frames' pictures, and the edits and time they were read at.
     thumbs: HashMap<u64, TextureHandle>,
     thumbs_read: Option<(u64, usize, Instant)>,
-    /// The frame and how far into its hold the timeline was last left, and its hold's slider held.
-    held: (usize, usize),
+    /// Stable frame ID and held offset; it follows the frame through reorder and undo.
+    held: (Option<u64>, usize),
     holding: bool,
 }
 
 /// Where frame `current` is among the timeline's `slots` (each frame's index, again for each frame
 /// it is held), `held` being the frame and held place left on.
-fn slot_of(slots: &[usize], current: usize, held: (usize, usize)) -> Option<usize> {
+fn slot_of(slots: &[usize], current: usize, id: Option<u64>, held: (Option<u64>, usize)) -> Option<usize> {
     let first = slots.iter().position(|f| *f == current)?;
     let places = slots.iter().filter(|f| **f == current).count();
-    Some(first + if held.0 == current { held.1.min(places.saturating_sub(1)) } else { 0 })
+    Some(first + if id.is_some() && held.0 == id { held.1.min(places.saturating_sub(1)) } else { 0 })
+}
+
+/// Clamp navigation at the ends, including held slots.
+fn step_slot(current: usize, count: usize, delta: i8) -> Option<usize> {
+    if count == 0 { return None; }
+    let current = current.min(count - 1);
+    Some(if delta < 0 { current.saturating_sub(1) } else if delta > 0 { current.saturating_add(1).min(count - 1) } else { current })
+}
+
+fn timeline_time(slot: usize, fps: u32) -> String {
+    let fps = fps.clamp(1, 60) as usize;
+    let seconds = slot / fps;
+    format!("{}:{:02}:{:02}", seconds / 60, seconds % 60, slot % fps)
+}
+
+#[cfg(test)]
+mod timeline_navigation_tests {
+    use super::{slot_of, step_slot, timeline_time};
+    #[test]
+    fn steps_and_time_include_held_slots_and_clamp() {
+        let slots = [0, 0, 1, 2, 2];
+        assert_eq!(step_slot(0, 0, 1), None);
+        assert_eq!(step_slot(0, slots.len(), -1), Some(0));
+        assert_eq!(step_slot(0, slots.len(), 1), Some(1));
+        assert_eq!(step_slot(4, slots.len(), 1), Some(4));
+        assert_eq!(slot_of(&slots, 2, Some(42), (Some(42), 1)), Some(4));
+        assert_eq!(slot_of(&slots, 1, Some(42), (Some(42), 9)), Some(2));
+        assert_eq!(slot_of(&slots, 2, Some(8), (Some(42), 1)), Some(3));
+        assert_eq!(timeline_time(25, 24), "0:01:01");
+        assert_eq!(timeline_time(1440, 24), "1:00:00");
+    }
 }
 
 /// What the bar did that the app shows (a message).
@@ -156,6 +189,9 @@ impl AnimationBar {
         self.play_on(ctx, session, &settings);
         self.read_thumbs(ctx, session, &frames);
         let screen = ctx.content_rect();
+        if self.studio && !settings.pages && screen.width() >= 520.0 && screen.height() >= 300.0 {
+            return self.show_studio(ctx, look, session, palettes, harmony, &settings, &frames, &slots, current);
+        }
         let width = if screen.width() > screen.height() { WIDE_BAR } else { UPRIGHT_BAR };
         let bar = Rect::from_min_size(
             pos2(screen.center().x - width / 2.0, screen.bottom() - BAR_GAP - BAR_HEIGHT),
@@ -216,6 +252,15 @@ impl AnimationBar {
                     self.colours = None;
                 }
             }
+            if !pages && screen.width() >= 520.0 && screen.height() >= 300.0 {
+                let center = pos2(bar.center().x, y);
+                let studio = text(ui.painter(), center, Align2::CENTER_CENTER, "Timeline", 15.0, Weight::Regular, ink);
+                if tapped(ui, studio, "studio") {
+                    self.studio = true;
+                    self.settings_open = false;
+                    self.options_open = false;
+                }
+            }
             let track = Rect::from_min_size(bar.min + vec2(12.0, 42.0), vec2(width - 24.0, 44.0));
             self.timeline(ui, session, &frames, &slots, current, track);
         });
@@ -235,8 +280,94 @@ impl AnimationBar {
             && let Some(index) = current
         {
             let first = slots.iter().position(|f| *f == index);
-            let place = slot_of(&slots, index, self.held).zip(first).map_or(0, |(at, first)| at - first);
+            let place = slot_of(&slots, index, frames.get(index).copied(), self.held).zip(first).map_or(0, |(at, first)| at - first);
             self.options_popover(ctx, session, &settings, &frames, index, place, bar);
+        }
+        said
+    }
+
+    /// A larger but still single-track view of the same Animation Assist artwork.
+    #[allow(clippy::too_many_arguments)]
+    fn show_studio(
+        &mut self, ctx: &egui::Context, look: &mut Look, session: &CanvasSession,
+        palettes: &Palettes, harmony: HarmonyKind, settings: &AnimationSettings,
+        frames: &[u64], slots: &[usize], current: Option<usize>,
+    ) -> Option<Said> {
+        let screen = ctx.content_rect();
+        let width = (screen.width() - 16.0).min(740.0);
+        let bar = Rect::from_min_size(pos2(screen.center().x - width / 2.0, screen.bottom() - BAR_GAP - 150.0), vec2(width, 150.0));
+        let mut said = None;
+        let mut settings_at = 0.0;
+        let focus = self.playing.as_ref().map(|p| p.at as usize)
+            .or_else(|| current.and_then(|c| slot_of(slots, c, frames.get(c).copied(), self.held))).unwrap_or(0);
+        egui::Area::new(Id::unique("studio timeline bar")).fixed_pos(bar.min).order(Order::Middle).show(ctx, |ui| {
+            ui.allocate_rect(bar, Sense::click_and_drag());
+            ui.painter().rect_filled(bar, 22, argb(BAR_FILL));
+            let button = |ui: &Ui, x: f32, y: f32, w: f32, label: &str, hint: &str, active: bool| {
+                let r = Rect::from_min_size(pos2(bar.left() + x, bar.top() + y), vec2(w, 38.0));
+                if active { ui.painter().rect_filled(r.shrink(2.0), 10, argb(pc::ACCENT)); }
+                let color = if active { Color32::WHITE } else { argb(BAR_INK) };
+                text(ui.painter(), r.center(), Align2::CENTER_CENTER, label, 14.0, Weight::Regular, color);
+                ui.interact(r, ui.scope_id().with(hint), Sense::click()).on_hover_text(hint).clicked()
+            };
+            let mut jump = None;
+            if button(ui, 8.0, 5.0, 40.0, "|‹", "First timeline slot", false) { jump = Some(0); }
+            if button(ui, 48.0, 5.0, 40.0, "‹", "Previous timeline slot", false) { jump = step_slot(focus, slots.len(), -1); }
+            let playing = self.playing.is_some();
+            if button(ui, 90.0, 5.0, 55.0, if playing { "Pause" } else { "Play" }, if playing { "Pause animation" } else { "Play animation" }, true) {
+                if playing { self.stop(session); } else { self.play(ctx, session); }
+            }
+            if button(ui, 147.0, 5.0, 40.0, "›", "Next timeline slot", false) { jump = step_slot(focus, slots.len(), 1); }
+            if button(ui, 187.0, 5.0, 40.0, "›|", "Last timeline slot", false) { jump = slots.len().checked_sub(1); }
+            if let Some(slot) = jump.filter(|i| *i < slots.len()) {
+                self.stop(session);
+                self.settings_open = false; self.options_open = false;
+                self.go_to(session, frames, slots, slot, current);
+            }
+            let time = timeline_time(focus, settings.fps);
+            text(ui.painter(), pos2(bar.center().x + 55.0, bar.top() + 24.0), Align2::CENTER_CENTER, &time, 15.0, Weight::Bold, argb(BAR_INK));
+            if button(ui, width - 85.0, 5.0, 77.0, "Canvas", "Return to compact timeline", false) {
+                self.studio = false; self.settings_open = false; self.options_open = false;
+            }
+            if button(ui, 8.0, 45.0, 65.0, "− Hold", "Shorten frame hold", false) {
+                self.stop(session); self.settings_open = false; self.options_open = false;
+                if let Some(id) = current.and_then(|i| frames.get(i)).copied() { session.adjust_animation_holds(vec![id], false); }
+            }
+            if button(ui, 73.0, 45.0, 65.0, "+ Hold", "Lengthen frame hold", false) {
+                self.stop(session); self.settings_open = false; self.options_open = false;
+                if let Some(id) = current.and_then(|i| frames.get(i)).copied() { session.adjust_animation_holds(vec![id], true); }
+            }
+            for (earlier, x, label, hint) in [(true, 140.0, "‹ Frame", "Move frame earlier"), (false, 220.0, "Frame ›", "Move frame later")] {
+                if button(ui, x, 45.0, 78.0, label, hint, false) {
+                    self.stop(session); self.settings_open = false; self.options_open = false;
+                    if let Some(id) = current.and_then(|i| frames.get(i)).copied() {
+                        if !session.move_animation_frame(id, earlier) {
+                            crate::files::say("Cannot move at an end, across a pinned frame, or with top-level clipping.");
+                        }
+                    }
+                }
+            }
+            if button(ui, 302.0, 45.0, 80.0, "Settings", "Playback and onion skin settings", self.settings_open) {
+                self.settings_open = !self.settings_open; self.options_open = false; self.colours = None;
+            }
+            settings_at = 342.0;
+            if button(ui, width - 100.0, 45.0, 92.0, "+ Frame", "Add a frame", false) {
+                self.stop(session); self.options_open = false; self.settings_open = false;
+                if session.add_frame() == 0 { said = Some(Said::NoRoom); }
+            }
+            let track = Rect::from_min_size(bar.min + vec2(12.0, 96.0), vec2(width - 24.0, 44.0));
+            self.timeline(ui, session, frames, slots, current, track);
+        });
+        if (self.settings_open || self.options_open) && !self.takes_keys() && crate::ui::escape(ctx) && self.colours.take().is_none() {
+            self.settings_open = false; self.options_open = false;
+        }
+        if self.settings_open {
+            let left = (settings_at - 145.0).clamp(0.0, width - 290.0);
+            self.settings_popover(ctx, look, session, settings, bar, left, settings_at - left, palettes, harmony);
+        } else if self.options_open && let Some(index) = current {
+            let first = slots.iter().position(|f| *f == index);
+            let place = slot_of(slots, index, frames.get(index).copied(), self.held).zip(first).map_or(0, |(at, first)| at - first);
+            self.options_popover(ctx, session, settings, frames, index, place, bar);
         }
         said
     }
@@ -320,7 +451,7 @@ impl AnimationBar {
         track: Rect,
     ) {
         let last = slots.len().saturating_sub(1) as f32;
-        let slot = current.and_then(|c| slot_of(slots, c, self.held));
+        let slot = current.and_then(|c| slot_of(slots, c, frames.get(c).copied(), self.held));
         let focus = self.playing.as_ref().map(|p| p.at as usize).or(slot).unwrap_or(0);
         let info = session.info();
         let aspect = if info.width > 0 && info.height > 0 {
@@ -446,7 +577,7 @@ impl AnimationBar {
     /// Place `slot` of the timeline comes to the middle, its frame the current one.
     fn go_to(&mut self, session: &CanvasSession, frames: &[u64], slots: &[usize], slot: usize, current: Option<usize>) {
         let Some(&frame) = slots.get(slot) else { return };
-        self.held = (frame, slot - slots.iter().position(|f| *f == frame).unwrap_or(slot));
+        self.held = (frames.get(frame).copied(), slot - slots.iter().position(|f| *f == frame).unwrap_or(slot));
         if Some(frame) != current
             && let Some(&id) = frames.get(frame)
         {

@@ -52,6 +52,12 @@ jobs:
             Write-Output "::error::$text"
             exit $code
           }
+      - name: Desktop timeline navigation tests
+        shell: pwsh
+        working-directory: native
+        run: |
+          cargo test --release --locked -p procraft-desktop --bin procraft timeline_navigation_tests
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
       - name: Animation slot expansion test
         shell: pwsh
         working-directory: native

@@ -248,6 +248,8 @@ private fun BoxScope.StudioTimelineBar(vm: CanvasViewModel, compact: () -> Unit)
             val popupWidth = minOf(280.dp, width)
             DownPopover(popupWidth, popupWidth / 2, Modifier.offset(x = (width - popupWidth) / 2), popoverMaxHeight) {
                 Text("Frame & timeline", color = Pc.PanelTitle, fontSize = 19.sp, fontWeight = FontWeight.Bold, modifier = Modifier.padding(start = 14.dp, top = 8.dp, bottom = 8.dp))
+                StudioMenuItem("Jump to first slot") { toolsOpen = false; vm.stepTimeline(Int.MIN_VALUE) }
+                StudioMenuItem("Jump to last slot") { toolsOpen = false; vm.stepTimeline(Int.MAX_VALUE) }
                 StudioMenuItem("Frame options") { toolsOpen = false; vm.stopPlaying(); vm.frameOptionsOpen = true }
                 StudioMenuItem("Duplicate / split frame") { toolsOpen = false; vm.stopPlaying(); vm.duplicateFrame() }
                 StudioMenuItem("Move frame earlier") { toolsOpen = false; vm.moveCurrentFrame(true) }
