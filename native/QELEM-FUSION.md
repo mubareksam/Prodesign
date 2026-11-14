@@ -44,3 +44,8 @@ python3 qelem-tests/check_fusion.py
 
 ### Animation timeline navigation
 In Animation Assist, the timeline bar includes previous/next slot controls. These navigate held slots without altering frame timing, exports, or artwork and stop playback before editing. This is an incremental improvement to the existing drawing and animation workspace, not a complete Dreams-style movie, track, audio, video, or keyframe editor.
+
+### Expanded drawing timeline (Dreams-inspired foundation)
+With Animation Assist enabled in an artwork, tap the **▥** button on the compact bar to open the expanded timeline; **Compact** returns to the original layout. The same canvas, brushes, layers, frame groups, undo history and file format remain in use. The expanded strip scrolls through the actual animation slots, identifies held frames, shows thumbnails, frame timecode at the document FPS, playhead, playback, frame stepping, add/duplicate (splits a held frame), frame options, onion-skin/playback settings and two zoom levels. Tap a slot to select it; tap the current slot or Frame for its options. The toolbar scrolls horizontally on narrow screens. Preview range, speed and reverse remain preview-only.
+
+This is **one existing drawing track**, not a full movie or multitrack editor: there are no new audio/video tracks, keyframes, perform mode or Dreams document importer. No project migration is performed. The Rust core now expands frame holds directly without searching every frame per slot; the Kotlin timeline lazily composes visible slots rather than drawing the whole strip. These are structural improvements, not measured device-speed guarantees. Save/reopen, playback, gestures and performance still need testing on real devices.

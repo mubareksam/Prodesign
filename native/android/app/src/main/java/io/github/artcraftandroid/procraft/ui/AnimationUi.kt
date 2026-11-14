@@ -9,6 +9,9 @@ import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.horizontalScroll
+import androidx.compose.foundation.lazy.LazyRow
+import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.foundation.gestures.Orientation
 import androidx.compose.foundation.gestures.detectHorizontalDragGestures
 import androidx.compose.foundation.gestures.detectTapGestures
@@ -44,6 +47,7 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.compose.runtime.rememberUpdatedState
+import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
@@ -60,12 +64,15 @@ import androidx.compose.ui.layout.layout
 import androidx.compose.ui.layout.onGloballyPositioned
 import androidx.compose.ui.layout.positionInParent
 import androidx.compose.ui.platform.LocalDensity
+import androidx.compose.ui.semantics.contentDescription
+import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import io.github.artcraftandroid.procraft.canvas.CanvasViewModel
 import io.github.artcraftandroid.procraft.canvas.qelemCycleSlots
+import io.github.artcraftandroid.procraft.canvas.qelemTimelineTime
 import io.github.artcraftandroid.procraft.core.AnimationPlayback
 import kotlin.math.floor
 import kotlin.math.roundToInt
@@ -139,6 +146,11 @@ private fun displayWidth(window: Dp): Dp {
 @Composable
 fun BoxScope.AnimationBar(vm: CanvasViewModel) {
     if (vm.animation == null) return
+    var studioTimeline by rememberSaveable { mutableStateOf(false) }
+    if (studioTimeline && vm.animation?.pages == false) {
+        StudioTimelineBar(vm) { studioTimeline = false }
+        return
+    }
     val window = windowWidth()
     val (cw, ch) = vm.canvasSize()
     val barWidth = animationBarWidth(window, displayWidth(window), framePitch(frameAspect(cw, ch)))
@@ -167,8 +179,9 @@ fun BoxScope.AnimationBar(vm: CanvasViewModel) {
                     )
                     Spacer(Modifier.weight(1f))
                     if (!pages) {
-                        BarText("‹", Modifier.padding(horizontal = 8.dp)) { vm.stepTimeline(-1) }
-                        BarText("›", Modifier.padding(horizontal = 8.dp)) { vm.stepTimeline(1) }
+                        BarText("▥", Modifier.padding(horizontal = 9.dp).semantics { contentDescription = "Open expanded timeline" }) {
+                            vm.animationSettingsOpen = false; vm.frameOptionsOpen = false; studioTimeline = true
+                        }
                     }
                     if (!pages) BarText(
                         "Settings",
@@ -184,6 +197,87 @@ fun BoxScope.AnimationBar(vm: CanvasViewModel) {
                 Timeline(vm, barWidth - 24.dp, Modifier.offset(x = 12.dp, y = 42.dp))
             }
         }
+    }
+}
+
+/** Expanded, single-track view of the very same Animation Assist document; no conversion. */
+@Composable
+private fun BoxScope.StudioTimelineBar(vm: CanvasViewModel, compact: () -> Unit) {
+    val window = windowWidth()
+    val width = (window - 16.dp).coerceAtLeast(1.dp)
+    val slots = vm.frameSlots
+    val focus = (vm.playingSlot ?: vm.currentSlot ?: 0).coerceIn(0, (slots.size - 1).coerceAtLeast(0))
+    val fps = vm.animation?.fps?.toInt() ?: 1
+    var zoomed by rememberSaveable { mutableStateOf(false) }
+    var colorsPage by remember { mutableStateOf(false) }
+    if (!vm.animationSettingsOpen) colorsPage = false
+    val list = rememberLazyListState()
+    LaunchedEffect(focus, slots.size) {
+        // Don't fight a manual scroll while the playhead remains visible.
+        if (slots.isNotEmpty() && list.layoutInfo.visibleItemsInfo.none { it.index == focus }) list.scrollToItem(focus)
+    }
+    Column(Modifier.align(Alignment.BottomCenter).width(width)) {
+        if (vm.animationSettingsOpen) {
+            val popupWidth = minOf(290.dp, width)
+            DownPopover(popupWidth, popupWidth / 2, Modifier.offset(x = (width - popupWidth) / 2)) {
+                if (colorsPage) OnionColorsPage(vm) { colorsPage = false } else AnimationSettingsPage(vm) { colorsPage = true }
+            }
+        } else if (vm.frameOptionsOpen) {
+            val popupWidth = minOf(260.dp, width)
+            DownPopover(popupWidth, popupWidth / 2, Modifier.offset(x = (width - popupWidth) / 2)) { FrameOptionsPage(vm) }
+        }
+        Column(
+            Modifier.padding(bottom = BarGap).fillMaxWidth().clip(RoundedCornerShape(22.dp))
+                .background(BarFill).pointerInput(Unit) { detectTapGestures { } }.padding(8.dp),
+        ) {
+            Row(Modifier.fillMaxWidth().horizontalScroll(rememberScrollState()), verticalAlignment = Alignment.CenterVertically) {
+                StudioControl("Compact", "Use compact timeline") { vm.animationSettingsOpen = false; vm.frameOptionsOpen = false; compact() }
+                StudioControl(if (vm.playingFrame == null) "▶" else "Ⅱ", if (vm.playingFrame == null) "Play animation" else "Pause animation") { vm.togglePlaying() }
+                StudioControl("‹", "Previous timeline slot") { vm.stepTimeline(-1) }
+                StudioControl("›", "Next timeline slot") { vm.stepTimeline(1) }
+                StudioControl("+ Frame", "Add a frame") { vm.addFrame() }
+                StudioControl("Duplicate", "Duplicate frame or split at held slot") { vm.stopPlaying(); vm.duplicateFrame() }
+                StudioControl("Frame", "Frame options") { vm.stopPlaying(); vm.frameOptionsOpen = !vm.frameOptionsOpen; vm.animationSettingsOpen = false }
+                StudioControl("Settings", "Playback and onion skin settings") { vm.stopPlaying(); vm.animationSettingsOpen = !vm.animationSettingsOpen; vm.frameOptionsOpen = false }
+                StudioControl(if (zoomed) "− Zoom" else "+ Zoom", "Change timeline zoom") { zoomed = !zoomed }
+            }
+            Row(Modifier.fillMaxWidth().padding(horizontal = 6.dp, vertical = 2.dp), verticalAlignment = Alignment.CenterVertically) {
+                Text("DRAWING TRACK", color = BarInk, fontSize = 11.sp, fontWeight = FontWeight.Bold, modifier = Modifier.weight(1f))
+                Text("${qelemTimelineTime(focus, fps)}  ·  ${if (slots.isEmpty()) 0 else focus + 1}/${slots.size}  ·  $fps fps", color = BarInk, fontSize = 11.sp)
+            }
+            LazyRow(
+                state = list,
+                modifier = Modifier.fillMaxWidth().height(78.dp).clip(RoundedCornerShape(12.dp)).background(TrackFill),
+            ) {
+                items(slots.size) { index ->
+                    val frame = slots[index]
+                    val held = index > 0 && slots[index - 1] == frame
+                    val selected = index == focus
+                    val image = vm.animationFrames.getOrNull(frame)?.let { vm.frameThumbnails[it] }
+                    Column(
+                        Modifier.padding(start = 3.dp, top = 3.dp, bottom = 3.dp).width(if (zoomed) 88.dp else 57.dp)
+                            .clip(RoundedCornerShape(7.dp)).background(if (held) HeldFrame else Color.White)
+                            .border(if (selected) 2.dp else 1.dp, if (selected) Pc.Accent else TrackEdge, RoundedCornerShape(7.dp))
+                            .clickable { vm.tapFrame(index) }
+                            .semantics { contentDescription = "Slot ${index + 1}, frame ${frame + 1}${if (held) ", held" else ""}${if (selected) ", selected" else ""}" },
+                        horizontalAlignment = Alignment.CenterHorizontally,
+                    ) {
+                        Box(Modifier.weight(1f).fillMaxWidth().padding(3.dp), contentAlignment = Alignment.Center) {
+                            if (image != null) Image(image, contentDescription = null, contentScale = ContentScale.Fit, modifier = Modifier.fillMaxSize())
+                        }
+                        Text(if (held) "${index + 1} · HOLD" else "${index + 1} · F${frame + 1}", color = Color(0xFF252525), fontSize = 9.sp, maxLines = 1)
+                    }
+                }
+            }
+        }
+    }
+}
+
+@Composable
+private fun StudioControl(label: String, description: String, onClick: () -> Unit) {
+    Box(Modifier.height(44.dp).padding(horizontal = 3.dp).clip(RoundedCornerShape(8.dp))
+        .clickable(onClick = onClick).semantics { contentDescription = description }.padding(horizontal = 7.dp), contentAlignment = Alignment.Center) {
+        Text(label, color = BarInk, fontSize = 14.sp, fontWeight = FontWeight.Medium, maxLines = 1)
     }
 }
 

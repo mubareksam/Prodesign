@@ -28,5 +28,8 @@ fun main() {
     check(qelemPreviewDelayMs(10, 50) == 200L && qelemPreviewDelayMs(10, 100) == 100L)
     check(qelemPreviewDelayMs(10, 200) == 50L && qelemPreviewDelayMs(60, 200) == 8L)
     check(qelemPreviewDelayMs(0, 999) == 1000L)
+    check(qelemTimelineTime(13, 12) == "0:01:01")
+    check(qelemTimelineTime(720, 12) == "1:00:00")
+    check(qelemTimelineTime(-10, 12) == "0:00:00")
     println("Qelem preview: reversal, held slots, ID-based range, speed and cycle timing passed")
 }

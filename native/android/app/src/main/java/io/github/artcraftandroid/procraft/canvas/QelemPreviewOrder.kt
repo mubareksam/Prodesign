@@ -36,3 +36,12 @@ internal fun qelemStepSlot(current: Int?, count: Int, delta: Int): Int? {
     if (count <= 0) return null
     return ((current ?: 0).toLong() + delta.toLong()).coerceIn(0L, (count - 1).toLong()).toInt()
 }
+
+/** Human-readable timeline position using whole frames, not wall-clock playback speed. */
+internal fun qelemTimelineTime(slot: Int, fps: Int): String {
+    val rate = fps.coerceIn(1, 60)
+    val safe = slot.coerceAtLeast(0)
+    val seconds = safe / rate
+    val frame = safe % rate
+    return "%d:%02d:%02d".format(java.util.Locale.ROOT, seconds / 60, seconds % 60, frame)
+}

@@ -52,11 +52,11 @@ jobs:
             exit "$result"
           fi
       - uses: gradle/actions/setup-gradle@v4
-      - name: Build arm64 development APK
+      - name: Build arm64 development APK and test animation helpers
         working-directory: native/android
         run: |
           set +e
-          ./gradlew --no-daemon --max-workers=2 :app:assembleDebug -Pprocraft.abis=arm64-v8a > /tmp/qelem-gradle.log 2>&1
+          ./gradlew --no-daemon --max-workers=2 :app:assembleDebug :app:testDebugUnitTest --tests '*QelemPreviewTest' -Pprocraft.abis=arm64-v8a > /tmp/qelem-gradle.log 2>&1
           result=$?
           tail -n 100 /tmp/qelem-gradle.log
           if [ "$result" -ne 0 ]; then

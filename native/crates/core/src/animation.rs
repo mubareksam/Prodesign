@@ -30,17 +30,22 @@ fn sequence(doc: &Document) -> Vec<LayerId> {
     frames(doc).into_iter().flat_map(|id| std::iter::repeat_n(id, 1 + holds(id))).collect()
 }
 
+/// Expand one held-frame count per frame into the original ordered slot indices.
+fn animation_slots(holds: impl IntoIterator<Item = u32>) -> Vec<u32> {
+    holds.into_iter().enumerate().filter_map(|(i, hold)| {
+        u32::try_from(i).ok().map(|index| (index, hold))
+    }).flat_map(|(index, hold)| std::iter::repeat_n(index, 1 + hold as usize)).collect()
+}
+
 #[uniffi::export]
 impl CanvasSession {
     /// The frames in playing order (indices into the frames), each as often as it is held.
     pub fn animation_sequence(&self) -> Vec<u32> {
         let doc = &self.shared.lock().doc;
         let all = frames(doc);
-        sequence(doc)
-            .iter()
-            .filter_map(|id| all.iter().position(|f| f == id))
-            .filter_map(|i| u32::try_from(i).ok())
-            .collect()
+        // Frames are already in timeline order; expand the indices directly instead of
+        // constructing a second ID sequence and searching the complete frame list per slot.
+        animation_slots(all.iter().map(|id| doc.animation.as_ref().map_or(0, |a| a.hold(*id))))
     }
 
     /// Gives an artwork opened to be looked at, with no window, the app's device and its canvas,
@@ -654,6 +659,14 @@ mod tests {
         assert_eq!(frame_rate(0.3).time_of(3000, 1000), 10_000_000);
         assert_eq!(frame_rate(15.0).time_of(15, 1_000_000), 1_000_000);
         assert_eq!(frame_rate(0.0).seconds, 1000);
+    }
+
+    #[test]
+    fn slot_expansion_preserves_frame_order_and_holds() {
+        assert!(animation_slots([]).is_empty());
+        assert_eq!(animation_slots([0]), [0]);
+        assert_eq!(animation_slots([2, 0, 1]), [0, 0, 0, 1, 2, 2]);
+        assert_eq!(animation_slots([0, 0, 0]), [0, 1, 2]);
     }
 
     fn run(playback: AnimationPlayback, len: u32, steps: usize) -> Vec<u32> {

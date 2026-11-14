@@ -23,6 +23,12 @@ class QelemPreviewTest {
         assertEquals(2, qelemStepSlot(2, 3, 1))
         assertEquals(2, qelemStepSlot(1, 3, Int.MAX_VALUE))
     }
+    @Test fun timecodeUsesDocumentFpsAndNeverGoesNegative() {
+        assertEquals("0:00:00", qelemTimelineTime(-1, 12))
+        assertEquals("0:01:01", qelemTimelineTime(13, 12))
+        assertEquals("1:00:00", qelemTimelineTime(720, 12))
+        assertEquals("0:00:00", qelemTimelineTime(0, 0))
+    }
     @Test fun timingRespectsPreviewSpeedAndBounce() {
         assertEquals(200L, qelemPreviewDelayMs(10, 50))
         assertEquals(100L, qelemPreviewDelayMs(10, 100))
