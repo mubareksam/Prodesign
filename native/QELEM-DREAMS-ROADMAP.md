@@ -51,3 +51,7 @@ Those controls should not be presented as working before the underlying model ex
 The Android preview is separately packaged and debug signed. It has no importer for old
 Qelem artwork. Back up projects, keep the original app installed, and verify on a device;
 there is no guarantee a differently signed preview can update a previous preview.
+
+### Timeline interface refinement
+
+The expanded drawing timeline now keeps undo, redo, timecode, transport, frame selection and add-frame controls visible in a compact header. Less frequent frame, playback, onion-skin and timeline sizing actions live in the scrollable **Tools** menu. Selection mode keeps its batch controls together; the compact Animation Assist view and underlying artwork remain unchanged. Buttons have descriptive accessibility labels and the tool menu is height-limited to leave room for the track on shorter screens. This is an incremental Qelem interface, not a complete Dreams workspace; check layout and touch targets on real devices.

@@ -3,6 +3,7 @@ package io.github.artcraftandroid.procraft.ui
 import androidx.compose.animation.core.animate
 import androidx.compose.animation.core.calculateTargetValue
 import androidx.compose.animation.core.exponentialDecay
+import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
 import androidx.compose.foundation.rememberScrollState
@@ -60,6 +61,7 @@ import androidx.compose.ui.geometry.RoundRect
 import androidx.compose.ui.geometry.Size
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.Path
+import androidx.compose.ui.graphics.StrokeCap
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.layout.layout
@@ -69,6 +71,7 @@ import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
@@ -219,6 +222,12 @@ private fun BoxScope.StudioTimelineBar(vm: CanvasViewModel, compact: () -> Unit)
     val fps = vm.animation?.fps?.toInt() ?: 1
     var zoomed by rememberSaveable { mutableStateOf(false) }
     var tallTrack by rememberSaveable { mutableStateOf(false) }
+    // Reserve the timeline's height; popovers scroll rather than pushing controls off-screen.
+    val popoverMaxHeight = (androidx.compose.ui.platform.LocalConfiguration.current.screenHeightDp - (if (tallTrack) 330 else 266)).coerceAtLeast(80).dp
+    var toolsOpen by remember { mutableStateOf(false) }
+    LaunchedEffect(vm.animationSettingsOpen, vm.frameOptionsOpen) {
+        if (vm.animationSettingsOpen || vm.frameOptionsOpen) toolsOpen = false
+    }
     var colorsPage by remember { mutableStateOf(false) }
     if (!vm.animationSettingsOpen) colorsPage = false
     val list = rememberLazyListState()
@@ -229,49 +238,59 @@ private fun BoxScope.StudioTimelineBar(vm: CanvasViewModel, compact: () -> Unit)
     Column(Modifier.align(Alignment.BottomCenter).width(width)) {
         if (vm.animationSettingsOpen) {
             val popupWidth = minOf(290.dp, width)
-            DownPopover(popupWidth, popupWidth / 2, Modifier.offset(x = (width - popupWidth) / 2)) {
+            DownPopover(popupWidth, popupWidth / 2, Modifier.offset(x = (width - popupWidth) / 2), popoverMaxHeight) {
                 if (colorsPage) OnionColorsPage(vm) { colorsPage = false } else AnimationSettingsPage(vm) { colorsPage = true }
             }
         } else if (vm.frameOptionsOpen) {
             val popupWidth = minOf(260.dp, width)
-            DownPopover(popupWidth, popupWidth / 2, Modifier.offset(x = (width - popupWidth) / 2)) { FrameOptionsPage(vm) }
+            DownPopover(popupWidth, popupWidth / 2, Modifier.offset(x = (width - popupWidth) / 2), popoverMaxHeight) { FrameOptionsPage(vm) }
+        } else if (toolsOpen && !selecting) {
+            val popupWidth = minOf(280.dp, width)
+            DownPopover(popupWidth, popupWidth / 2, Modifier.offset(x = (width - popupWidth) / 2), popoverMaxHeight) {
+                Text("Frame & timeline", color = Pc.PanelTitle, fontSize = 19.sp, fontWeight = FontWeight.Bold, modifier = Modifier.padding(start = 14.dp, top = 8.dp, bottom = 8.dp))
+                StudioMenuItem("Frame options") { toolsOpen = false; vm.stopPlaying(); vm.frameOptionsOpen = true }
+                StudioMenuItem("Duplicate / split frame") { toolsOpen = false; vm.stopPlaying(); vm.duplicateFrame() }
+                StudioMenuItem("Move frame earlier") { toolsOpen = false; vm.moveCurrentFrame(true) }
+                StudioMenuItem("Move frame later") { toolsOpen = false; vm.moveCurrentFrame(false) }
+                StudioMenuItem("Shorten frame hold") { toolsOpen = false; vm.adjustFrameHold(-1) }
+                StudioMenuItem("Lengthen frame hold") { toolsOpen = false; vm.adjustFrameHold(1) }
+                StudioMenuItem("Playback & onion skin") { toolsOpen = false; vm.stopPlaying(); vm.animationSettingsOpen = true }
+                StudioMenuItem(if (zoomed) "Zoom out timeline" else "Zoom in timeline") { toolsOpen = false; zoomed = !zoomed }
+                StudioMenuItem(if (tallTrack) "Use smaller track" else "Use larger track") { toolsOpen = false; tallTrack = !tallTrack }
+            }
         }
         Column(
             Modifier.padding(bottom = BarGap).fillMaxWidth().clip(RoundedCornerShape(22.dp))
                 .background(BarFill).pointerInput(Unit) { detectTapGestures { } }.padding(8.dp),
         ) {
-            Row(Modifier.fillMaxWidth().padding(start = 6.dp, end = 2.dp), verticalAlignment = Alignment.CenterVertically) {
-                Text("Qelem Timeline", color = BarInk, fontSize = 15.sp, fontWeight = FontWeight.Bold, modifier = Modifier.weight(1f))
-                Text(qelemTimelineTime(focus, fps), color = Pc.Accent, fontSize = 15.sp, fontWeight = FontWeight.Bold)
-                StudioControl("Compact", "Use compact timeline") { vm.animationSettingsOpen = false; vm.frameOptionsOpen = false; compact() }
+            // A quiet header leaves the artwork above as the visual focus.
+            Row(Modifier.fillMaxWidth().height(44.dp), verticalAlignment = Alignment.CenterVertically) {
+                StudioIconButton(StudioGlyph.UNDO, "Undo") { toolsOpen = false; vm.stopPlaying(); vm.undo() }
+                StudioIconButton(StudioGlyph.REDO, "Redo") { toolsOpen = false; vm.stopPlaying(); vm.redo() }
+                Column(Modifier.weight(1f), horizontalAlignment = Alignment.CenterHorizontally) {
+                    Text("TIMELINE", color = BarInk.copy(alpha = 0.75f), fontSize = 9.sp, letterSpacing = 1.sp, fontWeight = FontWeight.Bold)
+                    Text(qelemTimelineTime(focus, fps), color = BarInk, fontFamily = FontFamily.Monospace, fontSize = 14.sp, fontWeight = FontWeight.Medium, maxLines = 1)
+                }
+                StudioControl("Canvas", "Return to compact canvas timeline") { toolsOpen = false; vm.animationSettingsOpen = false; vm.frameOptionsOpen = false; compact() }
             }
-            Row(Modifier.fillMaxWidth().horizontalScroll(rememberScrollState()), verticalAlignment = Alignment.CenterVertically) {
-                if (selecting) {
-                    StudioControl("Done", "Finish selecting frames") { selecting = false; chosenFrames = emptySet() }
+            if (selecting) {
+                Row(Modifier.fillMaxWidth().horizontalScroll(rememberScrollState()), verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.Center) {
+                    StudioControl("Done", "Finish selecting frames", active = true) { selecting = false; chosenFrames = emptySet() }
                     StudioControl("All", "Select all visible frames") { chosenFrames = vm.animationFrames.toSet() }
                     StudioControl("Clear", "Clear frame selection") { chosenFrames = emptySet() }
                     StudioControl("− Hold", "Shorten selected frame durations") { vm.adjustSelectedHolds(chosenFrames, false) }
                     StudioControl("+ Hold", "Lengthen selected frame durations") { vm.adjustSelectedHolds(chosenFrames, true) }
-                    StudioControl("↶", "Undo") { vm.stopPlaying(); vm.undo() }
-                    StudioControl("↷", "Redo") { vm.stopPlaying(); vm.redo() }
                     StudioControl(if (zoomed) "− Zoom" else "+ Zoom", "Change timeline zoom") { zoomed = !zoomed }
-                } else {
-                    StudioControl(if (vm.playingFrame == null) "▶" else "Ⅱ", if (vm.playingFrame == null) "Play animation" else "Pause animation") { vm.togglePlaying() }
-                    StudioControl("Select", "Select frames to edit together") { vm.stopPlaying(); vm.animationSettingsOpen = false; vm.frameOptionsOpen = false; chosenFrames = emptySet(); selecting = true }
-                    StudioControl("‹", "Previous timeline slot") { vm.stepTimeline(-1) }
-                    StudioControl("›", "Next timeline slot") { vm.stepTimeline(1) }
-                    StudioControl("↶", "Undo") { vm.stopPlaying(); vm.undo() }
-                    StudioControl("↷", "Redo") { vm.stopPlaying(); vm.redo() }
-                    StudioControl("+ Frame", "Add a frame") { vm.addFrame() }
-                    StudioControl("Duplicate", "Duplicate frame or split at held slot") { vm.stopPlaying(); vm.duplicateFrame() }
-                    StudioControl("← Frame", "Move the selected frame earlier") { vm.moveCurrentFrame(true) }
-                    StudioControl("Frame →", "Move the selected frame later") { vm.moveCurrentFrame(false) }
-                    StudioControl("− Hold", "Shorten current frame exposure") { vm.adjustFrameHold(-1) }
-                    StudioControl("+ Hold", "Lengthen current frame exposure") { vm.adjustFrameHold(1) }
-                    StudioControl("Frame", "Frame options") { vm.stopPlaying(); vm.frameOptionsOpen = !vm.frameOptionsOpen; vm.animationSettingsOpen = false }
-                    StudioControl("Settings", "Playback and onion skin settings") { vm.stopPlaying(); vm.animationSettingsOpen = !vm.animationSettingsOpen; vm.frameOptionsOpen = false }
-                    StudioControl(if (zoomed) "− Zoom" else "+ Zoom", "Change timeline zoom") { zoomed = !zoomed }
-                    StudioControl(if (tallTrack) "Small track" else "Large track", "Change timeline track height") { tallTrack = !tallTrack }
+                }
+            } else {
+                Row(Modifier.fillMaxWidth().horizontalScroll(rememberScrollState()), verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.Center) {
+                    StudioIconButton(StudioGlyph.PREVIOUS, "Previous timeline slot") { toolsOpen = false; vm.stepTimeline(-1) }
+                    StudioIconButton(if (vm.playingFrame == null) StudioGlyph.PLAY else StudioGlyph.PAUSE, if (vm.playingFrame == null) "Play animation" else "Pause animation", emphasized = true) { toolsOpen = false; vm.togglePlaying() }
+                    StudioIconButton(StudioGlyph.NEXT, "Next timeline slot") { toolsOpen = false; vm.stepTimeline(1) }
+                    Spacer(Modifier.width(6.dp))
+                    StudioControl("Select", "Select frames to edit together") { toolsOpen = false; vm.stopPlaying(); vm.animationSettingsOpen = false; vm.frameOptionsOpen = false; chosenFrames = emptySet(); selecting = true }
+                    StudioIconButton(StudioGlyph.ADD, "Add a frame") { toolsOpen = false; vm.addFrame() }
+                    StudioControl("Tools", "Open frame and timeline tools", active = toolsOpen) { vm.animationSettingsOpen = false; vm.frameOptionsOpen = false; toolsOpen = !toolsOpen }
                 }
             }
             Row(Modifier.fillMaxWidth().padding(horizontal = 6.dp, vertical = 2.dp), verticalAlignment = Alignment.CenterVertically) {
@@ -297,7 +316,7 @@ private fun BoxScope.StudioTimelineBar(vm: CanvasViewModel, compact: () -> Unit)
                             .clickable {
                                 if (selecting) {
                                     chosenFrames = qelemToggleFrameSelection(chosenFrames, id)
-                                } else vm.tapFrame(index)
+                                } else { toolsOpen = false; vm.tapFrame(index) }
                             }
                             .semantics { contentDescription = "Slot ${index + 1}, frame ${frame + 1}${if (held) ", held" else ""}${if (chosen) ", selected for editing" else if (!selecting && focused) ", current" else ""}" },
                         horizontalAlignment = Alignment.CenterHorizontally,
@@ -364,11 +383,59 @@ private fun StudioRuler(vm: CanvasViewModel, list: LazyListState, slots: List<In
     }
 }
 
+/** Compact icon controls with 44dp targets and descriptive accessibility labels. */
+private enum class StudioGlyph { UNDO, REDO, PREVIOUS, NEXT, PLAY, PAUSE, ADD }
+
 @Composable
-private fun StudioControl(label: String, description: String, onClick: () -> Unit) {
-    Box(Modifier.height(44.dp).padding(horizontal = 3.dp).clip(RoundedCornerShape(8.dp))
-        .clickable(onClick = onClick).semantics { contentDescription = description }.padding(horizontal = 7.dp), contentAlignment = Alignment.Center) {
-        Text(label, color = BarInk, fontSize = 14.sp, fontWeight = FontWeight.Medium, maxLines = 1)
+private fun StudioIconButton(glyph: StudioGlyph, description: String, emphasized: Boolean = false, onClick: () -> Unit) {
+    val ink = if (emphasized) Color.White else BarInk
+    Box(
+        Modifier.size(44.dp).clip(RoundedCornerShape(14.dp))
+            .background(if (emphasized) Pc.Accent else Color.Transparent)
+            .clickable(onClick = onClick).semantics { contentDescription = description },
+        contentAlignment = Alignment.Center,
+    ) {
+        when (glyph) {
+            StudioGlyph.UNDO -> Icon(PcIcons.Undo, contentDescription = null, tint = ink, modifier = Modifier.size(34.dp))
+            StudioGlyph.REDO -> Icon(PcIcons.Redo, contentDescription = null, tint = ink, modifier = Modifier.size(34.dp))
+            StudioGlyph.ADD -> Icon(PcIcons.Add, contentDescription = null, tint = ink, modifier = Modifier.size(32.dp))
+            else -> Canvas(Modifier.size(22.dp)) {
+                val w = size.width; val h = size.height; val stroke = 2.dp.toPx()
+                when (glyph) {
+                    StudioGlyph.PLAY -> {
+                        val triangle = Path().apply { moveTo(w * .34f, h * .2f); lineTo(w * .8f, h * .5f); lineTo(w * .34f, h * .8f); close() }
+                        drawPath(triangle, ink)
+                    }
+                    StudioGlyph.PAUSE -> {
+                        drawLine(ink, Offset(w * .36f, h * .24f), Offset(w * .36f, h * .76f), strokeWidth = stroke * 1.5f, cap = StrokeCap.Round)
+                        drawLine(ink, Offset(w * .65f, h * .24f), Offset(w * .65f, h * .76f), strokeWidth = stroke * 1.5f, cap = StrokeCap.Round)
+                    }
+                    StudioGlyph.PREVIOUS, StudioGlyph.NEXT -> {
+                        val left = glyph == StudioGlyph.PREVIOUS
+                        val x = if (left) .38f else .62f; val outer = if (left) .63f else .37f
+                        drawLine(ink, Offset(w * outer, h * .25f), Offset(w * x, h * .5f), strokeWidth = stroke, cap = StrokeCap.Round)
+                        drawLine(ink, Offset(w * x, h * .5f), Offset(w * outer, h * .75f), strokeWidth = stroke, cap = StrokeCap.Round)
+                    }
+                    else -> Unit
+                }
+            }
+        }
+    }
+}
+
+@Composable
+private fun StudioControl(label: String, description: String, active: Boolean = false, onClick: () -> Unit) {
+    Box(Modifier.height(44.dp).padding(horizontal = 2.dp).clip(RoundedCornerShape(12.dp))
+        .background(if (active) Pc.Accent else Color.Transparent)
+        .clickable(onClick = onClick).semantics { contentDescription = description }.padding(horizontal = 10.dp), contentAlignment = Alignment.Center) {
+        Text(label, color = if (active) Color.White else BarInk, fontSize = 14.sp, fontWeight = FontWeight.Medium, maxLines = 1)
+    }
+}
+
+@Composable
+private fun StudioMenuItem(label: String, onClick: () -> Unit) {
+    Box(Modifier.fillMaxWidth().height(44.dp).clip(RoundedCornerShape(10.dp)).clickable(onClick = onClick).padding(horizontal = 14.dp), contentAlignment = Alignment.CenterStart) {
+        Text(label, color = Pc.PanelTitle, fontSize = 16.sp, maxLines = 1)
     }
 }
 
@@ -459,7 +526,7 @@ private fun Timeline(vm: CanvasViewModel, width: Dp, modifier: Modifier) {
 
 /** A panel standing on the bar, its arrow pointing down at [arrowX] from its left edge. */
 @Composable
-private fun DownPopover(width: Dp, arrowX: Dp, modifier: Modifier, content: @Composable ColumnScope.() -> Unit) {
+private fun DownPopover(width: Dp, arrowX: Dp, modifier: Modifier, maxHeightOverride: Dp? = null, content: @Composable ColumnScope.() -> Unit) {
     val fill = Pc.PopoverFill
     Box(
         modifier.width(width).padding(bottom = 2.dp).drawBehind {
@@ -475,7 +542,7 @@ private fun DownPopover(width: Dp, arrowX: Dp, modifier: Modifier, content: @Com
             drawPath(outline, fill)
         }.pointerInput(Unit) { detectTapGestures { } },
     ) {
-        val maxHeight = (androidx.compose.ui.platform.LocalConfiguration.current.screenHeightDp - 135).coerceAtLeast(160).dp
+        val maxHeight = maxHeightOverride ?: (androidx.compose.ui.platform.LocalConfiguration.current.screenHeightDp - 135).coerceAtLeast(160).dp
         Column(Modifier.heightIn(max = maxHeight).verticalScroll(rememberScrollState()).padding(start = 8.dp, end = 8.dp, top = 8.dp, bottom = Pc.ArrowHeight + 8.dp), content = content)
     }
 }
