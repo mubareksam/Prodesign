@@ -54,32 +54,29 @@ pub fn parse(line: &str) -> Option<Command> {
     if p.next().is_some() { None } else { Some(out) }
 }
 
-/// A bounded line, with a timeout so Stop closes even an idle client. No unbounded allocation.
-fn line(stream: &mut impl Read, stop: &AtomicBool) -> io::Result<Option<String>> {
-    line_with_idle_limit(stream, stop, 15)
-}
-
-fn line_with_idle_limit(stream: &mut impl Read, stop: &AtomicBool, idle_limit: u32) -> io::Result<Option<String>> {
-    let mut bytes = Vec::with_capacity(MAX_LINE);
-    let mut b = [0];
-    let mut idle = 0;
-    loop {
-        if stop.load(Ordering::Relaxed) { return Ok(None); }
-        match stream.read(&mut b) {
-            Ok(0) => return Ok(None),
-            Ok(_) => {
-                idle = 0;
-                if b[0] == b'\n' {
-                    return String::from_utf8(bytes).map(Some).map_err(|_| io::ErrorKind::InvalidData.into());
+/// Bounded, chunked reads reduce the per-byte cost on RFCOMM while retaining strict limits.
+struct Lines<R> { source: R, buf: [u8; 512], pos: usize, len: usize }
+impl<R: Read> Lines<R> {
+    fn new(source: R) -> Self { Self { source, buf: [0; 512], pos: 0, len: 0 } }
+    fn line(&mut self, stop: &AtomicBool) -> io::Result<Option<String>> {
+        let mut bytes = Vec::with_capacity(MAX_LINE);
+        let mut idle = 0;
+        loop {
+            if stop.load(Ordering::Relaxed) { return Ok(None); }
+            if self.pos == self.len {
+                match self.source.read(&mut self.buf) {
+                    Ok(0) => return Ok(None),
+                    Ok(n) => { self.pos = 0; self.len = n; idle = 0; }
+                    Err(e) if matches!(e.kind(), io::ErrorKind::WouldBlock | io::ErrorKind::TimedOut) => {
+                        idle += 1; if idle >= 30 { return Ok(None); } continue;
+                    }
+                    Err(e) => return Err(e),
                 }
-                if b[0] < 32 || b[0] > 126 || bytes.len() >= MAX_LINE { return Err(io::ErrorKind::InvalidData.into()); }
-                bytes.push(b[0]);
             }
-            Err(e) if matches!(e.kind(), io::ErrorKind::WouldBlock | io::ErrorKind::TimedOut) => {
-                idle += 1;
-                if idle >= idle_limit { return Ok(None); }
-            }
-            Err(e) => return Err(e),
+            let b = self.buf[self.pos]; self.pos += 1;
+            if b == b'\n' { return String::from_utf8(bytes).map(Some).map_err(|_| io::ErrorKind::InvalidData.into()); }
+            if b < 32 || b > 126 || bytes.len() >= MAX_LINE { return Err(io::ErrorKind::InvalidData.into()); }
+            bytes.push(b);
         }
     }
 }
@@ -161,20 +158,33 @@ fn serve_client(mut stream: TcpStream, token: &str, stop: &AtomicBool, connected
     // Bluetooth does not support TCP_NODELAY; ignore that protocol-specific error.
     let _ = stream.set_nodelay(true);
     let expected = format!("QELEM1 {token}");
-    if !matches!(line(&mut stream, stop), Ok(Some(ref value)) if value == &expected) {
-        let _ = stream.shutdown(Shutdown::Both);
+    let mut lines = Lines::new(stream);
+    if !matches!(lines.line(stop), Ok(Some(ref value)) if value == &expected) {
+        let _ = lines.source.shutdown(Shutdown::Both);
         std::thread::sleep(Duration::from_millis(250));
         return false;
     }
-    if stream.write_all(b"OK\n").is_err() { return false; }
+    if lines.source.write_all(b"OK\n").is_err() { return false; }
     connected.store(true, Ordering::Release); wake();
     while !stop.load(Ordering::Acquire) {
-        let Ok(Some(raw)) = line(&mut stream, stop) else { break };
+        let Ok(Some(raw)) = lines.line(stop) else { break };
         let Some(command) = parse(&raw) else { break };
         if command == Command::Ping { continue; }
-        match tx.try_send(command) { Ok(()) => wake(), Err(_) => break }
+        // Brief backpressure instead of disconnecting on a transient UI backlog. Never discard
+        // stroke boundaries; the sender's bounded motion queue absorbs/coalesces overload.
+        let deadline = std::time::Instant::now() + Duration::from_secs(5);
+        loop {
+            match tx.try_send(command) {
+                Ok(()) => { wake(); break; }
+                Err(TrySendError::Disconnected(_)) => return true,
+                Err(TrySendError::Full(_)) if !stop.load(Ordering::Acquire) && std::time::Instant::now() < deadline => {
+                    wake(); std::thread::sleep(Duration::from_millis(2));
+                }
+                Err(TrySendError::Full(_)) => { let _ = lines.source.shutdown(Shutdown::Both); return true; }
+            }
+        }
     }
-    let _ = stream.shutdown(Shutdown::Both);
+    let _ = lines.source.shutdown(Shutdown::Both);
     true
 }
 
@@ -212,6 +222,15 @@ mod tests {
         assert_eq!(rx.recv_timeout(Duration::from_secs(3)).expect("erase"), Command::Erase);
         drop(good);
         handle.join().expect("thread");
+    }
+    #[test] fn chunked_lines_keep_boundaries_and_reject_long_input() {
+        let stop = AtomicBool::new(false);
+        let mut input = Lines::new(std::io::Cursor::new(b"D 0 0 1 S\nM 1 1 1\nU 1 1 0\n"));
+        assert_eq!(input.line(&stop).unwrap().as_deref(), Some("D 0 0 1 S"));
+        assert_eq!(input.line(&stop).unwrap().as_deref(), Some("M 1 1 1"));
+        assert_eq!(input.line(&stop).unwrap().as_deref(), Some("U 1 1 0"));
+        let mut bad = Lines::new(std::io::Cursor::new(vec![b'a'; MAX_LINE + 1]));
+        assert_eq!(bad.line(&stop).unwrap_err().kind(), io::ErrorKind::InvalidData);
     }
     #[test] fn bounded_valid_protocol() {
         assert_eq!(parse("D 0.1 1 0.4 S"), Some(Command::Down(0.1, 1.0, 0.4, true)));

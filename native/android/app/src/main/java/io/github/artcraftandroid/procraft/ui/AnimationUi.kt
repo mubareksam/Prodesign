@@ -166,6 +166,10 @@ fun BoxScope.AnimationBar(vm: CanvasViewModel) {
                         modifier = if (pages) Modifier else Modifier.clickable { vm.togglePlaying() },
                     )
                     Spacer(Modifier.weight(1f))
+                    if (!pages) {
+                        BarText("‹", Modifier.padding(horizontal = 8.dp)) { vm.stepTimeline(-1) }
+                        BarText("›", Modifier.padding(horizontal = 8.dp)) { vm.stepTimeline(1) }
+                    }
                     if (!pages) BarText(
                         "Settings",
                         // measured inside the row's padding

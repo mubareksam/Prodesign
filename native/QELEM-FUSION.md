@@ -41,3 +41,6 @@ kotlinc qelem-tests/fake-android/Graphics.kt \
 java -Djava.awt.headless=true -jar /tmp/qelem-palette-test.jar
 python3 qelem-tests/check_fusion.py
 ```
+
+### Animation timeline navigation
+In Animation Assist, the timeline bar includes previous/next slot controls. These navigate held slots without altering frame timing, exports, or artwork and stop playback before editing. This is an incremental improvement to the existing drawing and animation workspace, not a complete Dreams-style movie, track, audio, video, or keyframe editor.

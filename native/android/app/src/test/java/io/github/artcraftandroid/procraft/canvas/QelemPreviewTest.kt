@@ -16,6 +16,13 @@ class QelemPreviewTest {
         assertNull(qelemPreviewBounds(ids, 50uL, 8uL))
     }
 
+    @Test fun steppingIsBoundedAndHandlesEmptyTimelines() {
+        assertNull(qelemStepSlot(null, 0, 1))
+        assertEquals(0, qelemStepSlot(0, 3, -1))
+        assertEquals(1, qelemStepSlot(0, 3, 1))
+        assertEquals(2, qelemStepSlot(2, 3, 1))
+        assertEquals(2, qelemStepSlot(1, 3, Int.MAX_VALUE))
+    }
     @Test fun timingRespectsPreviewSpeedAndBounce() {
         assertEquals(200L, qelemPreviewDelayMs(10, 50))
         assertEquals(100L, qelemPreviewDelayMs(10, 100))

@@ -7,8 +7,6 @@ import java.net.Inet4Address
 import java.net.InetAddress
 import java.net.InetSocketAddress
 import java.net.Socket
-import java.util.concurrent.ArrayBlockingQueue
-import java.util.concurrent.TimeUnit
 
 /** One explicit pairing. The socket and all I/O remain off the Android UI thread. */
 internal interface Transport : Closeable {
@@ -26,7 +24,7 @@ internal class Link(
     @Volatile private var closed = false
     @Volatile private var ready = false
     @Volatile private var socket: Socket? = null
-    private val outgoing = ArrayBlockingQueue<String>(1024)
+    private val outgoing = CommandQueue()
 
     fun start() { Thread({ run() }, "qelem-tablet-link").start() }
     fun send(message: String) {
@@ -35,7 +33,7 @@ internal class Link(
         if (!outgoing.offer(message)) close()
     }
     fun close() {
-        closed = true; ready = false
+        closed = true; ready = false; outgoing.stop()
         try { socket?.close() } catch (_: Exception) { }
         try { transport?.close() } catch (_: Exception) { }
     }
@@ -61,11 +59,11 @@ internal class Link(
                 require(b in 32..126) { "Invalid PC response." }
                 reply.append(b.toChar())
             }
-            require(reply.toString() == "OK") { "Pairing rejected; check the code." }
+            require(reply.toString() == "OK") { "PC closed pairing or rejected the code. Check the server window and retry with a new QR." }
             if (closed) return
             ready = true; onState(true, null)
             while (!closed) {
-                val command = outgoing.poll(2, TimeUnit.SECONDS) ?: "PING"
+                val command = outgoing.take(2000) ?: "PING"
                 output.write("$command\n".toByteArray(Charsets.US_ASCII)); output.flush()
             }
         } catch (e: Exception) {

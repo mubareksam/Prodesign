@@ -10,6 +10,7 @@ import android.content.pm.PackageManager
 import android.graphics.Canvas
 import android.graphics.Color
 import android.graphics.Paint
+import android.graphics.Path
 import android.graphics.Typeface
 import android.graphics.drawable.GradientDrawable
 import android.os.Build
@@ -151,17 +152,22 @@ class TabletActivity : Activity() {
         val page = column(); page.addView(label("Connected · choose a remote").apply { textSize = 24f; typeface = Typeface.DEFAULT_BOLD; setTextColor(ink) }); gap(page, 16)
         page.addView(button("Qelem  ›  Drawing pad & tools") { drawing(connection, true) }, LinearLayout.LayoutParams(-1, dp(60))); gap(page)
         page.addView(button("Windows  ›  General pen pad") { drawing(connection, false) }, LinearLayout.LayoutParams(-1, dp(60))); gap(page)
-        page.addView(label("Choose Qelem canvas or Windows tablet mode in the PC pairing panel to match your remote. App detection is not automatic.").apply { setTextColor(Color.LTGRAY) }); gap(page, 16)
+        page.addView(label("Use Qelem remote with Qelem's F8 canvas mode; use Windows remote with the standalone server or F8 Windows mode. App detection is not automatic.").apply { setTextColor(Color.LTGRAY) }); gap(page, 16)
         page.addView(button("Disconnect") { link = null; connection.close(); pairing("Disconnected") }, LinearLayout.LayoutParams(-1, dp(48)))
     }
     private fun drawing(connection: Link, qelem: Boolean, mouse: Boolean = false) {
         val page = column()
-        row(page, "‹ Remotes" to { connection.send("C"); profiles(connection) }, "Undo" to { connection.send("UNDO") }, "Redo" to { connection.send("REDO") })
-        gap(page, 4)
-        if (!qelem) { row(page, "Save" to { connection.send("SAVE") }, "Esc" to { connection.send("ESCAPE") }, "Zoom −" to { connection.send("ZOOMOUT") }, "Zoom +" to { connection.send("ZOOMIN") }); gap(page, 4) }
-        if (qelem) { row(page, "Brush" to { connection.send("PAINT") }, "Erase" to { connection.send("ERASE") }, "Smudge" to { connection.send("SMUDGE") }, "Pick" to { connection.send("PICK") }); gap(page, 4) }
-        row(page, "Tablet" to { if (mouse) { connection.send("C"); drawing(connection, qelem, false) } }, "Mouse" to { if (!mouse) { connection.send("C"); drawing(connection, qelem, true) } })
-        gap(page, 4)
+        fun tools(vararg items: Triple<String, String, () -> Unit>) {
+            val line = LinearLayout(this).apply { orientation = LinearLayout.HORIZONTAL }
+            items.forEach { (icon, description, action) ->
+                val control = button(icon, action).apply { contentDescription = description; textSize = 20f; minHeight = 0; minimumHeight = 0; setPadding(0, 0, 0, 0) }
+                line.addView(control, LinearLayout.LayoutParams(0, dp(42), 1f).apply { setMargins(dp(2), 0, dp(2), 0) })
+            }
+            page.addView(line); gap(page, 3)
+        }
+        tools(Triple("‹", "Back to remotes", { connection.send("C"); profiles(connection) }), Triple("↶", "Undo", { connection.send("UNDO") }), Triple("↷", "Redo", { connection.send("REDO") }), Triple("▣", "Tablet mode", { if (mouse) { connection.send("C"); drawing(connection, qelem, false) } }), Triple("↖", "Mouse mode", { if (!mouse) { connection.send("C"); drawing(connection, qelem, true) } }))
+        if (qelem) tools(Triple("✎", "Brush", { connection.send("PAINT") }), Triple("▱", "Eraser", { connection.send("ERASE") }), Triple("◉", "Smudge", { connection.send("SMUDGE") }), Triple("⌖", "Pick color", { connection.send("PICK") }))
+        else tools(Triple("▣", "Save", { connection.send("SAVE") }), Triple("⎋", "Escape", { connection.send("ESCAPE") }), Triple("−", "Zoom out", { connection.send("ZOOMOUT") }), Triple("+", "Zoom in", { connection.send("ZOOMIN") }))
         if (mouse) {
             page.addView(label("Mouse: slide to move from the current cursor position; tap to click.").apply { textSize = 13f; setTextColor(Color.LTGRAY) })
             page.addView(MousePad(this, connection), LinearLayout.LayoutParams(-1, 0, 1f))
@@ -173,7 +179,9 @@ class TabletActivity : Activity() {
         val drawToggle = Switch(this).apply { text = "Direct draw"; setTextColor(Color.WHITE); setOnCheckedChangeListener { _, checked -> direct = checked; connection.send("C"); hint.text = if (checked) "Draw: touch to paint · turn off to move" else "Move: slide to position · double-tap & hold to draw" } }
         val onlyPen = Switch(this).apply { text = "Stylus only"; setTextColor(Color.WHITE) }
         val switches = LinearLayout(this).apply { orientation = LinearLayout.HORIZONTAL }; switches.addView(drawToggle, LinearLayout.LayoutParams(0, -2, 1f)); switches.addView(onlyPen, LinearLayout.LayoutParams(0, -2, 1f)); page.addView(switches); page.addView(hint)
-        page.addView(Pad(this, connection, { onlyPen.isChecked }, { direct }), LinearLayout.LayoutParams(-1, 0, 1f))
+        val pad = Pad(this, connection, { onlyPen.isChecked }, { direct })
+        page.addView(pad, LinearLayout.LayoutParams(-1, 0, 1f))
+        page.addView(label("Faint marks are local guides, not the PC screen. Tap to clear.").apply { textSize = 11f; setTextColor(Color.LTGRAY); setOnClickListener { pad.clearTrace() } })
         if (qelem) {
             fun slider(title: String, command: String) {
                 val bar = LinearLayout(this).apply { orientation = LinearLayout.HORIZONTAL; gravity = Gravity.CENTER_VERTICAL }; bar.addView(label(title))
@@ -214,10 +222,21 @@ class TabletActivity : Activity() {
 
     private class Pad(activity: Activity, private val link: Link, private val penOnly: () -> Boolean, private val direct: () -> Boolean) : View(activity) {
         private val paint = Paint(Paint.ANTI_ALIAS_FLAG)
+        private val trace = Path()
+        private var tracePoints = 0
+        fun clearTrace() { trace.reset(); tracePoints = 0; invalidate() }
+        private fun tracePoint(x: Float, y: Float, first: Boolean = false) {
+            if (first || tracePoints >= 3000) { if (tracePoints >= 3000) clearTrace(); trace.moveTo(x, y) } else trace.lineTo(x, y)
+            tracePoints++; invalidate()
+        }
         private val gesture = PadGesture((48 * resources.displayMetrics.density))
         private var pointer = -1; private var blocked = false; private var stylus = false; private var drawing = false
         override fun performClick(): Boolean { super.performClick(); return true }
-        override fun onDraw(canvas: Canvas) { canvas.drawColor(Color.rgb(27, 27, 30)); paint.color = Color.rgb(240, 180, 106); paint.style = Paint.Style.STROKE; paint.strokeWidth = 2f; canvas.drawRect(1f, 1f, width - 1f, height - 1f, paint) }
+        override fun onDraw(canvas: Canvas) {
+            canvas.drawColor(Color.rgb(27, 27, 30)); paint.style = Paint.Style.STROKE; paint.strokeWidth = 2f * resources.displayMetrics.density
+            paint.color = Color.argb(75, 240, 180, 106); paint.strokeCap = Paint.Cap.ROUND; canvas.drawPath(trace, paint)
+            paint.color = Color.rgb(240, 180, 106); paint.strokeWidth = 2f; canvas.drawRect(1f, 1f, width - 1f, height - 1f, paint)
+        }
         private fun point(type: String, x: Float, y: Float, pressure: Float, suffix: String = "") {
             if (width <= 0 || height <= 0) return
             val nx = (x / width).coerceIn(0f, 1f); val ny = (y / height).coerceIn(0f, 1f)
@@ -235,6 +254,7 @@ class TabletActivity : Activity() {
                     blocked = penOnly() && !stylus; pointer = if (blocked) -1 else event.getPointerId(0)
                     if (blocked || stylus || direct()) gesture.cancel()
                     drawing = !blocked && (stylus || direct() || gesture.down(event.eventTime, event.x, event.y))
+                    if (drawing) tracePoint(event.x, event.y, true)
                     if (!blocked) point(if (drawing) "D" else "H", event.x, event.y, event.pressure, if (stylus) " S" else " F")
                 }
                 MotionEvent.ACTION_POINTER_DOWN -> { if (drawing) link.send("C"); gesture.cancel(); pointer = -1; drawing = false; blocked = true }
@@ -242,13 +262,17 @@ class TabletActivity : Activity() {
                     val i = event.findPointerIndex(pointer)
                     if (i >= 0) {
                         gesture.move(event.getX(i), event.getY(i))
-                        for (h in 0 until event.historySize) point(if (drawing) "M" else "H", event.getHistoricalX(i, h), event.getHistoricalY(i, h), event.getHistoricalPressure(i, h))
+                        for (h in 0 until event.historySize) {
+                            if (drawing) tracePoint(event.getHistoricalX(i, h), event.getHistoricalY(i, h))
+                            point(if (drawing) "M" else "H", event.getHistoricalX(i, h), event.getHistoricalY(i, h), event.getHistoricalPressure(i, h))
+                        }
+                        if (drawing) tracePoint(event.getX(i), event.getY(i))
                         point(if (drawing) "M" else "H", event.getX(i), event.getY(i), event.getPressure(i))
                     }
                 }
                 MotionEvent.ACTION_UP -> {
                     val i = event.findPointerIndex(pointer)
-                    if (!blocked && i >= 0) { if (drawing) point("U", event.getX(i), event.getY(i), event.getPressure(i)); if (!stylus && !direct()) gesture.up(event.eventTime, event.getX(i), event.getY(i), drawing) }
+                    if (!blocked && i >= 0) { if (drawing) { tracePoint(event.getX(i), event.getY(i)); point("U", event.getX(i), event.getY(i), event.getPressure(i)) }; if (!stylus && !direct()) gesture.up(event.eventTime, event.getX(i), event.getY(i), drawing) }
                     pointer = -1; blocked = false; drawing = false; performClick()
                 }
                 MotionEvent.ACTION_CANCEL -> { if (drawing) link.send("C"); gesture.cancel(); pointer = -1; blocked = false; drawing = false }

@@ -30,3 +30,9 @@ internal fun qelemPreviewDelayMs(fps: Int, percent: Int): Long {
     val speed = if (percent in listOf(50, 100, 200)) percent else 100
     return (100_000L / (rate * speed)).coerceAtLeast(1L)
 }
+
+/** Move one timeline slot without wrapping, including held slots. Empty timelines stay empty. */
+internal fun qelemStepSlot(current: Int?, count: Int, delta: Int): Int? {
+    if (count <= 0) return null
+    return ((current ?: 0).toLong() + delta.toLong()).coerceIn(0L, (count - 1).toLong()).toInt()
+}

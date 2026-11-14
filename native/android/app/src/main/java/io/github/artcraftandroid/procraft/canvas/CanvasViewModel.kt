@@ -7677,6 +7677,16 @@ class CanvasViewModel(app: Application) : AndroidViewModel(app) {
         goToSlot(slot)
     }
 
+    /** Step through held timeline slots without changing artwork or export timing. */
+    fun stepTimeline(delta: Int) {
+        val from = playingSlot ?: currentSlot
+        val target = qelemStepSlot(from, frameSlots.size, delta) ?: return
+        stopPlaying()
+        frameOptionsOpen = false
+        animationSettingsOpen = false
+        goToSlot(target)
+    }
+
     private fun goToSlot(slot: Int) {
         val frame = frameSlots.getOrNull(slot) ?: return
         heldAt = frame to slot - frameSlots.indexOf(frame)

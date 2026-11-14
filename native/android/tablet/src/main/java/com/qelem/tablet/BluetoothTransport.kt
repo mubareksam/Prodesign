@@ -17,7 +17,9 @@ internal class BluetoothTransport(private val pc: BluetoothDevice) : Transport {
         val connection = pc.createRfcommSocketToServiceRecord(UUID.fromString("6db5d3d1-d2a8-4d56-b8c0-87ecb7ea843e"))
         socket = connection
         if (closed) { connection.close(); throw IOException("Closed") }
-        connection.connect()
+        try { connection.connect() } catch (e: IOException) {
+            throw IOException("Bluetooth connection failed. Pair the PC in Android and Windows, start a new Bluetooth QR on the PC, then select that PC. ${e.message ?: ""}", e)
+        }
         if (closed) { connection.close(); throw IOException("Closed") }
         return connection.inputStream to connection.outputStream
     }

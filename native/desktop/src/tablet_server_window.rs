@@ -15,6 +15,10 @@ type Handle = isize;
     fn CreateWindowExW(ex: u32, class: *const u16, title: *const u16, style: u32, x: i32, y: i32, w: i32, h: i32, parent: Hwnd, menu: Handle, instance: Handle, param: *const c_void) -> Hwnd;
     fn DefWindowProcW(hwnd: Hwnd, msg: u32, wp: usize, lp: isize) -> isize;
     fn ShowWindow(hwnd: Hwnd, cmd: i32) -> i32;
+    fn SetForegroundWindow(hwnd: Hwnd) -> i32;
+    fn DestroyWindow(hwnd: Hwnd) -> i32;
+    fn LoadIconW(instance: Handle, name: *const u16) -> Handle;
+    fn RegisterWindowMessageW(name: *const u16) -> u32;
     fn GetMessageW(msg: *mut Message, hwnd: Hwnd, first: u32, last: u32) -> i32;
     fn TranslateMessage(msg: *const Message) -> i32;
     fn DispatchMessageW(msg: *const Message) -> isize;
@@ -28,13 +32,29 @@ type Handle = isize;
     fn GetWindowTextW(hwnd: Hwnd, text: *mut u16, max: i32) -> i32;
     fn MessageBoxW(hwnd: Hwnd, text: *const u16, title: *const u16, flags: u32) -> i32;
 }
+#[repr(C)] struct NotifyIcon {
+    size: u32, hwnd: Hwnd, id: u32, flags: u32, callback: u32, icon: Handle,
+    tip: [u16; 128], state: u32, state_mask: u32, info: [u16; 256], timeout: u32,
+    info_title: [u16; 64], info_flags: u32, guid: [u8; 16], balloon_icon: Handle,
+}
+#[link(name="shell32")] unsafe extern "system" { fn Shell_NotifyIconW(message:u32, data:*const NotifyIcon)->i32; }
+unsafe fn tray(hwnd:Hwnd, add:bool)->bool {
+    let mut data:NotifyIcon = unsafe { std::mem::zeroed() };
+    data.size=std::mem::size_of::<NotifyIcon>() as u32; data.hwnd=hwnd; data.id=1;
+    data.flags=1|2|4; data.callback=TRAY_MESSAGE;
+    data.icon=unsafe { LoadIconW(0,32512usize as *const u16) };
+    for (i,c) in "Qelem Tablet Server".encode_utf16().enumerate() { data.tip[i]=c; }
+    unsafe { Shell_NotifyIconW(if add {0} else {2}, &data) != 0 }
+}
 #[link(name="gdi32")] unsafe extern "system" {
     fn TextOutW(hdc: Handle, x: i32, y: i32, text: *const u16, count: i32) -> i32;
     fn GetStockObject(index: i32) -> Handle;
 }
 #[link(name="kernel32")] unsafe extern "system" { fn GetModuleHandleW(name: *const u16) -> Handle; }
 const WM_DESTROY:u32=2; const WM_PAINT:u32=15; const WM_COMMAND:u32=273; const WM_TIMER:u32=275;
-const WIFI:usize=101; const USB:usize=102; const BLUETOOTH:usize=103; const STOP:usize=104;
+const WIFI:usize=101; const USB:usize=102; const BLUETOOTH:usize=103; const STOP:usize=104; const QUIT:usize=105;
+const TRAY_MESSAGE:u32=0x8001; const WM_CLOSE:u32=0x10; const WM_SIZE:u32=5;
+thread_local! { static TRAY_OK: RefCell<bool> = const { RefCell::new(false) }; static TASKBAR: RefCell<u32> = const { RefCell::new(0) }; }
 fn wide(s: &str)->Vec<u16> { s.encode_utf16().chain(Some(0)).collect() }
 
 struct App { ip: Hwnd, mode: usize, server: Option<Server>, pen: Option<system_pen::SystemPen>, qr: Option<QrCode>, status: String, connected: bool }
@@ -98,8 +118,16 @@ impl App {
 }
 unsafe fn draw_text(hdc: Handle, x: i32, y: i32, text: &str) { let s = wide(text); unsafe { TextOutW(hdc, x, y, s.as_ptr(), (s.len()-1) as i32); } }
 unsafe extern "system" fn wndproc(hwnd:Hwnd, msg:u32, wp:usize, lp:isize)->isize {
+    if TASKBAR.with(|m| *m.borrow() != 0 && *m.borrow() == msg) {
+        let added = unsafe { tray(hwnd,true) }; TRAY_OK.with(|ok| *ok.borrow_mut()=added);
+        if !added { unsafe { ShowWindow(hwnd, 9); SetForegroundWindow(hwnd); } }
+        return 0;
+    }
     match msg {
-        WM_COMMAND => { let id=wp & 0xffff; APP.with(|a| { if let Some(app)=a.borrow_mut().as_mut() { if id == STOP { app.stop(); app.status="Stopped. Choose a connection.".into(); } else if [WIFI,USB,BLUETOOTH].contains(&id) { app.start(id); } } }); unsafe { InvalidateRect(hwnd,ptr::null(),1); } 0 }
+        TRAY_MESSAGE => { if lp as u32 == 0x202 || lp as u32 == 0x203 { unsafe { ShowWindow(hwnd,9); SetForegroundWindow(hwnd); } } 0 }
+        WM_CLOSE => { if TRAY_OK.with(|ok| *ok.borrow()) { unsafe { ShowWindow(hwnd,0); } } else { unsafe { MessageBoxW(hwnd,wide("The tray icon is unavailable. Use Exit to quit; the server remains open.").as_ptr(),wide("Qelem Tablet Server").as_ptr(),0); } } 0 }
+        WM_SIZE if wp == 1 => { if TRAY_OK.with(|ok| *ok.borrow()) { unsafe { ShowWindow(hwnd,0); } } 0 }
+        WM_COMMAND => { let id=wp & 0xffff; if id == QUIT { unsafe { DestroyWindow(hwnd); } return 0; } APP.with(|a| { if let Some(app)=a.borrow_mut().as_mut() { if id == STOP { app.stop(); app.status="Stopped. Choose a connection.".into(); } else if [WIFI,USB,BLUETOOTH].contains(&id) { app.start(id); } } }); unsafe { InvalidateRect(hwnd,ptr::null(),1); } 0 }
         WM_TIMER => { let changed=APP.with(|a| a.borrow_mut().as_mut().is_some_and(App::update)); if changed { unsafe { InvalidateRect(hwnd,ptr::null(),1); } } 0 }
         WM_PAINT => { unsafe {
             let mut paint:Paint=std::mem::zeroed(); let dc=BeginPaint(hwnd,&mut paint);
@@ -119,9 +147,9 @@ unsafe extern "system" fn wndproc(hwnd:Hwnd, msg:u32, wp:usize, lp:isize)->isize
                 }
                 draw_text(dc,25,535,"USB: run adb reverse tcp:48652 tcp:48652 first.");
                 draw_text(dc,25,558,"Bluetooth: pair the PC and tablet in Windows and Android settings first.");
-                draw_text(dc,25,581,"Choose the Windows remote after connecting. Close this window to stop.");
+                draw_text(dc,25,581,"Close or minimize to tray. Click the tray icon to reopen; Exit quits.");
             }); EndPaint(hwnd,&paint); } 0 }
-        WM_DESTROY => { APP.with(|a| { if let Some(app)=a.borrow_mut().as_mut() { app.stop(); } }); unsafe { PostQuitMessage(0); } 0 }
+        WM_DESTROY => { unsafe { tray(hwnd,false); } APP.with(|a| { if let Some(app)=a.borrow_mut().as_mut() { app.stop(); } }); unsafe { PostQuitMessage(0); } 0 }
         _ => unsafe { DefWindowProcW(hwnd,msg,wp,lp) }
     }
 }
@@ -139,8 +167,12 @@ pub fn run() {
         for (id,title,x,w) in [(WIFI,"Wi-Fi / hotspot",25,145),(USB,"USB (ADB)",180,125),(BLUETOOTH,"Bluetooth",315,125),(STOP,"Stop",450,100)] {
             CreateWindowExW(0,button.as_ptr(),wide(title).as_ptr(),0x50010000,x,80,w,38,hwnd,id as isize,instance,ptr::null());
         }
+        CreateWindowExW(0,button.as_ptr(),wide("Exit").as_ptr(),0x50010000,555,80,60,38,hwnd,QUIT as isize,instance,ptr::null());
         let guess=phone_pairing::default_ip(); let edit=CreateWindowExW(0x200,wide("EDIT").as_ptr(),wide(&guess).as_ptr(),0x50810080,145,135,210,26,hwnd,200,instance,ptr::null());
         APP.with(|a| *a.borrow_mut()=Some(App { ip:edit, mode:0, server:None, pen:None, qr:None, status:"Choose Wi-Fi, USB or Bluetooth to start pairing.".into(), connected:false }));
+        TASKBAR.with(|m| *m.borrow_mut()=RegisterWindowMessageW(wide("TaskbarCreated").as_ptr()));
+        TRAY_OK.with(|ok| *ok.borrow_mut()=tray(hwnd,true));
+        if !TRAY_OK.with(|ok| *ok.borrow()) { APP.with(|a| if let Some(app)=a.borrow_mut().as_mut() { app.status="Tray unavailable: keep this window open; use Exit to quit.".into(); }); }
         SetTimer(hwnd,1,20,ptr::null()); ShowWindow(hwnd,1);
         let mut msg:Message=std::mem::zeroed(); while GetMessageW(&mut msg,0,0,0)>0 { TranslateMessage(&msg); DispatchMessageW(&msg); }
     }
