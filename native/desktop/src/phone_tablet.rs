@@ -182,10 +182,12 @@ fn serve(listener: TcpListener, token: &str, stop: &AtomicBool, connected: &Atom
 #[allow(unsafe_code)]
 fn bluetooth_session(port: u16, token: &str, stop: &AtomicBool, connected: &AtomicBool, tx: &SyncSender<Command>, wake: &impl Fn()) -> io::Result<()> {
     use std::os::windows::io::AsRawHandle;
+    use std::os::windows::fs::OpenOptionsExt;
     use windows::Win32::Foundation::HANDLE;
     use windows::Win32::Devices::Communication::{SetCommTimeouts, COMMTIMEOUTS};
     let path = format!(r"\\.\COM{port}");
-    let file = std::fs::OpenOptions::new().read(true).write(true).open(path)?;
+    // Windows communications resources must be opened exclusively (share mode zero).
+    let file = std::fs::OpenOptions::new().read(true).write(true).share_mode(0).open(path)?;
     let timeouts = COMMTIMEOUTS { ReadIntervalTimeout: u32::MAX, ReadTotalTimeoutMultiplier: u32::MAX,
         ReadTotalTimeoutConstant: 1000, WriteTotalTimeoutMultiplier: 0, WriteTotalTimeoutConstant: 2000 };
     // SAFETY: handle belongs to the open COM file and the timeout structure lives for the call.
