@@ -279,6 +279,8 @@ fn main() {
         phone_error: None,
         phone_ip: phone_pairing::default_ip(),
         phone_usb: false,
+        phone_bluetooth: false,
+        phone_com: "COM5".to_owned(),
         phone_system_mode: false,
         #[cfg(windows)]
         phone_pen: None,
@@ -347,6 +349,8 @@ struct App {
     phone_error: Option<String>,
     phone_ip: String,
     phone_usb: bool,
+    phone_bluetooth: bool,
+    phone_com: String,
     phone_system_mode: bool,
     #[cfg(windows)]
     phone_pen: Option<system_pen::SystemPen>,
@@ -695,6 +699,7 @@ impl App {
             if let Some(pen) = self.phone_pen.as_mut() {
                 for event in events {
                     let result = match event {
+                        Command::Hover(x,y) if !self.phone_panel && !self.phone_stroke => pen.hover(x,y),
                         Command::Down(x,y,p,_) if !self.phone_panel && !self.phone_stroke => {
                             let result = pen.down(x,y,p);
                             if result.is_ok() { self.phone_stroke = true; }
@@ -703,6 +708,7 @@ impl App {
                         Command::Move(x,y,p) if !self.phone_panel && self.phone_stroke => pen.moved(x,y,p),
                         Command::Up(x,y,p) if self.phone_stroke => { let result = pen.up(x,y,p); self.phone_stroke = false; result }
                         Command::Cancel => { pen.cancel(); self.phone_stroke = false; Ok(()) }
+                        Command::Undo | Command::Redo | Command::Save | Command::Escape | Command::ZoomIn | Command::ZoomOut if !self.phone_panel && !self.phone_stroke => system_pen::shortcut(event),
                         _ => Ok(()),
                     };
                     if let Err(error) = result { failure = Some(error); break; }
@@ -731,6 +737,11 @@ impl App {
         };
         for command in events {
             match command {
+                Command::Hover(x,y) if !blocked && !self.phone_stroke => {
+                    if let (Some(point), Some(screen)) = (sample(x,y,0.0), self.screen.as_ref()) {
+                        let _ = screen.window.set_cursor_position(winit::dpi::PhysicalPosition::new(point.x as f64, point.y as f64));
+                    }
+                }
                 Command::Down(x,y,p,stylus) if !blocked && !self.phone_stroke && self.input.idle() => {
                     if let Some(point) = sample(x,y,p) {
                         session.stroke_begin(if stylus { procraft_core::PointerKind::Stylus } else { procraft_core::PointerKind::Finger }, vec![point]);
@@ -745,6 +756,10 @@ impl App {
                 Command::Cancel if self.phone_stroke => { session.stroke_cancel(); self.phone_stroke = false; }
                 Command::Undo if !blocked && !self.phone_stroke && self.input.idle() => { session.undo(); }
                 Command::Redo if !blocked && !self.phone_stroke && self.input.idle() => { session.redo(); }
+                Command::Paint if !blocked && !self.phone_stroke && self.input.idle() => session.set_tool(procraft_core::ToolKind::Paint),
+                Command::Erase if !blocked && !self.phone_stroke && self.input.idle() => session.set_tool(procraft_core::ToolKind::Erase),
+                Command::Smudge if !blocked && !self.phone_stroke && self.input.idle() => session.set_tool(procraft_core::ToolKind::Smudge),
+                Command::Pick if !blocked && !self.phone_stroke && self.input.idle() => session.set_pick_next(true),
                 Command::Size(v) if !blocked && !self.phone_stroke && self.input.idle() => session.set_brush_size(v),
                 Command::Opacity(v) if !blocked && !self.phone_stroke && self.input.idle() => session.set_brush_opacity(v),
                 _ => {}
@@ -884,17 +899,26 @@ impl App {
                     if let Some(server) = &self.phone_server {
                         ui.label(if server.connected.load(std::sync::atomic::Ordering::Acquire) { "Phone connected. Close this panel to draw." } else { "Waiting for phone…" });
                         if !server.connected.load(std::sync::atomic::Ordering::Acquire) {
-                            ui.label(if self.phone_usb { "USB (ADB), local PC only" } else { "Wi-Fi / hotspot" });
-                            if !self.phone_usb { ui.horizontal(|ui| { ui.label("PC IPv4:"); ui.text_edit_singleline(&mut self.phone_ip); }); }
-                            else { ui.label("Run: adb reverse tcp:48652 tcp:48652"); }
+                            ui.label(if self.phone_bluetooth { "Bluetooth SPP (outgoing COM)" } else if self.phone_usb { "USB (ADB), local PC only" } else { "Wi-Fi / hotspot" });
+                            if !self.phone_usb && !self.phone_bluetooth { ui.horizontal(|ui| { ui.label("PC IPv4:"); ui.text_edit_singleline(&mut self.phone_ip); }); }
+                            if self.phone_usb { ui.label("Run: adb reverse tcp:48652 tcp:48652"); }
                             ui.monospace(format!("Code: {}", server.token));
-                            if let Some(text) = phone_pairing::payload(&self.phone_ip, self.phone_usb, &server.token) {
-                                phone_pairing::qr(ui, &text);
-                            } else { ui.label("Enter the PC's private IPv4 address to generate a QR code."); }
+                            if !self.phone_bluetooth {
+                                if let Some(text) = phone_pairing::payload(&self.phone_ip, self.phone_usb, &server.token) {
+                                    phone_pairing::qr(ui, &text);
+                                } else { ui.label("Enter the PC's private IPv4 address to generate a QR code."); }
+                            } else { ui.label("Enter this code in the tablet's Bluetooth mode; keep both devices paired."); }
                         }
                         if ui.button("Stop and disconnect").clicked() { phone_action = 2; }
                     } else {
-                        ui.horizontal(|ui| { ui.selectable_value(&mut self.phone_usb, false, "Wi-Fi / hotspot"); ui.selectable_value(&mut self.phone_usb, true, "USB (ADB)"); });
+                        ui.horizontal(|ui| {
+                            if ui.selectable_label(!self.phone_usb && !self.phone_bluetooth, "Wi-Fi / hotspot").clicked() { self.phone_usb = false; self.phone_bluetooth = false; }
+                            if ui.selectable_label(self.phone_usb, "USB (ADB)").clicked() { self.phone_usb = true; self.phone_bluetooth = false; }
+                            #[cfg(windows)]
+                            if ui.selectable_label(self.phone_bluetooth, "Bluetooth (experimental)").clicked() { self.phone_bluetooth = true; self.phone_usb = false; }
+                        });
+                        #[cfg(windows)]
+                        if self.phone_bluetooth { ui.horizontal(|ui| { ui.label("Outgoing COM port:"); ui.text_edit_singleline(&mut self.phone_com); }); ui.label("Pair devices, configure an outgoing Bluetooth serial port for the phone, then start listening on Android."); }
                         #[cfg(windows)]
                         {
                             ui.horizontal(|ui| { ui.selectable_value(&mut self.phone_system_mode, false, "Qelem canvas"); ui.selectable_value(&mut self.phone_system_mode, true, "Windows tablet (experimental)"); });
@@ -972,7 +996,15 @@ impl App {
                 }
             }
             let wake = self.wake.clone();
-            match phone_tablet::Server::start(move || { let _ = wake.send_event(()); }, self.phone_usb) {
+            #[cfg(windows)]
+            let result = if self.phone_bluetooth {
+                phone_tablet::Server::start_bluetooth(move || { let _ = wake.send_event(()); }, &self.phone_com)
+            } else {
+                phone_tablet::Server::start(move || { let _ = wake.send_event(()); }, self.phone_usb)
+            };
+            #[cfg(not(windows))]
+            let result = phone_tablet::Server::start(move || { let _ = wake.send_event(()); }, self.phone_usb);
+            match result {
                 Ok(server) => { self.phone_server = Some(server); self.phone_error = None; }
                 Err(error) => {
                     #[cfg(windows)] { self.phone_pen = None; }

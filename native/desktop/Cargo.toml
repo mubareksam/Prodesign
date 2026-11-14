@@ -11,6 +11,10 @@ description = "ProCraft on the desktop (Windows, macOS, Linux): the same engine 
 name = "procraft"
 path = "src/main.rs"
 
+[[bin]]
+name = "qelem-tablet-server"
+path = "src/tablet_server_main.rs"
+
 [lints]
 workspace = true
 
@@ -128,6 +132,7 @@ windows = { version = "0.62", features = [
     "UI",
     "UI_ViewManagement",
     "Win32_Foundation",
+    "Win32_Devices_Communication",
     "Win32_Graphics_Gdi",
     "Win32_Media_Audio",
     "Win32_Media_MediaFoundation",
@@ -139,6 +144,7 @@ windows = { version = "0.62", features = [
     "Win32_System_WinRT",
     "Win32_UI_Controls",
     "Win32_UI_Input_Pointer",
+    "Win32_UI_Input_KeyboardAndMouse",
     "Win32_UI_WindowsAndMessaging",
 ] }
 

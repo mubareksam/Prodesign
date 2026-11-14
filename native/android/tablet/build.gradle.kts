@@ -7,12 +7,14 @@ android {
         applicationId = "com.qelem.tablet.preview"
         minSdk = 28
         targetSdk = 36
-        versionCode = 2
-        versionName = "0.2-preview"
+        versionCode = 3
+        versionName = "0.3-preview"
     }
 }
 
 dependencies {
     implementation("com.journeyapps:zxing-android-embedded:4.3.0")
+    // ZXing CaptureManager uses AndroidX core at runtime; its old Maven metadata may omit it.
+    implementation(libs.androidx.core.ktx)
     testImplementation(libs.junit)
 }

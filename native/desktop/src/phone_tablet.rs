@@ -11,8 +11,8 @@ const QUEUE: usize = 1024;
 
 #[derive(Debug, PartialEq, Clone, Copy)]
 pub enum Command {
-    Down(f32, f32, f32, bool), Move(f32, f32, f32), Up(f32, f32, f32), Cancel,
-    Undo, Redo, Size(f32), Opacity(f32), Ping,
+    Hover(f32, f32), Down(f32, f32, f32, bool), Move(f32, f32, f32), Up(f32, f32, f32), Cancel,
+    Undo, Redo, Save, Escape, ZoomIn, ZoomOut, Paint, Erase, Smudge, Pick, Size(f32), Opacity(f32), Ping,
 }
 
 fn unit(s: Option<&str>) -> Option<f32> {
@@ -23,10 +23,19 @@ fn unit(s: Option<&str>) -> Option<f32> {
 pub fn parse(line: &str) -> Option<Command> {
     let mut p = line.split_ascii_whitespace();
     let out = match p.next()? {
+        "H" => Command::Hover(unit(p.next())?, unit(p.next())?),
         "D" => Command::Down(unit(p.next())?, unit(p.next())?, unit(p.next())?, match p.next()? { "S" => true, "F" => false, _ => return None }),
         "M" => Command::Move(unit(p.next())?, unit(p.next())?, unit(p.next())?),
         "U" => Command::Up(unit(p.next())?, unit(p.next())?, unit(p.next())?),
         "C" => Command::Cancel,
+        "SAVE" => Command::Save,
+        "ESCAPE" => Command::Escape,
+        "ZOOMIN" => Command::ZoomIn,
+        "ZOOMOUT" => Command::ZoomOut,
+        "PAINT" => Command::Paint,
+        "ERASE" => Command::Erase,
+        "SMUDGE" => Command::Smudge,
+        "PICK" => Command::Pick,
         "UNDO" => Command::Undo,
         "REDO" => Command::Redo,
         "SIZE" => Command::Size(unit(p.next())?),
@@ -38,7 +47,7 @@ pub fn parse(line: &str) -> Option<Command> {
 }
 
 /// A bounded line, with a timeout so Stop closes even an idle client. No unbounded allocation.
-fn line(stream: &mut TcpStream, stop: &AtomicBool) -> io::Result<Option<String>> {
+fn line(stream: &mut impl Read, stop: &AtomicBool) -> io::Result<Option<String>> {
     let mut bytes = Vec::with_capacity(MAX_LINE);
     let mut b = [0];
     let mut idle = 0;
@@ -93,6 +102,34 @@ impl Server {
         }).map_err(|e| e.to_string())?;
         Ok(Self { token, incoming: rx, stop, connected, ended })
     }
+    /// Bluetooth Classic SPP through a manually configured outgoing Windows COM port.
+    #[cfg(windows)]
+    pub fn start_bluetooth(wake: impl Fn() + Send + 'static, port: &str) -> Result<Self, String> {
+        let upper = port.trim().to_ascii_uppercase();
+        let number = upper.strip_prefix("COM").and_then(|s| s.parse::<u16>().ok()).filter(|n| *n > 0)
+            .ok_or("Enter a Windows COM port, for example COM5")?;
+        let mut secret = [0u8; 16];
+        getrandom::fill(&mut secret).map_err(|e| e.to_string())?;
+        let token: String = secret.iter().map(|v| format!("{v:02x}")).collect();
+        let (tx, rx) = mpsc::sync_channel(QUEUE);
+        let stop = Arc::new(AtomicBool::new(false));
+        let connected = Arc::new(AtomicBool::new(false));
+        let ended = Arc::new(AtomicBool::new(false));
+        let (s,c,e,key) = (stop.clone(), connected.clone(), ended.clone(), token.clone());
+        std::thread::Builder::new().name("qelem-bluetooth".into()).spawn(move || {
+            // Windows may attempt opening the port before the phone has started listening.
+            for _ in 0..60 {
+                if s.load(Ordering::Acquire) { break; }
+                match bluetooth_session(number, &key, &s, &c, &tx, &wake) {
+                    Ok(()) => break,
+                    Err(error) if error.kind() == io::ErrorKind::InvalidData || c.load(Ordering::Acquire) => { log::warn!("Bluetooth: {error}"); break; }
+                    Err(error) => { log::warn!("Bluetooth: {error}"); std::thread::sleep(Duration::from_secs(2)); }
+                }
+            }
+            c.store(false, Ordering::Release); e.store(true, Ordering::Release); wake();
+        }).map_err(|e| e.to_string())?;
+        Ok(Self { token, incoming: rx, stop, connected, ended })
+    }
     pub fn stop(&self) { self.stop.store(true, Ordering::Release); }
 }
 impl Drop for Server { fn drop(&mut self) { self.stop(); } }
@@ -135,6 +172,40 @@ fn serve(listener: TcpListener, token: &str, stop: &AtomicBool, connected: &Atom
     }
 }
 
+// A Windows Bluetooth outgoing COM port wraps RFCOMM SPP. This requires the phone's
+// SPP service to be listening and a Windows outgoing COM port configured for the paired phone.
+#[cfg(windows)]
+#[allow(unsafe_code)]
+fn bluetooth_session(port: u16, token: &str, stop: &AtomicBool, connected: &AtomicBool, tx: &SyncSender<Command>, wake: &impl Fn()) -> io::Result<()> {
+    use std::os::windows::io::AsRawHandle;
+    use windows::Win32::Foundation::HANDLE;
+    use windows::Win32::Devices::Communication::{SetCommTimeouts, COMMTIMEOUTS};
+    let path = format!(r"\\.\COM{port}");
+    let file = std::fs::OpenOptions::new().read(true).write(true).open(path)?;
+    let timeouts = COMMTIMEOUTS { ReadIntervalTimeout: u32::MAX, ReadTotalTimeoutMultiplier: u32::MAX,
+        ReadTotalTimeoutConstant: 1000, WriteTotalTimeoutMultiplier: 0, WriteTotalTimeoutConstant: 2000 };
+    // SAFETY: handle belongs to the open COM file and the timeout structure lives for the call.
+    unsafe { SetCommTimeouts(HANDLE(file.as_raw_handle()), &timeouts) }.map_err(io::Error::other)?;
+    struct Serial(std::fs::File);
+    impl Read for Serial {
+        fn read(&mut self, b: &mut [u8]) -> io::Result<usize> {
+            match self.0.read(b) { Ok(0) => Err(io::ErrorKind::TimedOut.into()), other => other }
+        }
+    }
+    let mut serial = Serial(file);
+    let expected = format!("QELEM1 {token}");
+    if !matches!(line(&mut serial, stop), Ok(Some(ref value)) if value == &expected) { return Err(io::Error::new(io::ErrorKind::InvalidData, "Bluetooth authentication failed or timed out")); }
+    serial.0.write_all(b"OK\n")?;
+    connected.store(true, Ordering::Release); wake();
+    while !stop.load(Ordering::Acquire) {
+        let Some(raw) = line(&mut serial, stop)? else { break };
+        let Some(command) = parse(&raw) else { break };
+        if command == Command::Ping { continue; }
+        match tx.try_send(command) { Ok(()) => wake(), Err(_) => break }
+    }
+    Ok(())
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -169,6 +240,7 @@ mod tests {
     }
     #[test] fn bounded_valid_protocol() {
         assert_eq!(parse("D 0.1 1 0.4 S"), Some(Command::Down(0.1, 1.0, 0.4, true)));
+        assert_eq!(parse("H 0.2 0.7"), Some(Command::Hover(0.2, 0.7)));
         assert_eq!(parse("M 0 1 1"), Some(Command::Move(0.0, 1.0, 1.0)));
         for v in ["D NaN 0 1 S", "M 0 2 1", "U -1 0 1", "UNDO extra", "SIZE inf", "D 0 0 0 X", "QUIT"] { assert_eq!(parse(v), None); }
     }
