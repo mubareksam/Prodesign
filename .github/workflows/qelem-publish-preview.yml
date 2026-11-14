@@ -21,7 +21,7 @@ jobs:
         with:
           name: Qelem-native-preview-arm64
           path: /tmp/qelem-native-apk
-          run-id: 43632246730
+          run-id: 43634488444
           github-token: ${{ github.token }}
       - name: Verify and place development APK
         run: |
@@ -35,8 +35,8 @@ jobs:
           unzip -l Qelem-native-preview-arm64.apk | grep 'lib/arm64-v8a/libprocraft_core.so'
           {
             echo 'Qelem native preview arm64 development APK'
-            echo 'Source commit: 174ec835dbe351ec5b3d7c8596261d3a560bb0b8'
-            echo 'GitHub Actions build: https://github.com/mubareksam/Qelem/actions/runs/43632246730'
+            echo 'Source commit: b89fdb081ff8f178ea0750b00e22105ee2480910'
+            echo 'GitHub Actions build: https://github.com/mubareksam/Qelem/actions/runs/43634488444'
             echo 'Debug signed, separate package. Not an upgrade to Qelem.'
             echo
             cat SHA256SUMS.txt
@@ -44,13 +44,13 @@ jobs:
             cat verification.txt
             echo
             grep -E "^(package:|sdkVersion:|targetSdkVersion:|application-label:|native-code:)" badging.txt
-          } > "$GITHUB_WORKSPACE/artifacts/Qelem-animation-batch-edit-preview-arm64.txt"
-          cp Qelem-native-preview-arm64.apk "$GITHUB_WORKSPACE/artifacts/Qelem-animation-batch-edit-preview-arm64.apk"
+          } > "$GITHUB_WORKSPACE/artifacts/Qelem-animation-clean-timeline-preview-arm64.txt"
+          cp Qelem-native-preview-arm64.apk "$GITHUB_WORKSPACE/artifacts/Qelem-animation-clean-timeline-preview-arm64.apk"
       - name: Commit download to the current branch
         run: |
           set -euo pipefail
           git config user.name 'github-actions[bot]'
           git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
-          git add artifacts/Qelem-animation-batch-edit-preview-arm64.apk artifacts/Qelem-animation-batch-edit-preview-arm64.txt
-          git commit -m 'Add Qelem animation batch editing preview APK'
+          git add artifacts/Qelem-animation-clean-timeline-preview-arm64.apk artifacts/Qelem-animation-clean-timeline-preview-arm64.txt
+          git commit -m 'Add Qelem clean timeline preview APK'
           git push origin HEAD:arena/412bd2e9-prodesign
