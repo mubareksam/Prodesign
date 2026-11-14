@@ -21,7 +21,7 @@ These additions have focused JVM tests, and the arm64 APK compiles; graphics, to
 
 ## Windows and phone tablet
 
-Download the [Windows x64 preview](../artifacts/Qelem-Windows-preview.zip) and the separate [Android tablet controller](../artifacts/Qelem-Tablet-preview.apk). The phone is a blank pad sending input over a trusted LAN, not a system-wide Wacom driver. [Setup, security and limitations](QELEM-PHONE-TABLET.md). Built and protocol-tested, but not tested together on real devices.
+Download the [Windows x64 connectivity preview](../artifacts/Qelem-Windows-connectivity-preview.zip) and the separate [Android tablet controller](../artifacts/Qelem-Tablet-connectivity-preview.apk). The blank pad can control Qelem or use experimental Windows synthetic-pen input (not a HID/Wintab driver). QR pairing, trusted private Wi-Fi/hotspot, and USB via ADB reverse are supported. [Setup, security and limitations](QELEM-PHONE-TABLET.md). Built and protocol-tested, but not tested together on real devices.
 
 ## Keep your artwork safe
 

@@ -13,13 +13,13 @@ Qelem is an independent Android painting and frame-animation app. This repositor
 
 The native APK is a debug-signed preview, built on GitHub but **not tested on a physical device**. Its source, feature status and build instructions are in [native/README.md](native/README.md). Do not download an upstream ProCraft APK expecting it to contain Qelem's changes.
 
-## Windows + phone tablet preview
+## Windows + Android tablet connectivity preview
 
-- [Download Qelem for Windows x64](artifacts/Qelem-Windows-preview.zip) (portable, unsigned preview).
-- [Download Qelem Tablet for Android 9+](artifacts/Qelem-Tablet-preview.apk) (separate debug-signed controller).
-- [Setup, security and limitations](native/QELEM-PHONE-TABLET.md) · [build and signature details](artifacts/Qelem-Windows-and-Tablet-preview.txt).
+- [Download Qelem for Windows x64](artifacts/Qelem-Windows-connectivity-preview.zip) (portable, unsigned preview).
+- [Download Qelem Tablet for Android 9+](artifacts/Qelem-Tablet-connectivity-preview.apk) (separate debug-signed controller).
+- [Setup, security and limitations](native/QELEM-PHONE-TABLET.md) · [build and signature details](artifacts/Qelem-Windows-and-Tablet-connectivity-preview.txt).
 
-The phone sends strokes and basic adjustments to an open Qelem canvas over trusted local Wi-Fi. It is not a system-wide tablet driver. These builds have passed compilation and connection protocol tests, but **have not been tested together on real devices**.
+Connect via private Wi-Fi or an offline hotspot, or a USB cable with ADB reverse; pair by QR scan or code. Choose Qelem canvas input or experimental Windows synthetic-pen input. Windows mode is not a HID/Wintab driver and may not work in every application. Traffic and QR secrets are unencrypted. Builds and automated tests passed, but **not tested together on real devices**. The [earlier Qelem-only preview](artifacts/Qelem-Windows-and-Tablet-preview.txt) remains available separately.
 
 ## Artwork safety
 

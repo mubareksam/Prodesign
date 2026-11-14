@@ -5,6 +5,8 @@ The Qelem Windows app is still the painting app. Its F8 connectivity panel can r
 - **Qelem canvas:** the phone controls the artwork open in Qelem, including undo/redo and size/opacity.
 - **Windows tablet (experimental):** the phone sends a Windows synthetic pen to the desktop, so compatible Windows Ink applications can receive drawing input. Keep Qelem open (you may minimize it) and select the target application. This is not a kernel HID driver, Wintab driver or guaranteed compatibility with all applications; protected/elevated windows and some apps may reject synthetic input. Undo/redo and size/opacity buttons only control Qelem canvas mode.
 
+The controller APK is debug-signed. Android may reject it as an update if an older Qelem Tablet preview used a different debug key; uninstall only the old **Qelem Tablet controller** if necessary, not your separate Qelem drawing app. Never uninstall a drawing app without backing up its private artwork first.
+
 ## Connect
 
 Open/create an artwork in Qelem on Windows, press F8, choose the connection and target, and select **Start pairing**. The Android app can scan the pairing QR or enter the 32-character code manually. Close the F8 panel before drawing. Stop pairing when finished. If a connection breaks, the current stroke is cancelled and a new pairing code is needed. The blank pad maps to the entire artwork (Qelem mode) or Windows virtual desktop (Windows mode), which can distort if aspect ratios differ. There is not yet a monitor picker, hover, tilt, eraser mapping, or robust palm rejection; stylus-only mode rejects a finger start, while a second finger cancels the stroke. Android reports stylus pressure only where the hardware supports it.
