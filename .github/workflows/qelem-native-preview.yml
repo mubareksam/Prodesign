@@ -44,9 +44,10 @@ jobs:
           set +e
           "$ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager" 'platforms;android-37' 'ndk;29.0.14206865' > /tmp/qelem-sdk-install.log 2>&1
           result=$?
-          tail -n 30 /tmp/qelem-sdk-install.log
+          tr '\r' '\n' < /tmp/qelem-sdk-install.log | tail -n 30
           if [ "$result" -ne 0 ]; then
-            while IFS= read -r line; do echo "::error::$line"; done < <(tail -n 8 /tmp/qelem-sdk-install.log)
+            tr '\r' '\n' < /tmp/qelem-sdk-install.log | grep -Ei 'error|warning|failed|license|not found|unable|exception|package' | tail -n 12 > /tmp/qelem-sdk-errors.log || true
+            while IFS= read -r line; do echo "::error::$line"; done < /tmp/qelem-sdk-errors.log
             exit "$result"
           fi
       - uses: gradle/actions/setup-gradle@v4
