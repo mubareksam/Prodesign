@@ -51,9 +51,14 @@ impl Listener {
     unsafe fn register(&mut self, add: bool) -> Result<(), String> {
         let mut name: Vec<u16> = "Qelem Tablet\0".encode_utf16().collect();
         let mut guid = SERVICE;
+        // Windows' Bluetooth SDP provider expects both addresses, as in Microsoft's
+        // WinsockBluetoothConnection sample. The pointers are valid for the call below.
+        let address = (&mut self.addr as *mut SOCKADDR_BTH).cast();
+        let length = std::mem::size_of::<SOCKADDR_BTH>() as i32;
         let mut cs = CSADDR_INFO {
-            LocalAddr: SOCKET_ADDRESS { lpSockaddr: (&mut self.addr as *mut SOCKADDR_BTH).cast(), iSockaddrLength: std::mem::size_of::<SOCKADDR_BTH>() as i32 },
-            iSocketType: SOCK_STREAM.0, iProtocol: RFCOMM, ..Default::default()
+            LocalAddr: SOCKET_ADDRESS { lpSockaddr: address, iSockaddrLength: length },
+            RemoteAddr: SOCKET_ADDRESS { lpSockaddr: address, iSockaddrLength: length },
+            iSocketType: SOCK_STREAM.0, iProtocol: RFCOMM,
         };
         let query = WSAQUERYSETW { dwSize: std::mem::size_of::<WSAQUERYSETW>() as u32, lpszServiceInstanceName: PWSTR(name.as_mut_ptr()), lpServiceClassId: &mut guid, dwNameSpace: NS_BTH, dwNumberOfCsAddrs: 1, lpcsaBuffer: &mut cs, ..Default::default() };
         // SAFETY: query and its pointed-to buffers are valid until WSASetServiceW returns.
