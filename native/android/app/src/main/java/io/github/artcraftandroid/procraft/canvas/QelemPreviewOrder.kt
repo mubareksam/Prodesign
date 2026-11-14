@@ -71,3 +71,7 @@ internal fun qelemHeldOffset(id: ULong?, remembered: ULong?, offset: Int, frame:
     if (id == null || id != remembered || frame < 0) return 0
     return offset.coerceIn(0, (slots.count { it == frame } - 1).coerceAtLeast(0))
 }
+
+/** All held slots share the same frame ID; toggling any of them toggles that frame once. */
+internal fun qelemToggleFrameSelection(selected: Set<ULong>, id: ULong?): Set<ULong> =
+    if (id == null) selected else if (id in selected) selected - id else selected + id

@@ -7794,6 +7794,22 @@ class CanvasViewModel(app: Application) : AndroidViewModel(app) {
         endFrameHold()
     }
 
+    /** Change several selected frame exposures as one saved, undoable native operation. */
+    fun adjustSelectedHolds(ids: Set<ULong>, increase: Boolean) {
+        val s = session ?: return
+        stopPlaying()
+        val ordered = animationFrames.filter { it in ids }
+        if (ordered.isEmpty() || ordered.size != ids.size) {
+            showNotice("Select one or more visible frames first.")
+            return
+        }
+        if (s.adjustAnimationHolds(ordered, increase)) {
+            refresh()
+        } else {
+            showNotice("No durations changed. The selected frames may be at the limit or unavailable.")
+        }
+    }
+
     /** The hold's slider let go: the whole drag is one undo step. */
     fun endFrameHold() {
         val id = currentFrame?.let { animationFrames.getOrNull(it) } ?: return

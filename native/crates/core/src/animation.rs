@@ -451,6 +451,32 @@ impl CanvasSession {
         })
     }
 
+    /// Adjust a set of visible frame exposures together by one extra frame. All IDs must be
+    /// distinct, visible top-level frames of this animation; invalid input changes nothing.
+    /// Durations clamp independently to 0..60 extra frames. The batch is one undo step.
+    pub fn adjust_animation_holds(&self, ids: Vec<u64>, increase: bool) -> bool {
+        self.change("adjust frame durations", |doc| {
+            let all = frames(doc);
+            let a = doc.animation.as_ref().filter(|a| !a.pages)?;
+            if ids.is_empty() || ids.len() > all.len() { return None; }
+            let mut seen = std::collections::HashSet::new();
+            let mut changes = Vec::with_capacity(ids.len());
+            for raw in ids {
+                let id = LayerId(raw);
+                if !seen.insert(id) || !all.contains(&id) { return None; }
+                let old = a.hold(id);
+                // Refuse damaged out-of-range data rather than silently changing it.
+                if old > 60 { return None; }
+                let new = if increase { old.saturating_add(1).min(60) } else { old.saturating_sub(1) };
+                if new != old { changes.push((id, new)); }
+            }
+            if changes.is_empty() { return None; }
+            let a = doc.animation.as_mut()?;
+            for (id, hold) in changes { a.set_hold(id, hold); }
+            Some(())
+        }).is_some()
+    }
+
     /// Delete on a held place: the frame of layer `id` held one frame less.
     pub fn drop_held_frame(&self, id: u64) -> bool {
         self.change("hold frame length", |d| {
@@ -676,6 +702,27 @@ mod tests {
         assert_eq!(frame_rate(0.3).time_of(3000, 1000), 10_000_000);
         assert_eq!(frame_rate(15.0).time_of(15, 1_000_000), 1_000_000);
         assert_eq!(frame_rate(0.0).seconds, 1000);
+    }
+
+    #[test]
+    fn batch_frame_holds_are_validated_and_clamped() {
+        let s = CanvasSession::new(16, 16);
+        let a = s.layers().first().map(|l| l.id).unwrap();
+        let b = s.add_layer();
+        let c = s.add_layer();
+        assert!(s.set_animation_assist(true));
+        s.set_frame_hold(a, 60);
+        s.set_frame_hold(b, 1);
+        assert!(s.adjust_animation_holds(vec![a, b], true));
+        assert_eq!((s.frame_hold(a), s.frame_hold(b), s.frame_hold(c)), (60, 2, 0));
+        assert!(s.adjust_animation_holds(vec![b, c], false));
+        assert_eq!((s.frame_hold(b), s.frame_hold(c)), (1, 0));
+        assert!(!s.adjust_animation_holds(vec![c], false));
+        assert!(!s.adjust_animation_holds(vec![b, b], true));
+        assert!(!s.adjust_animation_holds(vec![b, u64::MAX], true));
+        assert!(s.set_layer_visible(c, false));
+        assert!(!s.adjust_animation_holds(vec![b, c], true));
+        assert_eq!((s.frame_hold(a), s.frame_hold(b), s.frame_hold(c)), (60, 1, 0));
     }
 
     #[test]

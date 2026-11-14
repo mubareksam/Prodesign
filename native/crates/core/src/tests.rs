@@ -3916,6 +3916,28 @@ fn a_held_frame_splits_where_it_is_chosen_and_loses_a_place_on_delete() {
 }
 
 #[test]
+fn batch_frame_durations_undo_redo_and_save_as_one_step() {
+    let Some(s) = session(40, 40) else { return };
+    let a = s.animation_frames().first().copied().unwrap();
+    let b = s.add_layer();
+    let c = s.add_layer();
+    assert!(s.set_animation_assist(true));
+    assert!(s.adjust_animation_holds(vec![a, c], true));
+    assert_eq!((s.frame_hold(a), s.frame_hold(b), s.frame_hold(c)), (1, 0, 1));
+    s.undo();
+    assert_eq!((s.frame_hold(a), s.frame_hold(b), s.frame_hold(c)), (0, 0, 0));
+    s.redo();
+    assert_eq!((s.frame_hold(a), s.frame_hold(b), s.frame_hold(c)), (1, 0, 1));
+    let dir = std::env::temp_dir().join(format!("qelem-batch-holds-{}", std::process::id()));
+    let path = dir.to_string_lossy().into_owned();
+    s.save(path.clone()).unwrap();
+    let reopened = CanvasSession::open(path).unwrap();
+    assert_eq!(reopened.animation_sequence(), [0, 0, 1, 2, 2]);
+    assert_eq!((reopened.frame_hold(a), reopened.frame_hold(c)), (1, 1));
+    std::fs::remove_dir_all(dir).ok();
+}
+
+#[test]
 fn a_moved_animation_frame_undoes_redoes_and_saves() {
     let Some(s) = session(40, 40) else { return };
     let a = s.animation_frames().first().copied().unwrap();

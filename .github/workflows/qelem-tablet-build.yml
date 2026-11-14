@@ -62,6 +62,10 @@ jobs:
           if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
           cargo test --release --locked -p procraft-core --lib a_moved_animation_frame_undoes_redoes_and_saves
           if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          cargo test --release --locked -p procraft-core --lib batch_frame_holds_are_validated_and_clamped
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          cargo test --release --locked -p procraft-core --lib batch_frame_durations_undo_redo_and_save_as_one_step
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
           cargo test --release --locked -p procraft-engine --lib top_level_reorder
           if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
       - name: Smoke test native server window

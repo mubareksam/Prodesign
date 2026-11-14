@@ -48,6 +48,13 @@ class QelemPreviewTest {
         assertEquals(0, qelemHeldOffset(13uL, 12uL, 2, 1, slotsAfterMove))
         assertEquals(0, qelemHeldOffset(null, null, 2, 1, slotsAfterMove))
     }
+    @Test fun multipleHeldSlotsToggleOneStableFrameId() {
+        val a = qelemToggleFrameSelection(emptySet(), 7uL)
+        val both = qelemToggleFrameSelection(a, 8uL)
+        assertEquals(setOf(7uL, 8uL), both)
+        assertEquals(setOf(8uL), qelemToggleFrameSelection(both, 7uL))
+        assertEquals(both, qelemToggleFrameSelection(both, null))
+    }
     @Test fun timingRespectsPreviewSpeedAndBounce() {
         assertEquals(200L, qelemPreviewDelayMs(10, 50))
         assertEquals(100L, qelemPreviewDelayMs(10, 100))

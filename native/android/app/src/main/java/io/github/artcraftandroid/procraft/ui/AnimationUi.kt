@@ -77,6 +77,7 @@ import io.github.artcraftandroid.procraft.canvas.qelemCycleSlots
 import io.github.artcraftandroid.procraft.canvas.qelemTimelineTime
 import io.github.artcraftandroid.procraft.canvas.QelemRulerItem
 import io.github.artcraftandroid.procraft.canvas.qelemRulerSlot
+import io.github.artcraftandroid.procraft.canvas.qelemToggleFrameSelection
 import io.github.artcraftandroid.procraft.core.AnimationPlayback
 import kotlin.math.floor
 import kotlin.math.roundToInt
@@ -211,6 +212,9 @@ private fun BoxScope.StudioTimelineBar(vm: CanvasViewModel, compact: () -> Unit)
     val width = (window - 16.dp).coerceAtLeast(1.dp)
     val slots = vm.frameSlots
     var scrubSlot by remember { mutableStateOf<Int?>(null) }
+    var selecting by remember { mutableStateOf(false) }
+    var chosenFrames by remember { mutableStateOf<Set<ULong>>(emptySet()) }
+    LaunchedEffect(vm.animationFrames) { chosenFrames = chosenFrames.intersect(vm.animationFrames.toSet()) }
     val focus = (scrubSlot ?: vm.playingSlot ?: vm.currentSlot ?: 0).coerceIn(0, (slots.size - 1).coerceAtLeast(0))
     val fps = vm.animation?.fps?.toInt() ?: 1
     var zoomed by rememberSaveable { mutableStateOf(false) }
@@ -218,9 +222,9 @@ private fun BoxScope.StudioTimelineBar(vm: CanvasViewModel, compact: () -> Unit)
     var colorsPage by remember { mutableStateOf(false) }
     if (!vm.animationSettingsOpen) colorsPage = false
     val list = rememberLazyListState()
-    LaunchedEffect(focus, slots.size) {
-        // Don't fight a manual scroll while the playhead remains visible.
-        if (slots.isNotEmpty() && list.layoutInfo.visibleItemsInfo.none { it.index == focus }) list.scrollToItem(focus)
+    LaunchedEffect(focus, slots.size, selecting) {
+        // Don't fight manual browsing or force-scroll while changing multiple durations.
+        if (!selecting && slots.isNotEmpty() && list.layoutInfo.visibleItemsInfo.none { it.index == focus }) list.scrollToItem(focus)
     }
     Column(Modifier.align(Alignment.BottomCenter).width(width)) {
         if (vm.animationSettingsOpen) {
@@ -242,27 +246,39 @@ private fun BoxScope.StudioTimelineBar(vm: CanvasViewModel, compact: () -> Unit)
                 StudioControl("Compact", "Use compact timeline") { vm.animationSettingsOpen = false; vm.frameOptionsOpen = false; compact() }
             }
             Row(Modifier.fillMaxWidth().horizontalScroll(rememberScrollState()), verticalAlignment = Alignment.CenterVertically) {
-                StudioControl(if (vm.playingFrame == null) "▶" else "Ⅱ", if (vm.playingFrame == null) "Play animation" else "Pause animation") { vm.togglePlaying() }
-                StudioControl("‹", "Previous timeline slot") { vm.stepTimeline(-1) }
-                StudioControl("›", "Next timeline slot") { vm.stepTimeline(1) }
-                StudioControl("↶", "Undo") { vm.stopPlaying(); vm.undo() }
-                StudioControl("↷", "Redo") { vm.stopPlaying(); vm.redo() }
-                StudioControl("+ Frame", "Add a frame") { vm.addFrame() }
-                StudioControl("Duplicate", "Duplicate frame or split at held slot") { vm.stopPlaying(); vm.duplicateFrame() }
-                StudioControl("← Frame", "Move the selected frame earlier") { vm.moveCurrentFrame(true) }
-                StudioControl("Frame →", "Move the selected frame later") { vm.moveCurrentFrame(false) }
-                StudioControl("− Hold", "Shorten current frame exposure") { vm.adjustFrameHold(-1) }
-                StudioControl("+ Hold", "Lengthen current frame exposure") { vm.adjustFrameHold(1) }
-                StudioControl("Frame", "Frame options") { vm.stopPlaying(); vm.frameOptionsOpen = !vm.frameOptionsOpen; vm.animationSettingsOpen = false }
-                StudioControl("Settings", "Playback and onion skin settings") { vm.stopPlaying(); vm.animationSettingsOpen = !vm.animationSettingsOpen; vm.frameOptionsOpen = false }
-                StudioControl(if (zoomed) "− Zoom" else "+ Zoom", "Change timeline zoom") { zoomed = !zoomed }
-                StudioControl(if (tallTrack) "Small track" else "Large track", "Change timeline track height") { tallTrack = !tallTrack }
+                if (selecting) {
+                    StudioControl("Done", "Finish selecting frames") { selecting = false; chosenFrames = emptySet() }
+                    StudioControl("All", "Select all visible frames") { chosenFrames = vm.animationFrames.toSet() }
+                    StudioControl("Clear", "Clear frame selection") { chosenFrames = emptySet() }
+                    StudioControl("− Hold", "Shorten selected frame durations") { vm.adjustSelectedHolds(chosenFrames, false) }
+                    StudioControl("+ Hold", "Lengthen selected frame durations") { vm.adjustSelectedHolds(chosenFrames, true) }
+                    StudioControl("↶", "Undo") { vm.stopPlaying(); vm.undo() }
+                    StudioControl("↷", "Redo") { vm.stopPlaying(); vm.redo() }
+                    StudioControl(if (zoomed) "− Zoom" else "+ Zoom", "Change timeline zoom") { zoomed = !zoomed }
+                } else {
+                    StudioControl(if (vm.playingFrame == null) "▶" else "Ⅱ", if (vm.playingFrame == null) "Play animation" else "Pause animation") { vm.togglePlaying() }
+                    StudioControl("Select", "Select frames to edit together") { vm.stopPlaying(); vm.animationSettingsOpen = false; vm.frameOptionsOpen = false; chosenFrames = emptySet(); selecting = true }
+                    StudioControl("‹", "Previous timeline slot") { vm.stepTimeline(-1) }
+                    StudioControl("›", "Next timeline slot") { vm.stepTimeline(1) }
+                    StudioControl("↶", "Undo") { vm.stopPlaying(); vm.undo() }
+                    StudioControl("↷", "Redo") { vm.stopPlaying(); vm.redo() }
+                    StudioControl("+ Frame", "Add a frame") { vm.addFrame() }
+                    StudioControl("Duplicate", "Duplicate frame or split at held slot") { vm.stopPlaying(); vm.duplicateFrame() }
+                    StudioControl("← Frame", "Move the selected frame earlier") { vm.moveCurrentFrame(true) }
+                    StudioControl("Frame →", "Move the selected frame later") { vm.moveCurrentFrame(false) }
+                    StudioControl("− Hold", "Shorten current frame exposure") { vm.adjustFrameHold(-1) }
+                    StudioControl("+ Hold", "Lengthen current frame exposure") { vm.adjustFrameHold(1) }
+                    StudioControl("Frame", "Frame options") { vm.stopPlaying(); vm.frameOptionsOpen = !vm.frameOptionsOpen; vm.animationSettingsOpen = false }
+                    StudioControl("Settings", "Playback and onion skin settings") { vm.stopPlaying(); vm.animationSettingsOpen = !vm.animationSettingsOpen; vm.frameOptionsOpen = false }
+                    StudioControl(if (zoomed) "− Zoom" else "+ Zoom", "Change timeline zoom") { zoomed = !zoomed }
+                    StudioControl(if (tallTrack) "Small track" else "Large track", "Change timeline track height") { tallTrack = !tallTrack }
+                }
             }
             Row(Modifier.fillMaxWidth().padding(horizontal = 6.dp, vertical = 2.dp), verticalAlignment = Alignment.CenterVertically) {
-                Text("DRAWING TRACK", color = BarInk, fontSize = 11.sp, fontWeight = FontWeight.Bold, modifier = Modifier.weight(1f))
+                Text(if (selecting) "${chosenFrames.size} FRAMES SELECTED" else "DRAWING TRACK", color = BarInk, fontSize = 11.sp, fontWeight = FontWeight.Bold, modifier = Modifier.weight(1f))
                 Text("${if (slots.isEmpty()) 0 else focus + 1}/${slots.size}  ·  $fps fps", color = BarInk, fontSize = 11.sp)
             }
-            StudioRuler(vm, list, slots, focus, fps) { scrubSlot = it }
+            StudioRuler(vm, list, slots, focus, fps, !selecting) { scrubSlot = it }
             LazyRow(
                 state = list,
                 modifier = Modifier.fillMaxWidth().height(if (tallTrack) 142.dp else 78.dp).clip(RoundedCornerShape(12.dp)).background(TrackFill),
@@ -270,20 +286,26 @@ private fun BoxScope.StudioTimelineBar(vm: CanvasViewModel, compact: () -> Unit)
                 items(slots.size) { index ->
                     val frame = slots[index]
                     val held = index > 0 && slots[index - 1] == frame
-                    val selected = index == focus
-                    val image = vm.animationFrames.getOrNull(frame)?.let { vm.frameThumbnails[it] }
+                    val focused = index == focus
+                    val id = vm.animationFrames.getOrNull(frame)
+                    val chosen = selecting && id != null && id in chosenFrames
+                    val image = id?.let { vm.frameThumbnails[it] }
                     Column(
                         Modifier.padding(start = 3.dp, top = 3.dp, bottom = 3.dp).width(if (zoomed) 88.dp else 57.dp)
                             .clip(RoundedCornerShape(7.dp)).background(if (held) HeldFrame else Color.White)
-                            .border(if (selected) 2.dp else 1.dp, if (selected) Pc.Accent else TrackEdge, RoundedCornerShape(7.dp))
-                            .clickable { vm.tapFrame(index) }
-                            .semantics { contentDescription = "Slot ${index + 1}, frame ${frame + 1}${if (held) ", held" else ""}${if (selected) ", selected" else ""}" },
+                            .border(if (chosen || (!selecting && focused)) 2.dp else 1.dp, if (chosen || (!selecting && focused)) Pc.Accent else TrackEdge, RoundedCornerShape(7.dp))
+                            .clickable {
+                                if (selecting) {
+                                    chosenFrames = qelemToggleFrameSelection(chosenFrames, id)
+                                } else vm.tapFrame(index)
+                            }
+                            .semantics { contentDescription = "Slot ${index + 1}, frame ${frame + 1}${if (held) ", held" else ""}${if (chosen) ", selected for editing" else if (!selecting && focused) ", current" else ""}" },
                         horizontalAlignment = Alignment.CenterHorizontally,
                     ) {
                         Box(Modifier.weight(1f).fillMaxWidth().padding(3.dp), contentAlignment = Alignment.Center) {
                             if (image != null) Image(image, contentDescription = null, contentScale = ContentScale.Fit, modifier = Modifier.fillMaxSize())
                         }
-                        Text(if (held) "${index + 1} · HOLD" else "${index + 1} · F${frame + 1}", color = Color(0xFF252525), fontSize = 9.sp, maxLines = 1)
+                        Text((if (chosen) "✓ " else "") + (if (held) "${index + 1} · HOLD" else "${index + 1} · F${frame + 1}"), color = Color(0xFF252525), fontSize = 9.sp, maxLines = 1)
                     }
                 }
             }
@@ -293,7 +315,7 @@ private fun BoxScope.StudioTimelineBar(vm: CanvasViewModel, compact: () -> Unit)
 
 /** The measured ruler shares geometry with the lazy track, so scroll and zoom remain aligned. */
 @Composable
-private fun StudioRuler(vm: CanvasViewModel, list: LazyListState, slots: List<Int>, focus: Int, fps: Int, onScrub: (Int?) -> Unit) {
+private fun StudioRuler(vm: CanvasViewModel, list: LazyListState, slots: List<Int>, focus: Int, fps: Int, enabled: Boolean, onScrub: (Int?) -> Unit) {
     val density = LocalDensity.current
     val marks = list.layoutInfo.visibleItemsInfo
     val accent = Pc.Accent
@@ -301,7 +323,7 @@ private fun StudioRuler(vm: CanvasViewModel, list: LazyListState, slots: List<In
     fun slotAt(x: Float): Int? = qelemRulerSlot(x, slots.size, list.layoutInfo.visibleItemsInfo.map { QelemRulerItem(it.index, it.offset, it.size) })
     Box(
         Modifier.fillMaxWidth().height(32.dp).clip(RoundedCornerShape(6.dp)).background(TrackFill)
-            .semantics { contentDescription = "Timeline ruler. Tap or drag to scrub frames." }
+            .semantics { contentDescription = if (enabled) "Timeline ruler. Tap or drag to scrub frames." else "Timeline ruler. Finish selecting to scrub." }
             .drawBehind {
                 for (item in list.layoutInfo.visibleItemsInfo) {
                     val x = (item.offset + item.size / 2f)
@@ -310,10 +332,10 @@ private fun StudioRuler(vm: CanvasViewModel, list: LazyListState, slots: List<In
                     if (item.index == focus) drawLine(accent, Offset(x, 0f), Offset(x, size.height), 2.dp.toPx())
                 }
             }
-            .pointerInput(slots, list) {
-                detectTapGestures { p -> slotAt(p.x)?.let { target -> vm.beginScrub(); vm.animationSettingsOpen = false; vm.endScrub(target) } }
+            .pointerInput(slots, list, enabled) {
+                if (enabled) detectTapGestures { p -> slotAt(p.x)?.let { target -> vm.beginScrub(); vm.animationSettingsOpen = false; vm.endScrub(target) } }
             }
-            .pointerInput(slots, list) {
+            .pointerInput(slots, list, enabled) {
                 var active = false
                 var target: Int? = null
                 fun move(x: Float) {
@@ -321,7 +343,7 @@ private fun StudioRuler(vm: CanvasViewModel, list: LazyListState, slots: List<In
                     if (next != target) { target = next; onScrub(next); slots.getOrNull(next)?.let(vm::scrubFrame) }
                 }
                 try {
-                    detectDragGestures(
+                    if (enabled) detectDragGestures(
                         onDragStart = { p ->
                             if (slotAt(p.x) != null) { vm.beginScrub(); vm.animationSettingsOpen = false; active = true; move(p.x) }
                         },

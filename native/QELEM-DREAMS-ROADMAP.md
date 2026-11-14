@@ -25,6 +25,11 @@ stage/timeline split. These are workflow references, not features Qelem already 
   ruler to preview frames, then release to select. Cancelled scrubs restore the prior frame.
 - Existing add, duplicate/split, exposure length, frame options, onion skin and playback
   controls work on the existing artwork. Undo and redo use the same artwork history.
+- **Select** on the expanded timeline selects visible frame IDs (tap any held slot to
+  toggle its whole frame, or use All/Clear). In selection mode, − Hold / + Hold change
+  the selected frame durations together as one undoable operation; each duration clamps
+  independently to 1–61 total slots. The selection is temporary and never selects layers
+  in the Layers panel; Done returns to normal editing. The ruler is disabled while selecting.
 - The timeline toolbar's ← Frame / Frame → move the selected visible frame one position,
   carrying its holds, mask or complete group; this is an undoable change to the existing
   document, and the selected held position follows the frame's stable ID. Pinned background
