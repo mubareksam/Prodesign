@@ -72,11 +72,13 @@ pub struct Server {
 }
 
 impl Server {
-    pub fn start(wake: impl Fn() + Send + 'static) -> Result<Self, String> {
+    pub fn start(wake: impl Fn() + Send + 'static, usb_only: bool) -> Result<Self, String> {
         let mut secret = [0u8; 16];
         getrandom::fill(&mut secret).map_err(|e| format!("Unable to create a pairing code: {e}"))?;
         let token: String = secret.iter().map(|v| format!("{v:02x}")).collect();
-        let listener = TcpListener::bind(("0.0.0.0", PORT)).map_err(|e| format!("Can't open port {PORT}: {e}"))?;
+        // ADB reverse reaches localhost on the PC; USB mode must not listen on Wi-Fi.
+        let host = if usb_only { "127.0.0.1" } else { "0.0.0.0" };
+        let listener = TcpListener::bind((host, PORT)).map_err(|e| format!("Can't open port {PORT}: {e}"))?;
         listener.set_nonblocking(true).map_err(|e| e.to_string())?;
         let (tx, rx) = mpsc::sync_channel(QUEUE);
         let stop = Arc::new(AtomicBool::new(false));

@@ -30,3 +30,11 @@ app shows. Among them, the Android app (android, with crates/core) uses:
 - JNA (https://github.com/java-native-access/jna) — Apache-2.0 (dual-licensed with LGPL-2.1; used
   under Apache-2.0).
 - AndroidX, Jetpack Compose, Material 3, input motion prediction and kotlinx.coroutines — Apache-2.0.
+
+Qelem pairing QR encoder: QR Code generator library (Rust), Copyright (c) Project Nayuki,
+MIT license; source and full license notice in desktop/src/vendor/qrcodegen.rs and
+ desktop/src/vendor/QRCODE-LICENSE.txt. https://www.nayuki.io/page/qr-code-generator-library
+
+Qelem Tablet QR scanner: ZXing Android Embedded, Copyright (c) Journey Mobile,
+Apache License 2.0, https://github.com/journeyapps/zxing-android-embedded ;
+ZXing core, Copyright (C) 2007 ZXing authors, Apache License 2.0.

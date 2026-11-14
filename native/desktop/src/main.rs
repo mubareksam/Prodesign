@@ -44,6 +44,11 @@ mod panel;
 mod pdf;
 mod pen;
 mod phone_tablet;
+mod phone_pairing;
+#[path = "vendor/qrcodegen.rs"]
+mod qrcodegen;
+#[cfg(windows)]
+mod system_pen;
 mod prefs;
 mod projection;
 mod quick_menu;
@@ -272,6 +277,11 @@ fn main() {
         phone_panel: false,
         phone_stroke: false,
         phone_error: None,
+        phone_ip: phone_pairing::default_ip(),
+        phone_usb: false,
+        phone_system_mode: false,
+        #[cfg(windows)]
+        phone_pen: None,
         title: String::new(),
         zoom: None,
         projection: None,
@@ -335,6 +345,11 @@ struct App {
     phone_panel: bool,
     phone_stroke: bool,
     phone_error: Option<String>,
+    phone_ip: String,
+    phone_usb: bool,
+    phone_system_mode: bool,
+    #[cfg(windows)]
+    phone_pen: Option<system_pen::SystemPen>,
     /// The window's title as last set.
     title: String,
     /// The gallery zooming into the artwork opening, or out of the one closing.
@@ -651,6 +666,11 @@ impl ApplicationHandler for App {
 
 impl App {
     fn stop_phone(&mut self) {
+        #[cfg(windows)]
+        if self.phone_system_mode {
+            self.phone_pen = None;
+            self.phone_stroke = false;
+        }
         if self.phone_stroke {
             if let Some(session) = &self.session { session.stroke_cancel(); }
             self.phone_stroke = false;
@@ -665,6 +685,36 @@ impl App {
         let Some(server) = &self.phone_server else { return };
         let events: Vec<_> = server.incoming.try_iter().collect();
         let ended = server.ended.load(Ordering::Acquire);
+        #[cfg(windows)]
+        if self.phone_system_mode {
+            if self.phone_panel && self.phone_stroke {
+                if let Some(pen) = self.phone_pen.as_mut() { pen.cancel(); }
+                self.phone_stroke = false;
+            }
+            let mut failure = None;
+            if let Some(pen) = self.phone_pen.as_mut() {
+                for event in events {
+                    let result = match event {
+                        Command::Down(x,y,p,_) if !self.phone_panel && !self.phone_stroke => {
+                            let result = pen.down(x,y,p);
+                            if result.is_ok() { self.phone_stroke = true; }
+                            result
+                        }
+                        Command::Move(x,y,p) if !self.phone_panel && self.phone_stroke => pen.moved(x,y,p),
+                        Command::Up(x,y,p) if self.phone_stroke => { let result = pen.up(x,y,p); self.phone_stroke = false; result }
+                        Command::Cancel => { pen.cancel(); self.phone_stroke = false; Ok(()) }
+                        _ => Ok(()),
+                    };
+                    if let Err(error) = result { failure = Some(error); break; }
+                }
+            }
+            if failure.is_some() || ended {
+                self.stop_phone();
+                self.phone_error = Some(failure.map_or("Phone disconnected. Start pairing for a new code.".to_owned(), |e| format!("Windows pen input failed: {e}")));
+            }
+            if let Some(screen) = &self.screen { screen.window.request_redraw(); }
+            return;
+        }
         let Some(session) = self.session.clone() else { self.stop_phone(); return };
         let blocked = self.phone_panel || self.ui.popover_open || self.ui.studio.open
             || self.ui.export_card.busy() || files::exporting_since().is_some()
@@ -830,14 +880,28 @@ impl App {
             self.ui.show(ui, &session, &mut self.input);
             if self.phone_panel {
                 egui::Window::new("Qelem phone tablet (F8)").collapsible(false).show(ui.ctx(), |ui| {
-                    ui.label("Phone and PC must be on the same trusted Wi-Fi network.");
-                    ui.label("Unencrypted connection: do not use public or untrusted Wi-Fi.");
+                    ui.label("Use only a trusted local network. Wi-Fi traffic and the QR code are not encrypted.");
                     if let Some(server) = &self.phone_server {
-                        ui.label(format!("PC IPv4: check Windows ipconfig · Port {}", phone_tablet::PORT));
-                        ui.monospace(format!("Pairing code: {}", server.token));
                         ui.label(if server.connected.load(std::sync::atomic::Ordering::Acquire) { "Phone connected. Close this panel to draw." } else { "Waiting for phone…" });
+                        if !server.connected.load(std::sync::atomic::Ordering::Acquire) {
+                            ui.label(if self.phone_usb { "USB (ADB), local PC only" } else { "Wi-Fi / hotspot" });
+                            if !self.phone_usb { ui.horizontal(|ui| { ui.label("PC IPv4:"); ui.text_edit_singleline(&mut self.phone_ip); }); }
+                            else { ui.label("Run: adb reverse tcp:48652 tcp:48652"); }
+                            ui.monospace(format!("Code: {}", server.token));
+                            if let Some(text) = phone_pairing::payload(&self.phone_ip, self.phone_usb, &server.token) {
+                                phone_pairing::qr(ui, &text);
+                            } else { ui.label("Enter the PC's private IPv4 address to generate a QR code."); }
+                        }
                         if ui.button("Stop and disconnect").clicked() { phone_action = 2; }
-                    } else if ui.button("Start pairing").clicked() { phone_action = 1; }
+                    } else {
+                        ui.horizontal(|ui| { ui.selectable_value(&mut self.phone_usb, false, "Wi-Fi / hotspot"); ui.selectable_value(&mut self.phone_usb, true, "USB (ADB)"); });
+                        #[cfg(windows)]
+                        {
+                            ui.horizontal(|ui| { ui.selectable_value(&mut self.phone_system_mode, false, "Qelem canvas"); ui.selectable_value(&mut self.phone_system_mode, true, "Windows tablet (experimental)"); });
+                            if self.phone_system_mode { ui.label("Controls other apps using Windows synthetic pen input; not a HID/Wintab driver. Keep Qelem open and minimize it."); }
+                        }
+                        if ui.button("Start pairing").clicked() { phone_action = 1; }
+                    }
                     if let Some(error) = &self.phone_error { ui.colored_label(egui::Color32::LIGHT_RED, error); }
                     if ui.button("Close panel").clicked() { self.phone_panel = false; }
                 });
@@ -900,10 +964,20 @@ impl App {
         if phone_action == 2 { self.stop_phone(); }
         if phone_action == 1 && self.session.as_ref().is_some_and(|s| Arc::ptr_eq(s, &session)) {
             self.stop_phone();
+            #[cfg(windows)]
+            if self.phone_system_mode {
+                match system_pen::SystemPen::new() {
+                    Ok(pen) => self.phone_pen = Some(pen),
+                    Err(error) => { self.phone_error = Some(format!("Windows pen input unavailable: {error}")); return; }
+                }
+            }
             let wake = self.wake.clone();
-            match phone_tablet::Server::start(move || { let _ = wake.send_event(()); }) {
+            match phone_tablet::Server::start(move || { let _ = wake.send_event(()); }, self.phone_usb) {
                 Ok(server) => { self.phone_server = Some(server); self.phone_error = None; }
-                Err(error) => self.phone_error = Some(error),
+                Err(error) => {
+                    #[cfg(windows)] { self.phone_pen = None; }
+                    self.phone_error = Some(error);
+                },
             }
             if let Some(screen) = &self.screen { screen.window.request_redraw(); }
         }

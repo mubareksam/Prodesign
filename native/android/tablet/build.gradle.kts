@@ -7,9 +7,12 @@ android {
         applicationId = "com.qelem.tablet.preview"
         minSdk = 28
         targetSdk = 36
-        versionCode = 1
-        versionName = "0.1-preview"
+        versionCode = 2
+        versionName = "0.2-preview"
     }
 }
 
-dependencies { testImplementation(libs.junit) }
+dependencies {
+    implementation("com.journeyapps:zxing-android-embedded:4.3.0")
+    testImplementation(libs.junit)
+}

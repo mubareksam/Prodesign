@@ -44,7 +44,7 @@ jobs:
         working-directory: native
         run: |
           $ErrorActionPreference = 'Continue'
-          cargo test --release --locked -p procraft-desktop phone_tablet::tests *> testlog.txt
+          cargo test --release --locked -p procraft-desktop phone_ *> testlog.txt
           $code = $LASTEXITCODE
           Get-Content testlog.txt -Tail 80
           if ($code -ne 0) {
@@ -58,7 +58,7 @@ jobs:
           New-Item -ItemType Directory -Force package | Out-Null
           Copy-Item native/target/release/procraft.exe package/Qelem-Windows-preview.exe
           Copy-Item native/QELEM-PHONE-TABLET.md package/README.txt
-          Copy-Item native/LICENSE-MIT,native/LICENSE-APACHE,native/NOTICE,native/ATTRIBUTION.md package/
+          Copy-Item native/LICENSE-MIT,native/LICENSE-APACHE,native/NOTICE,native/ATTRIBUTION.md,native/desktop/src/vendor/QRCODE-LICENSE.txt package/
           Get-FileHash package/Qelem-Windows-preview.exe -Algorithm SHA256 | Format-List | Out-File package/SHA256.txt
       - uses: actions/upload-artifact@v4
         with:

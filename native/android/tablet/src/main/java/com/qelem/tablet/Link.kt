@@ -12,7 +12,7 @@ internal class Link(
     private val host: String,
     private val token: String,
     private val port: Int = 48652,
-    private val allowLoopbackForTest: Boolean = false,
+    private val allowUsbLoopback: Boolean = false,
 ) {
     @Volatile var onState: (Boolean, String?) -> Unit = { _, _ -> }
     @Volatile private var closed = false
@@ -36,7 +36,7 @@ internal class Link(
         var message = "Disconnected from PC."
         try {
             val address = InetAddress.getByName(host)
-            require(address is Inet4Address && (address.isSiteLocalAddress || address.isLinkLocalAddress || (allowLoopbackForTest && address.isLoopbackAddress))) {
+            require(address is Inet4Address && (address.isSiteLocalAddress || address.isLinkLocalAddress || (allowUsbLoopback && address.hostAddress == "127.0.0.1"))) {
                 "Enter a private local-network IPv4 address."
             }
             val s = Socket()

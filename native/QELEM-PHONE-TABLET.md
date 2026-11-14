@@ -1,44 +1,48 @@
-# Qelem Windows + phone tablet — experimental preview
+# Qelem tablet mode — experimental
 
-Qelem's desktop build is a native Windows x64 app using the same Rust/wgpu engine. The Android **Qelem Tablet** companion is a separate controller: its screen is a blank touch pad with undo, redo, brush size and opacity. It sends input to an open Qelem artwork on the PC; the picture appears on the PC, not on the phone. This is **not** a system-wide Wacom driver and does not control other Windows apps.
+The Qelem Windows app is still the painting app. Its F8 connectivity panel can receive the independent **Qelem Tablet** Android app in two modes:
 
-## Downloads and verification
+- **Qelem canvas:** the phone controls the artwork open in Qelem, including undo/redo and size/opacity.
+- **Windows tablet (experimental):** the phone sends a Windows synthetic pen to the desktop, so compatible Windows Ink applications can receive drawing input. Keep Qelem open (you may minimize it) and select the target application. This is not a kernel HID driver, Wintab driver or guaranteed compatibility with all applications; protected/elevated windows and some apps may reject synthetic input. Undo/redo and size/opacity buttons only control Qelem canvas mode.
 
-- [Windows x64 portable ZIP](../artifacts/Qelem-Windows-preview.zip) — extract it and run `Qelem-Windows-preview.exe`. The executable is unsigned; Windows may warn about it, and the Microsoft Visual C++ Redistributable may be needed.
-- [Qelem Tablet Android APK](../artifacts/Qelem-Tablet-preview.apk) — Android 9 or later, separate from Qelem. Debug-signed, not for production.
-- [Checksums and build details](../artifacts/Qelem-Windows-and-Tablet-preview.txt).
+## Connect
 
-The Windows and Android apps compiled on GitHub Actions; the Rust loopback protocol tests and Android JVM link tests passed. The APK signature and Windows executable architecture were checked. No physical Windows/Android pairing or drawing test was performed.
+Open/create an artwork in Qelem on Windows, press F8, choose the connection and target, and select **Start pairing**. The Android app can scan the pairing QR or enter the 32-character code manually. Close the F8 panel before drawing. Stop pairing when finished. If a connection breaks, the current stroke is cancelled and a new pairing code is needed. The blank pad maps to the entire artwork (Qelem mode) or Windows virtual desktop (Windows mode), which can distort if aspect ratios differ. There is not yet a monitor picker, hover, tilt, eraser mapping, or robust palm rejection; stylus-only mode rejects a finger start, while a second finger cancels the stroke. Android reports stylus pressure only where the hardware supports it.
 
-## Pairing over local Wi-Fi
+### Wi-Fi or a phone hotspot — no internet required
 
-1. Connect the PC and phone to the same **trusted private network**. Client isolation on guest Wi-Fi can prevent them connecting.
-2. Run the Windows preview and open or create an artwork. Press **F8**, then **Start pairing**. This opens TCP port **48652** only while explicitly enabled. Allow Qelem on your private Windows firewall network if prompted. Find the PC's local IPv4 with `ipconfig` (usually `192.168.x.x` or `10.x.x.x`).
-3. Open Qelem Tablet on Android 9+, enter that IPv4 and the **32-character code** shown on the PC, then Connect. The PC shows when a phone connects. Close the PC pairing panel (or press F8) before drawing.
-4. Draw on the phone's blank area while looking at the PC. The whole pad maps to the whole artwork; the pad and canvas aspect ratios may differ. On a pressure-capable stylus Android reports, pressure is sent; fingers use constant pressure. No tilt, hover, palm rejection or pen-button mapping yet. A second finger cancels the current stroke. Sliders send absolute size/opacity only when moved and do not sync back from the PC.
-5. Disconnect on the phone or use F8 → Stop on the PC. Backgrounding the phone disconnects. Reconnect by starting a new pairing and entering its fresh code. Disconnect during a stroke cancels that unfinished stroke. Drawing is paused while desktop dialogs/panels block the canvas, during export, or when opening an artwork. Switching artwork stops pairing.
+Connect both devices to the same **trusted private** Wi-Fi network, or connect the PC to the Android phone's hotspot. The router/hotspot does not need internet. Select Wi-Fi on the PC and confirm its local IPv4 address (find it with Windows `ipconfig`), then scan the QR in the Android app. Windows firewall may ask to allow private-network connections.
 
-## Safety and limitations
+### USB cable via Android Debug Bridge — no internet required
 
-- The connection has a random 128-bit one-session pairing code, bounded input and one client, but **it is not encrypted**. Someone monitoring your local network can see the code and input; use only a network you trust, never expose/forward the port to the internet. Stop pairing when finished. IP address is entered manually; no discovery, QR code, USB, Bluetooth, or remote video.
-- The Windows and Android controller builds, if provided, are development previews; they are **not yet tested together on real devices**. Network latency, Android pressure reporting, DPI, orientation and stability vary. Back up artwork before testing. The PC keeps its own gallery in a separate `QelemNative` directory; there is no automatic Qelem Android project migration.
-- Remote input paints through the app's canvas engine and is not a Windows pen driver. There is no phone canvas preview, synchronization of PC slider values, or support for 3D, complex gestures, or simultaneous local and phone strokes. UI may block remote drawing. Strokes may be cancelled on interruption; no promise of lossless network delivery.
+This is **ADB port forwarding**, not InkBridge's USB accessory mode. Install Google's Android SDK Platform Tools on the PC beforehand. On Android, enable Developer Options and USB debugging; connect the cable and authorize this PC. On the PC run:
 
-## Building
+```text
+adb devices
+adb reverse tcp:48652 tcp:48652
+```
 
-On Windows with Rust 1.99 and the native build prerequisites:
+Select **USB (ADB)** on the F8 pairing panel before starting, then scan the QR; the phone connects to its loopback address through that reverse tunnel. Some phone vendors disable USB debugging; enterprise policies and USB drivers can interfere. The tunnel stops when disconnected and must be re-established after reboot/replugging. To remove it: `adb reverse --remove tcp:48652`. Do not use USB debugging with an untrusted computer.
+
+### Not yet implemented
+
+Bluetooth, direct USB accessory (AOA without ADB), automatic Wi-Fi Direct negotiation, native multi-monitor selection and system-wide HID/Wintab driver support are **not implemented**. Do not interpret a hotspot connection as automatic Wi-Fi Direct. InkBridge is a Linux application with a Linux `uinput` driver and cannot be installed as the Windows driver. The user interface and workflow are inspired by its public screenshots; Qelem uses independently implemented code and Qelem branding.
+
+## Security and data
+
+The connection and QR payload are **unencrypted**. USB mode listens only on PC loopback; Wi-Fi mode listens on the PC network interfaces. The QR contains the pairing secret; anyone observing your screen or trusted network could gain control. Never use a public/guest network, never forward port 48652 to the internet, and close pairing when not in use. The random code expires after one connection. ADB is an additional powerful debugging capability: enable it only with a trusted PC and turn it off afterwards. No artwork is transferred to the phone. Back up artwork before trying preview software; this build does not migrate the old Android gallery.
+
+## Build & verification
 
 ```powershell
 cd native
 cargo build --release --locked -p procraft-desktop
-cargo test --release --locked -p procraft-desktop phone_tablet::tests
+cargo test --release --locked -p procraft-desktop phone_
 ```
-
-The binary is `native/target/release/procraft.exe`; its visible product name is Qelem. The phone app uses the existing Android Gradle project:
 
 ```sh
 cd native/android
-./gradlew :tablet:assembleDebug
+./gradlew :tablet:assembleDebug :tablet:testDebugUnitTest
 ```
 
-Its debug APK is `tablet/build/outputs/apk/debug/tablet-debug.apk`. Debug signing is not suitable for production. GitHub Actions compiles both builds, but automated compilation is not a physical device test.
+This work needs physical Windows/Android testing, including QR camera permissions, ADB, firewall, pressure, Windows Ink compatibility and interruption behavior. The QR encoder is Project Nayuki's MIT-licensed library; ZXing Android Embedded is Apache-2.0. Windows and Android builds are development previews, not production-signed releases.
