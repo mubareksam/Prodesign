@@ -48,6 +48,23 @@ impl CanvasSession {
         animation_slots(all.iter().map(|id| doc.animation.as_ref().map_or(0, |a| a.hold(*id))))
     }
 
+    /// Move a visible animation frame one frame earlier or later, preserving its held slots and
+    /// group/mask. Pinned background/foreground endpoints and top-level clipping are protected.
+    /// Uses the document's normal undo history and does not move picked layers as a batch.
+    pub fn move_animation_frame(&self, id: u64, earlier: bool) -> bool {
+        self.change("move animation frame", |doc| {
+            let a = doc.animation.as_ref().filter(|a| !a.pages)?;
+            let all = frames(doc);
+            let id = LayerId(id);
+            let index = all.iter().position(|f| *f == id)?;
+            let target_index = if earlier { index.checked_sub(1)? } else { index.checked_add(1).filter(|i| *i < all.len())? };
+            let pinned = |i: usize| (a.background && i == 0) || (a.foreground && i + 1 == all.len());
+            if pinned(index) || pinned(target_index) { return None; }
+            let target = *all.get(target_index)?;
+            doc.move_top_level_unit_next_to(id, target, !earlier).then_some(())
+        }).is_some()
+    }
+
     /// Gives an artwork opened to be looked at, with no window, the app's device and its canvas,
     /// so its frames can be drawn (`animation_frame`). False if either can't be had. Slow: call it
     /// off the main thread.
@@ -659,6 +676,29 @@ mod tests {
         assert_eq!(frame_rate(0.3).time_of(3000, 1000), 10_000_000);
         assert_eq!(frame_rate(15.0).time_of(15, 1_000_000), 1_000_000);
         assert_eq!(frame_rate(0.0).seconds, 1000);
+    }
+
+    #[test]
+    fn frame_reorder_protects_pins_and_keeps_holds_and_single_layer() {
+        let s = CanvasSession::new(16, 16);
+        let a = s.layers().first().map(|l| l.id).unwrap();
+        let b = s.add_layer();
+        let c = s.add_layer();
+        assert!(s.set_animation_assist(true));
+        s.set_frame_hold(b, 2);
+        assert!(s.move_animation_frame(b, true));
+        assert_eq!(s.animation_frames(), vec![b, a, c]);
+        assert_eq!(s.animation_sequence(), vec![0, 0, 0, 1, 2]);
+        assert_eq!(s.frame_hold(b), 2);
+        assert!(!s.move_animation_frame(b, true));
+        let mut settings = s.animation_settings().unwrap();
+        settings.background = true;
+        s.set_animation_settings(settings);
+        assert!(!s.move_animation_frame(a, true));
+        assert!(!s.move_animation_frame(b, false));
+        assert_eq!(s.animation_frames(), vec![b, a, c]);
+        assert!(s.move_animation_frame(c, true));
+        assert_eq!(s.animation_frames(), vec![b, c, a]);
     }
 
     #[test]

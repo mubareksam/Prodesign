@@ -58,6 +58,12 @@ jobs:
         run: |
           cargo test --release --locked -p procraft-core --lib animation::tests::slot_expansion_preserves_frame_order_and_holds
           if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          cargo test --release --locked -p procraft-core --lib animation::tests::frame_reorder_protects_pins_and_keeps_holds_and_single_layer
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          cargo test --release --locked -p procraft-core --lib a_moved_animation_frame_undoes_redoes_and_saves
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          cargo test --release --locked -p procraft-engine --lib top_level_reorder
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
       - name: Smoke test native server window
         shell: pwsh
         run: |

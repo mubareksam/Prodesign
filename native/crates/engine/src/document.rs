@@ -1449,6 +1449,25 @@ impl Document {
         true
     }
 
+    /// Reorder a complete top-level unit next to another, without joining a group or
+    /// acting on picked layers. Refuse top-level clipping: its base could otherwise change.
+    /// Hidden units may be crossed, but all masks, nested groups and identities stay intact.
+    pub fn move_top_level_unit_next_to(&mut self, id: LayerId, target: LayerId, after: bool) -> bool {
+        if id == target || self.layer(id).is_none_or(|l| l.kind == LayerKind::Mask)
+            || self.layer(target).is_none_or(|l| l.kind == LayerKind::Mask)
+            || self.group_of(id).is_some() || self.group_of(target).is_some()
+            || self.layers.iter().any(|l| l.clipped && self.group_of(l.id).is_none())
+        { return false; }
+        let (Some(source), Some(dest)) = (self.unit(id), self.unit(target)) else { return false };
+        if source.start < dest.end && dest.start < source.end { return false; }
+        let boundary = if after { dest.end } else { dest.start };
+        let insert = if boundary >= source.end { boundary - (source.end - source.start) } else { boundary };
+        if insert == source.start { return false; }
+        let moving: Vec<_> = self.layers.drain(source).collect();
+        self.layers.splice(insert..insert, moving);
+        true
+    }
+
     /// What `id` merges into: for a paint layer, the paint layer just below it in its group; for a
     /// group, what its top layer merges into (see [`Document::group_merge_pair`]). A layer's mask
     /// and the one below's are each applied to its layer first.
@@ -1790,6 +1809,48 @@ mod tests {
         assert!(d.delete_layer(b));
         assert_eq!(d.current(), a);
         assert!(!d.delete_layer(a), "the last layer stays");
+    }
+
+    #[test]
+    fn top_level_reorder_keeps_groups_masks_and_serialized_order() {
+        let mut d = Document::new(10, 10);
+        let a = d.current();
+        let b = d.add_layer();
+        let c = d.add_layer();
+        let group = d.combine_down(c).unwrap();
+        let mask = d.add_mask(a).unwrap();
+        assert!(d.set_current(group));
+        let tail = d.add_layer();
+        assert_eq!(d.members(None), vec![a, group, tail]);
+        assert!(d.move_top_level_unit_next_to(group, a, false));
+        assert_eq!(d.members(None), vec![group, a, tail]);
+        assert_eq!(d.contents(group), vec![b, c]);
+        assert_eq!(d.mask_of(a), Some(mask));
+        assert!(!d.move_top_level_unit_next_to(group, a, false));
+        assert!(!d.move_top_level_unit_next_to(b, a, false));
+        assert!(d.move_top_level_unit_next_to(group, tail, true));
+        assert_eq!(d.members(None), vec![a, tail, group]);
+        let encoded = serde_json::to_vec(&d).unwrap();
+        let restored: Document = serde_json::from_slice(&encoded).unwrap();
+        assert_eq!(restored.members(None), vec![a, tail, group]);
+        assert_eq!(restored.contents(group), vec![b, c]);
+        assert_eq!(restored.mask_of(a), Some(mask));
+    }
+
+    #[test]
+    fn top_level_reorder_refuses_clipping_and_invalid_targets_without_mutation() {
+        let mut d = Document::new(10, 10);
+        let a = d.current();
+        let b = d.add_layer();
+        let c = d.add_layer();
+        assert!(d.set_clipped(b, true));
+        let before = d.clone();
+        assert!(!d.move_top_level_unit_next_to(c, a, false));
+        assert_eq!(d, before);
+        assert!(d.set_clipped(b, false));
+        let before = d.clone();
+        assert!(!d.move_top_level_unit_next_to(c, LayerId(u64::MAX), false));
+        assert_eq!(d, before);
     }
 
     #[test]

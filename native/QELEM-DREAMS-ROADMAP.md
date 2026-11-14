@@ -25,6 +25,12 @@ stage/timeline split. These are workflow references, not features Qelem already 
   ruler to preview frames, then release to select. Cancelled scrubs restore the prior frame.
 - Existing add, duplicate/split, exposure length, frame options, onion skin and playback
   controls work on the existing artwork. Undo and redo use the same artwork history.
+- The timeline toolbar's ← Frame / Frame → move the selected visible frame one position,
+  carrying its holds, mask or complete group; this is an undoable change to the existing
+  document, and the selected held position follows the frame's stable ID. Pinned background
+  and foreground frames cannot be moved or crossed. To prevent changing clipping bases, the
+  action refuses documents with top-level clipping; hidden layers remain intact. This moves
+  existing drawing frames, not independent movie clips or tracks.
 - Qelem's gallery remains its gallery; existing layer and frame persistence and animated
   export paths are not replaced. The expanded timeline uses lazy composition and Rust slot
   expansion avoids a repeated frame search, but device speed has not been benchmarked.

@@ -3916,6 +3916,31 @@ fn a_held_frame_splits_where_it_is_chosen_and_loses_a_place_on_delete() {
 }
 
 #[test]
+fn a_moved_animation_frame_undoes_redoes_and_saves() {
+    let Some(s) = session(40, 40) else { return };
+    let a = s.animation_frames().first().copied().unwrap();
+    let b = s.add_layer();
+    let c = s.add_layer();
+    assert!(s.set_animation_assist(true));
+    assert!(s.change_frame_hold(b, 2, true));
+    assert!(s.move_animation_frame(b, true));
+    assert_eq!(s.animation_frames(), [b, a, c]);
+    s.undo();
+    assert_eq!(s.animation_frames(), [a, b, c]);
+    assert_eq!(s.frame_hold(b), 2);
+    s.redo();
+    assert_eq!(s.animation_frames(), [b, a, c]);
+    let dir = std::env::temp_dir().join(format!("qelem-frame-reorder-{}", std::process::id()));
+    let path = dir.to_string_lossy().into_owned();
+    s.save(path.clone()).unwrap();
+    let reopened = CanvasSession::open(path).unwrap();
+    assert_eq!(reopened.animation_frames(), [b, a, c]);
+    assert_eq!(reopened.frame_hold(b), 2);
+    assert_eq!(reopened.animation_sequence(), [0, 0, 0, 1, 2]);
+    std::fs::remove_dir_all(dir).ok();
+}
+
+#[test]
 fn a_saved_animation_can_be_drawn_with_no_window() {
     let Some(s) = session(40, 40) else { return };
     s.set_brush_size(0.6);

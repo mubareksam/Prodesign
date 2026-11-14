@@ -2441,6 +2441,7 @@ class CanvasViewModel(app: Application) : AndroidViewModel(app) {
         reversePreview = false
         previewSpeedPercent = 100
         clearPreviewRange()
+        heldAt = null to 0
         endFilling()
         endLayerOpacity()
         endTransform(true)
@@ -3223,7 +3224,7 @@ class CanvasViewModel(app: Application) : AndroidViewModel(app) {
     private fun stepFrame(by: Int) {
         val at = currentFrame ?: return
         val to = (at + by).coerceIn(0, animationFrames.size - 1)
-        if (to != at) tapFrame(to)
+        if (to != at) frameSlots.indexOf(to).takeIf { it >= 0 }?.let(::tapFrame)
     }
 
     /** How many onion skin frames there were before they were last turned off. */
@@ -7528,14 +7529,14 @@ class CanvasViewModel(app: Application) : AndroidViewModel(app) {
     var frameSlots by mutableStateOf<List<Int>>(emptyList())
         private set
 
-    /** The frame and how far into its hold the timeline was last left. */
-    private var heldAt by mutableStateOf(0 to 0)
+    /** The stable frame layer ID and how far into its hold the timeline was last left. */
+    private var heldAt by mutableStateOf<Pair<ULong?, Int>>(null to 0)
 
     /** How far into its hold the current frame is shown (0: the frame itself). */
     val heldPlace: Int
         get() {
             val f = currentFrame ?: return 0
-            return if (heldAt.first == f) heldAt.second.coerceAtMost(frameSlots.count { it == f } - 1).coerceAtLeast(0) else 0
+            return qelemHeldOffset(animationFrames.getOrNull(f), heldAt.first, heldAt.second, f, frameSlots)
         }
 
     /** The timeline's place in the middle. */
@@ -7628,6 +7629,7 @@ class CanvasViewModel(app: Application) : AndroidViewModel(app) {
             animationFrames = emptyList()
             frameSlots = emptyList()
             currentFrame = null
+            heldAt = null to 0
             animationSettingsOpen = false
             frameOptionsOpen = false
             return
@@ -7689,7 +7691,7 @@ class CanvasViewModel(app: Application) : AndroidViewModel(app) {
 
     private fun goToSlot(slot: Int) {
         val frame = frameSlots.getOrNull(slot) ?: return
-        heldAt = frame to slot - frameSlots.indexOf(frame)
+        heldAt = animationFrames.getOrNull(frame) to slot - frameSlots.indexOf(frame)
         if (frame != currentFrame) animationFrames.getOrNull(frame)?.let { selectLayer(it) }
     }
 
@@ -7711,6 +7713,20 @@ class CanvasViewModel(app: Application) : AndroidViewModel(app) {
     fun endScrub(slot: Int?) {
         if (slot != null) goToSlot(slot)
         session?.setPlayFrame(null)
+    }
+
+    /** Move the active frame as a whole, with its group, mask and held exposures. */
+    fun moveCurrentFrame(earlier: Boolean) {
+        val id = currentFrame?.let { animationFrames.getOrNull(it) } ?: return
+        val s = session ?: return
+        stopPlaying()
+        frameOptionsOpen = false
+        animationSettingsOpen = false
+        if (s.moveAnimationFrame(id, earlier)) {
+            refresh()
+        } else {
+            showNotice("Cannot move at a timeline end, across a pinned frame, or with top-level clipping.")
+        }
     }
 
     fun addFrame() {

@@ -41,6 +41,13 @@ class QelemPreviewTest {
         assertNull(qelemRulerSlot(0f, 10, emptyList()))
         assertEquals(6, qelemRulerSlot(42f, 7, visible))
     }
+    @Test fun heldSelectionTracksIdentityAcrossReordering() {
+        val slotsAfterMove = listOf(0, 1, 1, 1, 2)
+        assertEquals(2, qelemHeldOffset(12uL, 12uL, 2, 1, slotsAfterMove))
+        assertEquals(1, qelemHeldOffset(12uL, 12uL, 9, 0, listOf(0, 0, 1)))
+        assertEquals(0, qelemHeldOffset(13uL, 12uL, 2, 1, slotsAfterMove))
+        assertEquals(0, qelemHeldOffset(null, null, 2, 1, slotsAfterMove))
+    }
     @Test fun timingRespectsPreviewSpeedAndBounce() {
         assertEquals(200L, qelemPreviewDelayMs(10, 50))
         assertEquals(100L, qelemPreviewDelayMs(10, 100))

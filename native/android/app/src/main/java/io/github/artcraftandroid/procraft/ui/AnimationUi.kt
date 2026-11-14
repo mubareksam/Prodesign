@@ -249,6 +249,8 @@ private fun BoxScope.StudioTimelineBar(vm: CanvasViewModel, compact: () -> Unit)
                 StudioControl("↷", "Redo") { vm.stopPlaying(); vm.redo() }
                 StudioControl("+ Frame", "Add a frame") { vm.addFrame() }
                 StudioControl("Duplicate", "Duplicate frame or split at held slot") { vm.stopPlaying(); vm.duplicateFrame() }
+                StudioControl("← Frame", "Move the selected frame earlier") { vm.moveCurrentFrame(true) }
+                StudioControl("Frame →", "Move the selected frame later") { vm.moveCurrentFrame(false) }
                 StudioControl("− Hold", "Shorten current frame exposure") { vm.adjustFrameHold(-1) }
                 StudioControl("+ Hold", "Lengthen current frame exposure") { vm.adjustFrameHold(1) }
                 StudioControl("Frame", "Frame options") { vm.stopPlaying(); vm.frameOptionsOpen = !vm.frameOptionsOpen; vm.animationSettingsOpen = false }

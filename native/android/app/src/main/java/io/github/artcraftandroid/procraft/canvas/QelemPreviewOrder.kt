@@ -65,3 +65,9 @@ internal fun qelemRulerSlot(x: Float, total: Int, visible: List<QelemRulerItem>)
     }
     return last.index
 }
+
+/** Held position follows a stable frame ID across reorder/undo, not a changing frame index. */
+internal fun qelemHeldOffset(id: ULong?, remembered: ULong?, offset: Int, frame: Int, slots: List<Int>): Int {
+    if (id == null || id != remembered || frame < 0) return 0
+    return offset.coerceIn(0, (slots.count { it == frame } - 1).coerceAtLeast(0))
+}
