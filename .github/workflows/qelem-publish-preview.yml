@@ -1,0 +1,56 @@
+name: Publish built Qelem native preview to branch
+
+# Copies the explicitly selected successful build to this branch for a direct APK link.
+on:
+  push:
+    branches: [arena/412bd2e9-prodesign]
+    paths: ['.github/workflows/qelem-publish-preview.yml']
+
+permissions:
+  actions: read
+  contents: write
+
+jobs:
+  publish:
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: arena/412bd2e9-prodesign
+      - uses: actions/download-artifact@v4
+        with:
+          name: Qelem-native-preview-arm64
+          path: /tmp/qelem-native-apk
+          run-id: 43586658906
+          github-token: ${{ github.token }}
+      - name: Verify and place development APK
+        run: |
+          set -euo pipefail
+          cd /tmp/qelem-native-apk
+          sha256sum -c SHA256SUMS.txt
+          TOOLS="$ANDROID_HOME/build-tools/$(ls "$ANDROID_HOME/build-tools" | sort -V | tail -1)"
+          "$TOOLS/apksigner" verify --verbose --print-certs Qelem-native-preview-arm64.apk > verification.txt
+          "$TOOLS/aapt" dump badging Qelem-native-preview-arm64.apk > badging.txt
+          grep "package: name='com.qalam.studio.nativepreview.debug'" badging.txt
+          unzip -l Qelem-native-preview-arm64.apk | grep 'lib/arm64-v8a/libprocraft_core.so'
+          {
+            echo 'Qelem native preview arm64 development APK'
+            echo 'Source commit: cf1b7ff09770ba47b0ddb685c6c631ff3593f60b'
+            echo 'GitHub Actions build: https://github.com/mubareksam/Qelem/actions/runs/43586658906'
+            echo 'Debug signed, separate package. Not an upgrade to Qelem.'
+            echo
+            cat SHA256SUMS.txt
+            echo
+            cat verification.txt
+            echo
+            grep -E "^(package:|sdkVersion:|targetSdkVersion:|application-label:|native-code:)" badging.txt
+          } > "$GITHUB_WORKSPACE/artifacts/Qelem-native-preview-arm64.txt"
+          cp Qelem-native-preview-arm64.apk "$GITHUB_WORKSPACE/artifacts/Qelem-native-preview-arm64.apk"
+      - name: Commit download to the current branch
+        run: |
+          set -euo pipefail
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git add artifacts/Qelem-native-preview-arm64.apk artifacts/Qelem-native-preview-arm64.txt
+          git commit -m 'Add Qelem native preview arm64 development APK'
+          git push origin HEAD:arena/412bd2e9-prodesign
