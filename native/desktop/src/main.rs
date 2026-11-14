@@ -903,11 +903,11 @@ impl App {
                             if !self.phone_usb && !self.phone_bluetooth { ui.horizontal(|ui| { ui.label("PC IPv4:"); ui.text_edit_singleline(&mut self.phone_ip); }); }
                             if self.phone_usb { ui.label("Run: adb reverse tcp:48652 tcp:48652"); }
                             ui.monospace(format!("Code: {}", server.token));
-                            if !self.phone_bluetooth {
-                                if let Some(text) = phone_pairing::payload(&self.phone_ip, self.phone_usb, &server.token) {
-                                    phone_pairing::qr(ui, &text);
-                                } else { ui.label("Enter the PC's private IPv4 address to generate a QR code."); }
-                            } else { ui.label("Enter this code in the tablet's Bluetooth mode; keep both devices paired."); }
+                            let pairing = if self.phone_bluetooth { phone_pairing::bluetooth_payload(&server.token) } else { phone_pairing::payload(&self.phone_ip, self.phone_usb, &server.token) };
+                            if let Some(text) = pairing {
+                                phone_pairing::qr(ui, &text);
+                                if self.phone_bluetooth { ui.label("Scan on Android. Bluetooth requires a paired PC and a configured outgoing COM port."); }
+                            } else { ui.label("Enter the PC's private IPv4 address to generate a QR code."); }
                         }
                         if ui.button("Stop and disconnect").clicked() { phone_action = 2; }
                     } else {

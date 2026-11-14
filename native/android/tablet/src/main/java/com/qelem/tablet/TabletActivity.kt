@@ -38,6 +38,8 @@ class TabletActivity : Activity() {
     private var link: Link? = null
     private var returnToPairing = false
     private var preparedBluetooth: BluetoothTransport? = null
+    private var scanning = false
+    private var pendingBluetoothToken: String? = null
     private var mode = "WIFI"
     private lateinit var root: LinearLayout
     private lateinit var ip: EditText
@@ -70,8 +72,8 @@ class TabletActivity : Activity() {
         page.addView(status, LinearLayout.LayoutParams(-1, -2)); gap(page)
         page.addView(label("On Windows, open Qelem and press F8. Choose a connection and start pairing.").apply { gravity = Gravity.CENTER }); gap(page)
         row(page,
-            "Wi-Fi" to { preparedBluetooth?.close(); preparedBluetooth = null; mode = "WIFI"; ip.isEnabled = true; status.text = "Private Wi-Fi or offline hotspot" },
-            "USB" to { preparedBluetooth?.close(); preparedBluetooth = null; mode = "USB"; ip.setText("127.0.0.1"); ip.isEnabled = false; status.text = "USB: connect cable and set up ADB reverse" },
+            "Wi-Fi" to { pendingBluetoothToken = null; preparedBluetooth?.close(); preparedBluetooth = null; mode = "WIFI"; ip.isEnabled = true; status.text = "Private Wi-Fi or offline hotspot" },
+            "USB" to { pendingBluetoothToken = null; preparedBluetooth?.close(); preparedBluetooth = null; mode = "USB"; ip.setText("127.0.0.1"); ip.isEnabled = false; status.text = "USB: connect cable and set up ADB reverse" },
             "Bluetooth" to { mode = "BT"; ip.isEnabled = false; status.text = "Bluetooth: use the paired phone's outgoing Windows COM port" })
         gap(page)
         ip = field("PC IPv4 · e.g. 192.168.1.2", InputType.TYPE_CLASS_PHONE)
@@ -90,13 +92,15 @@ class TabletActivity : Activity() {
                 if (p == null) status.text = "Enter a private PC IPv4 and a 32-character code." else connect(Link(p.host, p.token, allowUsbLoopback = p.usb))
             }
         }, LinearLayout.LayoutParams(-1, dp(50))); gap(page)
-        page.addView(button("Cancel connection") { link?.close(); link = null; preparedBluetooth?.close(); preparedBluetooth = null; status.text = "Connection cancelled" }, LinearLayout.LayoutParams(-1, dp(46))); gap(page)
+        page.addView(button("Cancel connection") { pendingBluetoothToken = null; link?.close(); link = null; preparedBluetooth?.close(); preparedBluetooth = null; status.text = "Connection cancelled" }, LinearLayout.LayoutParams(-1, dp(46))); gap(page)
         page.addView(label("USB requires ADB reverse. Bluetooth is experimental and needs a paired phone and Windows outgoing SPP COM port. Wi-Fi and QR codes are not encrypted.").apply { textSize = 13f; setTextColor(Color.LTGRAY); gravity = Gravity.CENTER })
         if (mode != "WIFI") ip.isEnabled = false
     }
 
     private fun scan() {
         if (!packageManager.hasSystemFeature(PackageManager.FEATURE_CAMERA_ANY)) { status.text = "No camera available. Use manual pairing."; return }
+        // The Bluetooth listener must survive the scanner activity and camera permission prompt.
+        scanning = true
         if (checkSelfPermission(Manifest.permission.CAMERA) != PackageManager.PERMISSION_GRANTED) { requestPermissions(arrayOf(Manifest.permission.CAMERA), 20); return }
         try {
             // Explicit capture intent avoids the legacy IntentIntegrator's fragment dependency.
@@ -104,21 +108,31 @@ class TabletActivity : Activity() {
             intent.putExtra(Intents.Scan.FORMATS, "QR_CODE"); intent.putExtra(Intents.Scan.PROMPT_MESSAGE, "Scan Qelem's pairing QR")
             intent.putExtra(Intents.Scan.BEEP_ENABLED, false); intent.putExtra(Intents.Scan.ORIENTATION_LOCKED, false)
             startActivityForResult(intent, 21)
-        } catch (e: Exception) { status.text = "Scanner unavailable. Use manual pairing. ${e.message ?: ""}" }
+        } catch (e: Exception) { scanning = false; status.text = "Scanner unavailable. Use manual pairing. ${e.message ?: ""}" }
     }
     override fun onRequestPermissionsResult(requestCode: Int, permissions: Array<out String>, grantResults: IntArray) {
         super.onRequestPermissionsResult(requestCode, permissions, grantResults)
-        if (requestCode == 20) { if (grantResults.firstOrNull() == PackageManager.PERMISSION_GRANTED) scan() else status.text = "Camera permission denied. Use manual pairing." }
-        if (requestCode == 22) { if (grantResults.isNotEmpty() && grantResults.all { it == PackageManager.PERMISSION_GRANTED }) prepareBluetooth() else status.text = "Bluetooth permission denied." }
+        if (requestCode == 20) { if (grantResults.firstOrNull() == PackageManager.PERMISSION_GRANTED) scan() else { scanning = false; status.text = "Camera permission denied. Use manual pairing." } }
+        if (requestCode == 22) { if (grantResults.isNotEmpty() && grantResults.all { it == PackageManager.PERMISSION_GRANTED }) prepareBluetooth() else { pendingBluetoothToken = null; status.text = "Bluetooth permission denied." } }
     }
     @Deprecated("CaptureActivity result")
     override fun onActivityResult(requestCode: Int, resultCode: Int, data: Intent?) {
         super.onActivityResult(requestCode, resultCode, data)
-        if (requestCode != 21 || resultCode != RESULT_OK) return
+        if (requestCode != 21) return
+        scanning = false
+        if (resultCode != RESULT_OK) { status.text = "Scan cancelled. You can scan again or connect manually."; return }
         val pair = Pairing.parse(data?.getStringExtra(Intents.Scan.RESULT) ?: "")
         if (pair == null) { status.text = "Invalid Qelem pairing QR."; return }
-        mode = if (pair.usb) "USB" else "WIFI"; ip.setText(pair.host); code.setText(pair.token)
-        connect(Link(pair.host, pair.token, allowUsbLoopback = pair.usb))
+        code.setText(pair.token)
+        if (pair.bluetooth) {
+            mode = "BT"; ip.isEnabled = false
+            if (preparedBluetooth != null) connectBluetooth(pair.token)
+            else { pendingBluetoothToken = pair.token; prepareBluetooth() }
+        } else {
+            preparedBluetooth?.close(); preparedBluetooth = null
+            mode = if (pair.usb) "USB" else "WIFI"; ip.setText(pair.host); ip.isEnabled = !pair.usb
+            connect(Link(pair.host, pair.token, allowUsbLoopback = pair.usb))
+        }
     }
     @SuppressLint("MissingPermission")
     private fun prepareBluetooth() {
@@ -128,24 +142,38 @@ class TabletActivity : Activity() {
             if (missing.isNotEmpty()) { requestPermissions(missing.toTypedArray(), 22); return }
         }
         val adapter = getSystemService(BluetoothManager::class.java)?.adapter
-        if (adapter == null || !adapter.isEnabled) { status.text = "Enable Bluetooth on both devices and pair them in system settings first."; return }
+        if (adapter == null || !adapter.isEnabled) { pendingBluetoothToken = null; status.text = "Enable Bluetooth on both devices and pair them in system settings first."; return }
         val devices = adapter.bondedDevices.sortedBy { it.name ?: it.address }
-        if (devices.isEmpty()) { status.text = "Pair the Windows PC in Android Bluetooth settings first."; return }
+        if (devices.isEmpty()) { pendingBluetoothToken = null; status.text = "Pair the Windows PC in Android Bluetooth settings first."; return }
         AlertDialog.Builder(this).setTitle("Choose your paired Windows PC")
             .setItems(devices.map { "${it.name ?: "Device"}  (${it.address})" }.toTypedArray()) { _, index ->
                 preparedBluetooth?.close()
                 val transport = BluetoothTransport(adapter, devices[index].address)
                 preparedBluetooth = transport
+                // A prepared but unused listener should not be left open indefinitely.
+                ui.postDelayed({
+                    if (preparedBluetooth === transport) {
+                        preparedBluetooth = null; pendingBluetoothToken = null; transport.close()
+                        if (::status.isInitialized) status.text = "Bluetooth preparation expired. Prepare it again."
+                    }
+                }, 300_000)
                 status.text = "Preparing Bluetooth service…"
                 Thread {
                     try {
                         transport.prepare()
-                        ui.post { if (preparedBluetooth === transport) status.text = "Bluetooth service ready. Configure Windows outgoing COM, start pairing, then enter its code." }
+                        ui.post {
+                            if (preparedBluetooth === transport) {
+                                val token = pendingBluetoothToken
+                                pendingBluetoothToken = null
+                                if (token != null) connectBluetooth(token)
+                                else status.text = "Bluetooth ready. Configure Windows outgoing COM, start pairing, then scan its QR."
+                            }
+                        }
                     } catch (e: Exception) {
-                        transport.close(); ui.post { if (preparedBluetooth === transport) { preparedBluetooth = null; status.text = "Bluetooth unavailable: ${e.message ?: "unknown error"}" } }
+                        transport.close(); ui.post { if (preparedBluetooth === transport) { preparedBluetooth = null; pendingBluetoothToken = null; status.text = "Bluetooth unavailable: ${e.message ?: "unknown error"}" } }
                     }
                 }.start()
-            }.setNegativeButton("Cancel", null).show()
+            }.setNegativeButton("Cancel") { _, _ -> pendingBluetoothToken = null }.setOnCancelListener { pendingBluetoothToken = null }.show()
     }
     private fun connectBluetooth(token: String) {
         val transport = preparedBluetooth
@@ -188,7 +216,8 @@ class TabletActivity : Activity() {
             slider("Size", "SIZE"); slider("Opacity", "OPACITY")
         }
     }
-    override fun onPause() { super.onPause(); preparedBluetooth?.close(); preparedBluetooth = null; if (link != null) { returnToPairing = true; link?.close(); link = null } }
+    override fun onPause() { super.onPause(); if (!scanning) { preparedBluetooth?.close(); preparedBluetooth = null }; if (link != null) { returnToPairing = true; link?.close(); link = null } }
+    override fun onDestroy() { preparedBluetooth?.close(); preparedBluetooth = null; super.onDestroy() }
     override fun onResume() { super.onResume(); if (returnToPairing && ::root.isInitialized) { returnToPairing = false; pairing("Disconnected while away") } }
 
     private class Pad(activity: Activity, private val link: Link, private val penOnly: () -> Boolean, private val direct: () -> Boolean) : View(activity) {

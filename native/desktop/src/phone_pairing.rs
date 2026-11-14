@@ -20,6 +20,11 @@ pub fn payload(ip: &str, usb: bool, token: &str) -> Option<String> {
     Some(format!("QELEMPAIR1|{}|{}|48652|{}", if usb { "USB" } else { "WIFI" }, host, token))
 }
 
+pub fn bluetooth_payload(token: &str) -> Option<String> {
+    if token.len() != 32 || !token.bytes().all(|b| b.is_ascii_hexdigit()) { return None; }
+    Some(format!("QELEMPAIR1|BT|-|48652|{token}"))
+}
+
 pub fn qr(ui: &mut egui::Ui, text: &str) {
     let Ok(code) = QrCode::encode_text(text, QrCodeEcc::Medium) else { ui.label("QR data is too long"); return };
     let n = code.size();
@@ -46,5 +51,7 @@ mod tests {
         assert!(payload("127.0.0.1", false, TOKEN).is_none());
         assert_eq!(payload("", true, TOKEN).as_deref(), Some("QELEMPAIR1|USB|127.0.0.1|48652|0123456789abcdef0123456789abcdef"));
         assert!(payload("10.0.0.1", false, "x").is_none());
+        assert_eq!(bluetooth_payload(TOKEN).as_deref(), Some("QELEMPAIR1|BT|-|48652|0123456789abcdef0123456789abcdef"));
+        assert!(bluetooth_payload("wrong").is_none());
     }
 }

@@ -10,6 +10,11 @@ class PairingTest {
         assertEquals(Pairing("192.168.1.2", token, false), Pairing.parse("QELEMPAIR1|WIFI|192.168.1.2|48652|$token"))
         assertEquals(Pairing("127.0.0.1", token, true), Pairing.parse("QELEMPAIR1|USB|127.0.0.1|48652|$token"))
     }
+    @Test fun bluetoothPayloadDoesNotTrustAnAddressFromTheQr() {
+        assertEquals(Pairing("-", token, false, true), Pairing.parse("QELEMPAIR1|BT|-|48652|$token"))
+        assertNull(Pairing.parse("QELEMPAIR1|BT|192.168.1.2|48652|$token"))
+        assertNull(Pairing.parse("QELEMPAIR1|WIFI|-|48652|$token"))
+    }
     @Test fun rejectsUnexpectedTargetsAndMalformedData() {
         for (s in listOf(
             "QELEMPAIR1|WIFI|8.8.8.8|48652|$token", "QELEMPAIR1|WIFI|127.0.0.1|48652|$token",
