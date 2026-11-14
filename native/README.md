@@ -21,7 +21,7 @@ These additions have focused JVM tests, and the arm64 APK compiles; graphics, to
 
 ## Windows and phone tablet
 
-Download the [Windows x64 connectivity preview](../artifacts/Qelem-Windows-remote-0.3-preview.zip) and the separate [Android tablet controller](../artifacts/Qelem-Tablet-remote-0.3-preview.apk). The blank pad can control Qelem or use experimental Windows synthetic-pen input (not a HID/Wintab driver). QR pairing, trusted private Wi-Fi/hotspot, USB via ADB reverse and experimental Bluetooth SPP via an outgoing COM port are included. A standalone Windows console server is bundled. [Setup, security and limitations](QELEM-PHONE-TABLET.md). Built and protocol-tested, but not tested together on real devices.
+Download the [Windows x64 connectivity preview](../artifacts/Qelem-Windows-remote-0.5-preview.zip) and the separate [Android tablet controller](../artifacts/Qelem-Tablet-remote-0.5-preview.apk). The blank pad can control Qelem or use experimental Windows synthetic-pen input (not a HID/Wintab driver). QR pairing, trusted private Wi-Fi/hotspot, USB via ADB reverse and experimental Bluetooth Classic are included. A standalone Windows GUI server is bundled, with QR pairing and a relative mouse mode. [Setup, security and limitations](QELEM-PHONE-TABLET.md). Built and protocol-tested, but not tested together on real devices.
 
 ## Keep your artwork safe
 
