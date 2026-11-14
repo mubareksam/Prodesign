@@ -48,6 +48,10 @@ pub fn parse(line: &str) -> Option<Command> {
 
 /// A bounded line, with a timeout so Stop closes even an idle client. No unbounded allocation.
 fn line(stream: &mut impl Read, stop: &AtomicBool) -> io::Result<Option<String>> {
+    line_with_idle_limit(stream, stop, 15)
+}
+
+fn line_with_idle_limit(stream: &mut impl Read, stop: &AtomicBool, idle_limit: u32) -> io::Result<Option<String>> {
     let mut bytes = Vec::with_capacity(MAX_LINE);
     let mut b = [0];
     let mut idle = 0;
@@ -65,7 +69,7 @@ fn line(stream: &mut impl Read, stop: &AtomicBool) -> io::Result<Option<String>>
             }
             Err(e) if matches!(e.kind(), io::ErrorKind::WouldBlock | io::ErrorKind::TimedOut) => {
                 idle += 1;
-                if idle >= 15 { return Ok(None); }
+                if idle >= idle_limit { return Ok(None); }
             }
             Err(e) => return Err(e),
         }
@@ -194,7 +198,8 @@ fn bluetooth_session(port: u16, token: &str, stop: &AtomicBool, connected: &Atom
     }
     let mut serial = Serial(file);
     let expected = format!("QELEM1 {token}");
-    if !matches!(line(&mut serial, stop), Ok(Some(ref value)) if value == &expected) { return Err(io::Error::new(io::ErrorKind::InvalidData, "Bluetooth authentication failed or timed out")); }
+    // The COM connection may establish before the user has finished typing the code.
+    if !matches!(line_with_idle_limit(&mut serial, stop, 120), Ok(Some(ref value)) if value == &expected) { return Err(io::Error::new(io::ErrorKind::InvalidData, "Bluetooth authentication failed or timed out")); }
     serial.0.write_all(b"OK\n")?;
     connected.store(true, Ordering::Release); wake();
     while !stop.load(Ordering::Acquire) {
