@@ -42,7 +42,7 @@ jobs:
       - name: Install Android SDK packages
         run: |
           set +e
-          "$ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager" 'platforms;android-37' 'ndk;29.0.14206865' > /tmp/qelem-sdk-install.log 2>&1
+          "$ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager" 'platforms;android-36' 'ndk;29.0.14206865' > /tmp/qelem-sdk-install.log 2>&1
           result=$?
           tr '\r' '\n' < /tmp/qelem-sdk-install.log | tail -n 30
           if [ "$result" -ne 0 ]; then
@@ -53,7 +53,16 @@ jobs:
       - uses: gradle/actions/setup-gradle@v4
       - name: Build arm64 development APK
         working-directory: native/android
-        run: ./gradlew --no-daemon :app:assembleDebug -Pprocraft.abis=arm64-v8a
+        run: |
+          set +e
+          ./gradlew --no-daemon :app:assembleDebug -Pprocraft.abis=arm64-v8a > /tmp/qelem-gradle.log 2>&1
+          result=$?
+          tail -n 100 /tmp/qelem-gradle.log
+          if [ "$result" -ne 0 ]; then
+            grep -Ei 'error:|^e:|failed|exception|could not|not found|requires|unresolved|^  >|^> ' /tmp/qelem-gradle.log | tail -n 30 > /tmp/qelem-gradle-errors.log || true
+            while IFS= read -r line; do echo "::error::$line"; done < /tmp/qelem-gradle-errors.log
+            exit "$result"
+          fi
       - name: Save APK and checksum
         run: |
           mkdir -p apk

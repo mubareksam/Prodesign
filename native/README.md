@@ -23,7 +23,7 @@ Back up projects in the existing Qelem app and verify the backups. **Do not unin
 
 ## Building
 
-The Android build requires JDK 17+, Rust (workspace minimum 1.95), Android SDK API 37, NDK `29.0.14206865`, cargo-ndk 4, Rust Android targets and Gradle's dependency downloads. From this directory:
+The Android build requires JDK 17+, Rust (workspace minimum 1.95), Android SDK API 36, NDK `29.0.14206865`, cargo-ndk 4, Rust Android targets and Gradle's dependency downloads. From this directory:
 
 ```sh
 cd android

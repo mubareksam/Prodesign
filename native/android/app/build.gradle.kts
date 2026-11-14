@@ -115,7 +115,7 @@ abstract class UniffiBindgen : DefaultTask() {
 
 android {
     namespace = "io.github.artcraftandroid.procraft"
-    compileSdk = 37
+    compileSdk = 36
     ndkVersion = "29.0.14206865"
 
     defaultConfig {
