@@ -15,11 +15,11 @@ The native APK is a debug-signed preview, built on GitHub but **not tested on a 
 
 ## Windows + Android tablet connectivity preview
 
-- [Download Qelem for Windows x64](artifacts/Qelem-Windows-connectivity-preview.zip) (portable, unsigned preview).
-- [Download Qelem Tablet for Android 9+](artifacts/Qelem-Tablet-connectivity-preview.apk) (separate debug-signed controller).
-- [Setup, security and limitations](native/QELEM-PHONE-TABLET.md) · [build and signature details](artifacts/Qelem-Windows-and-Tablet-connectivity-preview.txt).
+- [Download Qelem for Windows x64](artifacts/Qelem-Windows-remote-0.3-preview.zip) (portable, unsigned preview).
+- [Download Qelem Tablet for Android 9+](artifacts/Qelem-Tablet-remote-0.3-preview.apk) (separate debug-signed controller).
+- [Setup, security and limitations](native/QELEM-PHONE-TABLET.md) · [build and signature details](artifacts/Qelem-Windows-and-Tablet-remote-0.3-preview.txt).
 
-Connect via private Wi-Fi or an offline hotspot, or a USB cable with ADB reverse; pair by QR scan or code. Choose Qelem canvas input or experimental Windows synthetic-pen input. Windows mode is not a HID/Wintab driver and may not work in every application. Traffic and QR secrets are unencrypted. Builds and automated tests passed, but **not tested together on real devices**. The [earlier Qelem-only preview](artifacts/Qelem-Windows-and-Tablet-preview.txt) remains available separately.
+The ZIP includes Qelem and a standalone console tablet server. Connect via private Wi-Fi, offline hotspot, USB with ADB reverse, or experimental Bluetooth Classic using a manually configured outgoing COM port. Use the Qelem or Windows remote and move before drawing with a double-tap hold. Windows synthetic pen is not a HID/Wintab driver and may not work in every application. QR scanning was revised after a crash report, but scanning and Bluetooth still need device verification. Wi-Fi and QR secrets are unencrypted. Builds and automated tests passed, but **not tested together on real devices**. The [previous connectivity preview](artifacts/Qelem-Windows-and-Tablet-connectivity-preview.txt) remains available separately.
 
 ## Artwork safety
 
