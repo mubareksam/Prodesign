@@ -1,0 +1,35 @@
+Qelem Windows + Android phone tablet experimental preview
+Built from source commit: b157d197c39beb690d57669795288cdb42665b4c
+Build and tests: https://github.com/mubareksam/Qelem/actions/runs/43600251585
+Windows x64 GUI executable, unsigned. Android APK debug-signed.
+Not tested together on real devices. Back up artwork first.
+Windows synthetic pen is experimental. USB requires ADB; Wi-Fi is plaintext.
+
+1ebc41a4861e9432cd42d4656534f6ce64517f5cc843f087416b57b9a3afa769  Qelem-Windows-connectivity-preview.zip
+a8a56eea88dc53ff41ee360f315105e76db016db2e5306c5478bb312c6df4bd0  Qelem-Tablet-connectivity-preview.apk
+
+May require the Microsoft Visual C++ Redistributable.
+
+Verifies
+Verified using v1 scheme (JAR signing): false
+Verified using v2 scheme (APK Signature Scheme v2): true
+Verified using v3 scheme (APK Signature Scheme v3): false
+Verified using v3.1 scheme (APK Signature Scheme v3.1): false
+Verified using v3.2 scheme (APK Signature Scheme v3.2): false
+Verified using v4 scheme (APK Signature Scheme v4): false
+Verified for SourceStamp: false
+Number of signers: 1
+V2 Signer: certificate DN: C=US, O=Android, CN=Android Debug
+V2 Signer: certificate SHA-256 digest: f3341d5b20bf3c98d7f982ea9d64e9e0516c5bff3e2a6b7b2e4ce88d34d44783
+V2 Signer: certificate SHA-1 digest: 8c829a0d86183f3a756d10881aa861d1af840957
+V2 Signer: certificate MD5 digest: bebc4e397682fef37ab09c6e5248d0ae
+V2 Signer: key algorithm: RSA
+V2 Signer: key size (bits): 2048
+V2 Signer: public key SHA-256 digest: 86c29d7cb9848924d6d0197ebd65a0f2555faa1791d5e51fadfcce69538bc354
+V2 Signer: public key SHA-1 digest: 3a0891ad1b2796a076331044ee77860d054efc7d
+V2 Signer: public key MD5 digest: c45a1cad740b16efe0a0117fe2de3420
+
+package: name='com.qelem.tablet.preview' versionCode='2' versionName='0.2-preview' platformBuildVersionName='16' platformBuildVersionCode='36' compileSdkVersion='36' compileSdkVersionCodename='16'
+sdkVersion:'28'
+targetSdkVersion:'36'
+application-label:'Qelem Tablet'
